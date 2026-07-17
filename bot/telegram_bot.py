@@ -497,7 +497,7 @@ async def _handle_webhook_update(data: dict):
     opencode_mgr.send_command(user_id, text)
 
     # Send "Running..." then the terminal output
-        await _send_telegram_message(chat_id, "Running...", reply_markup=_keyboard_to_dict(get_control_keyboard(user_id)))
+    await _send_telegram_message(chat_id, "Running...", reply_markup=_keyboard_to_dict(get_control_keyboard(user_id)))
     await asyncio.sleep(0.5)
     output = opencode_mgr.read(user_id, lines=40)
     display, is_card = clean_terminal_output(output)
