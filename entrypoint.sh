@@ -15,7 +15,7 @@ mkdir -p /data/config/opencode 2>/dev/null || echo "[WARN] Could not create /dat
 mkdir -p /data/cache/opencode 2>/dev/null || echo "[WARN] Could not create /data/cache/opencode"
 mkdir -p /data/state/opencode 2>/dev/null || echo "[WARN] Could not create /data/state/opencode"
 
-# Ensure config exists with correct model setting (mimo-v2.5-free is the correct ID without opencode/ prefix)
+# Ensure config exists with correct model setting (big-pickle is the active free model ID)
 echo "[CONFIG] Setting up default configuration..."
 python3 -c "
 import json, os
@@ -26,11 +26,11 @@ except Exception:
     d = {}
 d['\$schema'] = 'https://opencode.ai/config.json'
 d['server'] = d.get('server', {'port': 4096, 'hostname': '0.0.0.0'})
-# Switch to free model if API keys are not configured
+# Switch to active free model (big-pickle) if API keys are not configured
 if not os.environ.get('ANTHROPIC_API_KEY') and not os.environ.get('OPENAI_API_KEY'):
-    d['model'] = 'mimo-v2.5-free'
-elif not d.get('model') or d.get('model') == 'opencode/mimo-v2.5-free':
-    d['model'] = 'mimo-v2.5-free'
+    d['model'] = 'big-pickle'
+elif not d.get('model') or d.get('model') == 'opencode/mimo-v2.5-free' or d.get('model') == 'mimo-v2.5-free':
+    d['model'] = 'big-pickle'
 json.dump(d, open(p, 'w'), indent=2)
 " 2>/dev/null || true
 echo "[CONFIG] Current configuration:"
