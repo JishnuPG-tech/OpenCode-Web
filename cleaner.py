@@ -8,22 +8,28 @@ db_paths = [
     "/home/opencode/.local/share/opencode/opencode.db",
 ]
 
-# Find the active database file
-db_path = None
-for path in db_paths:
-    if os.path.exists(path):
-        db_path = path
-        break
-
-if not db_path:
-    db_path = os.path.expanduser("~/.local/share/opencode/opencode.db")
-
-print(f"OpenCode Self-Healing Daemon: watching database {db_path}...", flush=True)
+print("OpenCode Self-Healing Daemon: started", flush=True)
 
 while True:
-    time.sleep(3)  # check every 3 seconds for faster recovery
-    if not os.path.exists(db_path):
+    time.sleep(3)
+    
+    # Dynamically find the active database path (since it might be created after script starts)
+    db_path = None
+    for path in db_paths:
+        if os.path.exists(path):
+            db_path = path
+            break
+            
+    if not db_path:
+        # Resolve default fallback
+        fallback = os.path.expanduser("~/.local/share/opencode/opencode.db")
+        if os.path.exists(fallback):
+            db_path = fallback
+            
+    if not db_path:
+        # Still not created yet, wait for next loop
         continue
+        
     try:
         conn = sqlite3.connect(db_path)
         cursor = conn.cursor()
