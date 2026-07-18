@@ -2,10 +2,11 @@ FROM debian:bookworm-slim
 
 ARG OPENCODE_VERSION=1.18.3
 
-# Install dependencies
+# Install dependencies (including git for project initialization)
 RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     ca-certificates \
+    git \
  && rm -rf /var/lib/apt/lists/*
 
 # Download opencode binary
@@ -16,12 +17,12 @@ RUN curl -fsSL "https://github.com/anomalyco/opencode/releases/download/v${OPENC
 RUN useradd -m -s /bin/bash opencode
 
 # Working directory for projects
-RUN mkdir -p /projects && chown opencode:opencode /projects
+RUN mkdir -p /projects/default && chown -R opencode:opencode /projects
 
 USER opencode
-WORKDIR /projects
+WORKDIR /projects/default
 
 EXPOSE 4096
 
-# Default: pre-create default project, init git (OpenCode requires git repo to recognize projects), and serve
-CMD ["sh", "-c", "mkdir -p /projects/default && cd /projects/default && if [ ! -d .git ]; then git init && git config user.email 'opencode@local.com' && git config user.name 'OpenCode' && git commit --allow-empty -m 'Initial commit'; fi; exec opencode serve --port 4096 --hostname 0.0.0.0"]
+# Default: check if git is initialized (in case of persistent volume mount) and serve
+CMD ["sh", "-c", "if [ ! -d .git ]; then git init && git config user.email 'opencode@local.com' && git config user.name 'OpenCode' && git commit --allow-empty -m 'Initial commit'; fi; exec opencode serve --port 4096 --hostname 0.0.0.0"]
