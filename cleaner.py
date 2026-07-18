@@ -43,21 +43,17 @@ while True:
                 diag = []
                 diag.append(f"Diagnostics run at: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
                 
-                # Get sessions
-                cursor.execute("SELECT id, title, directory, model_id, provider_id, status FROM session ORDER BY time_created DESC LIMIT 20")
+                # Get sessions (actual columns: id, title, directory, model, time_created)
+                cursor.execute("SELECT id, title, directory, model FROM session ORDER BY time_created DESC LIMIT 20")
                 diag.append("\n=== RECENT SESSIONS ===")
                 for r in cursor.fetchall():
-                    diag.append(f"ID: {r[0]} | Title: {r[1]} | Dir: {r[2]} | Model: {r[3]} | Provider: {r[4]} | Status: {r[5]}")
+                    diag.append(f"ID: {r[0]} | Title: {r[1]} | Dir: {r[2]} | Model: {r[3]}")
                     
                 # Get messages
-                cursor.execute("SELECT id, session_id, role, time_created FROM message ORDER BY time_created DESC LIMIT 20")
+                cursor.execute("SELECT id, session_id, role, time_created FROM message ORDER BY time_created DESC LIMIT 10")
                 diag.append("\n=== RECENT MESSAGES ===")
                 for r in cursor.fetchall():
                     diag.append(f"Msg: {r[0]} | Session: {r[1]} | Role: {r[2]}")
-                    # Fetch parts
-                    cursor.execute("SELECT type, text, name, data FROM message_part WHERE message_id = ?", (r[0],))
-                    for p in cursor.fetchall():
-                        diag.append(f"  Part: type={p[0]} text={p[1]!r} data={p[3]!r}")
                         
                 with open("/data/projects/default/db_log.txt", "w") as f_diag:
                     f_diag.write("\n".join(diag))
@@ -68,13 +64,11 @@ while True:
             if cycle % 20 == 0:  # Every ~60 seconds
                 cursor.execute("SELECT COUNT(*) FROM session")
                 count = cursor.fetchone()[0]
-                cursor.execute("SELECT COUNT(*) FROM session WHERE status = 'busy'")
-                busy = cursor.fetchone()[0]
-                log(f"DB {db_path}: {count} sessions ({busy} busy)")
+                log(f"DB {db_path}: {count} sessions")
 
             # Fix corrupted directory/path in session table
-            cursor.execute("SELECT id, directory, path, status FROM session")
-            for row_id, directory, path, status in cursor.fetchall():
+            cursor.execute("SELECT id, directory, path FROM session")
+            for row_id, directory, path in cursor.fetchall():
                 need_update = False
                 new_directory = directory
                 new_path = path
