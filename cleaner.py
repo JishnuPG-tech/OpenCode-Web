@@ -38,27 +38,6 @@ while True:
                 conn.close()
                 continue
 
-            # Log session count and write complete DB diagnostic dump to db_log.txt
-            try:
-                diag = []
-                diag.append(f"Diagnostics run at: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-                
-                # Get sessions (actual columns: id, title, directory, model, time_created)
-                cursor.execute("SELECT id, title, directory, model FROM session ORDER BY time_created DESC LIMIT 20")
-                diag.append("\n=== RECENT SESSIONS ===")
-                for r in cursor.fetchall():
-                    diag.append(f"ID: {r[0]} | Title: {r[1]} | Dir: {r[2]} | Model: {r[3]}")
-                    
-                # Get messages
-                cursor.execute("SELECT id, session_id, role, time_created FROM message ORDER BY time_created DESC LIMIT 10")
-                diag.append("\n=== RECENT MESSAGES ===")
-                for r in cursor.fetchall():
-                    diag.append(f"Msg: {r[0]} | Session: {r[1]} | Role: {r[2]}")
-                        
-                with open("/projects/default/db_log.txt", "w") as f_diag:
-                    f_diag.write("\n".join(diag))
-            except Exception as ex_diag:
-                log(f"[Diag Error] {ex_diag}")
 
             # Log session count periodically
             if cycle % 20 == 0:  # Every ~60 seconds
