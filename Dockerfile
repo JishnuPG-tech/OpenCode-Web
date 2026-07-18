@@ -1,5 +1,10 @@
 FROM debian:bookworm-slim
 
+ENV XDG_DATA_HOME=/data/share
+ENV XDG_CONFIG_HOME=/data/config
+ENV XDG_CACHE_HOME=/data/cache
+ENV XDG_STATE_HOME=/data/state
+
 ARG OPENCODE_VERSION=1.18.3
 
 # Install dependencies (including git for project initialization and python3 for DB self-healing)

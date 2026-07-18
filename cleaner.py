@@ -3,6 +3,7 @@ import time
 import os
 
 db_paths = [
+    "/data/share/opencode/opencode.db",
     "/root/.local/share/opencode/opencode.db",
     "/home/opencode/.local/share/opencode/opencode.db",
 ]
