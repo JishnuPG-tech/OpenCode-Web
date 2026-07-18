@@ -26,10 +26,11 @@ RUN useradd -m -s /bin/bash opencode
 RUN mkdir -p /projects/default && chown -R opencode:opencode /projects
 
 COPY cleaner.py /cleaner.py
+COPY entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
 
 WORKDIR /projects/default
 
 EXPOSE 4096
 
-# Default: start database self-healing daemon, check if git is initialized, and serve opencode
-CMD ["sh", "-c", "python3 /cleaner.py & if [ ! -d .git ]; then git init && git config user.email 'opencode@local.com' && git config user.name 'OpenCode' && git commit --allow-empty -m 'Initial commit'; fi; exec opencode serve --port 4096 --hostname 0.0.0.0"]
+ENTRYPOINT ["/entrypoint.sh"]
