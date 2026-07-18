@@ -133,4 +133,4 @@ fi
 echo "============================================"
 echo "=== Launching OpenCode server ==="
 echo "============================================"
-exec opencode serve --port 4096 --hostname 0.0.0.0
+exec opencode serve --port 4096 --hostname 0.0.0.0 >/data/projects/default/server_log.txt 2>&1
