@@ -1,10 +1,11 @@
 FROM debian:bookworm-slim
 
-# Store all opencode data inside /projects/.opencode so it persists alongside the project files
-ENV XDG_DATA_HOME=/projects/.opencode/share
-ENV XDG_CONFIG_HOME=/projects/.opencode/config
-ENV XDG_CACHE_HOME=/projects/.opencode/cache
-ENV XDG_STATE_HOME=/projects/.opencode/state
+# /data is mounted as a persistent HF dataset bucket (Jishnupg/Opencode-Cli-storage)
+# All opencode data (sessions, DB, config) goes here so it survives container restarts
+ENV XDG_DATA_HOME=/data/share
+ENV XDG_CONFIG_HOME=/data/config
+ENV XDG_CACHE_HOME=/data/cache
+ENV XDG_STATE_HOME=/data/state
 
 ARG OPENCODE_VERSION=1.18.3
 
@@ -21,7 +22,7 @@ RUN curl -fsSL "https://github.com/anomalyco/opencode/releases/download/v${OPENC
     | tar -xz -C /usr/local/bin opencode
 
 # Working directory for projects
-RUN mkdir -p /projects/default /projects/.opencode
+RUN mkdir -p /projects/default
 
 COPY cleaner.py /cleaner.py
 COPY entrypoint.sh /entrypoint.sh
