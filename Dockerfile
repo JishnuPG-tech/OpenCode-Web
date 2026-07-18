@@ -19,7 +19,6 @@ RUN useradd -m -s /bin/bash opencode
 # Working directory for projects
 RUN mkdir -p /projects/default && chown -R opencode:opencode /projects
 
-USER opencode
 WORKDIR /projects/default
 
 EXPOSE 4096
