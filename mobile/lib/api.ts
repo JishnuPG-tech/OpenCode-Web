@@ -114,6 +114,7 @@ export function createSession(options?: {
   title?: string;
   agent?: string;
   model?: string;
+  directory?: string;
 }): Promise<Session> {
   return request("/session", {
     method: "POST",

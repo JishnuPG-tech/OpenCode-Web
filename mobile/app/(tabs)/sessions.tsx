@@ -22,7 +22,7 @@ export default function SessionsScreen() {
 
   const handleCreate = async () => {
     try {
-      const session = await createSession.mutateAsync({ title: "New Chat" });
+      const session = await createSession.mutateAsync({ title: "New Chat", directory: "default" });
       router.push(`/session/${session.id}`);
     } catch {}
   };
