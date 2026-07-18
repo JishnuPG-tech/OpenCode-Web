@@ -21,16 +21,22 @@ python3 /cleaner.py &
 # Navigate to the default projects directory
 cd /projects/default
 
-# If GITHUB_REPO is provided, try to clone it if the directory is empty
-if [ -n "$GITHUB_REPO" ]; then
-    echo "Found GITHUB_REPO: $GITHUB_REPO"
-    if [ ! -d ".git" ] && [ -z "$(ls -A 2>/dev/null)" ]; then
-        echo "Cloning repository..."
-        git clone "$GITHUB_REPO" .
-        echo "Clone successful!"
-    else
-        echo "Repo already present, skipping clone."
-    fi
+# If GITHUB_REPO is not set, use the default OpenCode Drive repo
+GITHUB_REPO="${GITHUB_REPO:-https://github.com/JishnuPG-tech/OpenCode-Drive.git}"
+
+# Navigate to the default projects directory
+cd /projects/default
+
+# Clone the repo if the directory is empty
+if [ ! -d ".git" ] && [ -z "$(ls -A 2>/dev/null)" ]; then
+    echo "Cloning repository: $GITHUB_REPO ..."
+    git clone "$GITHUB_REPO" .
+    echo "Clone complete!"
+elif [ -d ".git" ] && [ -n "$(git remote -v 2>/dev/null)" ]; then
+    echo "Repo already cloned, pulling latest..."
+    git pull origin HEAD 2>/dev/null || true
+else
+    echo "Directory not empty and no remote. Using existing files."
 fi
 
 # Ensure a git repo is initialized (OpenCode requires one)
