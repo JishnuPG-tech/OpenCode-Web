@@ -2,82 +2,73 @@ import sqlite3
 import time
 import os
 
-db_paths = [
+print("OpenCode Self-Healing Daemon: started", flush=True)
+
+# All possible database locations — check them all every loop
+DB_PATHS = [
+    "/projects/.opencode/share/opencode/opencode.db",
     "/data/share/opencode/opencode.db",
     "/root/.local/share/opencode/opencode.db",
     "/home/opencode/.local/share/opencode/opencode.db",
 ]
 
-print("OpenCode Self-Healing Daemon: started", flush=True)
+def is_corrupted(s):
+    return s and ("\ufffd" in s or "??#y" in s or "\xef\xbf\xbd" in s)
 
 while True:
     time.sleep(3)
     
-    # Dynamically find the active database path (since it might be created after script starts)
-    db_path = None
-    for path in db_paths:
-        if os.path.exists(path):
-            db_path = path
-            break
-            
-    if not db_path:
-        # Resolve default fallback
-        fallback = os.path.expanduser("~/.local/share/opencode/opencode.db")
-        if os.path.exists(fallback):
-            db_path = fallback
-            
-    if not db_path:
-        # Still not created yet, wait for next loop
-        continue
-        
-    try:
-        conn = sqlite3.connect(db_path)
-        cursor = conn.cursor()
-        
-        # Check if session table exists
-        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='session'")
-        if not cursor.fetchone():
-            conn.close()
+    for db_path in DB_PATHS:
+        if not os.path.exists(db_path):
             continue
+        try:
+            conn = sqlite3.connect(db_path)
+            cursor = conn.cursor()
             
-        # 1. Update directory and path if they contain invalid characters
-        cursor.execute("SELECT id, directory, path FROM session")
-        rows = cursor.fetchall()
-        for row_id, directory, path in rows:
-            need_update = False
-            new_directory = directory
-            new_path = path
-            
-            if directory and ("\ufffd" in directory or "\xef\xbf\xbd" in directory or "??#y" in directory):
-                new_directory = "/projects/default"
-                need_update = True
-            
-            if path and ("\ufffd" in path or "\xef\xbf\xbd" in path or "??#y" in path):
-                new_path = "projects/default"
-                need_update = True
+            # Check if session table exists
+            cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='session'")
+            if not cursor.fetchone():
+                conn.close()
+                continue
                 
-            if need_update:
-                print(f"[Self-Healing] Session '{row_id}' has corrupted path/directory. Fixing directory='{new_directory}', path='{new_path}'...", flush=True)
-                cursor.execute(
-                    "UPDATE session SET directory = ?, path = ? WHERE id = ?",
-                    (new_directory, new_path, row_id)
-                )
-                conn.commit()
+            # 1. Fix directory and path columns in session table
+            cursor.execute("SELECT id, directory, path FROM session")
+            for row_id, directory, path in cursor.fetchall():
+                need_update = False
+                new_directory = directory
+                new_path = path
                 
-        # 2. Clean up project_directory table if it exists
-        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='project_directory'")
-        if cursor.fetchone():
-            cursor.execute("SELECT project_id, directory FROM project_directory")
-            p_rows = cursor.fetchall()
-            for p_id, directory in p_rows:
-                if directory and ("\ufffd" in directory or "\xef\xbf\xbd" in directory or "??#y" in directory):
-                    print(f"[Self-Healing] Found corrupted directory '{directory}' in project_directory '{p_id}'. Deleting...", flush=True)
+                if is_corrupted(directory):
+                    new_directory = "/projects/default"
+                    need_update = True
+                
+                if is_corrupted(path):
+                    new_path = None
+                    need_update = True
+                    
+                if need_update:
+                    print(f"[Healed] Session '{row_id}': dir={directory!r} -> {new_directory!r}, path={path!r} -> {new_path!r}", flush=True)
                     cursor.execute(
-                        "DELETE FROM project_directory WHERE project_id = ? AND directory = ?",
-                        (p_id, directory)
+                        "UPDATE session SET directory = ?, path = ? WHERE id = ?",
+                        (new_directory, new_path, row_id)
                     )
                     conn.commit()
                     
-        conn.close()
-    except Exception as e:
-        print("[Self-Healing Error]:", e, flush=True)
+            # 2. Fix project_directory table
+            cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='project_directory'")
+            if cursor.fetchone():
+                cursor.execute("SELECT project_id, directory FROM project_directory")
+                for p_id, directory in cursor.fetchall():
+                    if is_corrupted(directory):
+                        print(f"[Healed] project_directory '{p_id}': deleting corrupted dir={directory!r}", flush=True)
+                        cursor.execute(
+                            "DELETE FROM project_directory WHERE project_id = ? AND directory = ?",
+                            (p_id, directory)
+                        )
+                        conn.commit()
+                        
+            conn.close()
+        except sqlite3.OperationalError:
+            pass  # DB might be locked by opencode, skip this cycle
+        except Exception as e:
+            print(f"[Healer Error] {db_path}: {e}", flush=True)

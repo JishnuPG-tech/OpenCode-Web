@@ -1,9 +1,10 @@
 FROM debian:bookworm-slim
 
-ENV XDG_DATA_HOME=/data/share
-ENV XDG_CONFIG_HOME=/data/config
-ENV XDG_CACHE_HOME=/data/cache
-ENV XDG_STATE_HOME=/data/state
+# Store all opencode data inside /projects/.opencode so it persists alongside the project files
+ENV XDG_DATA_HOME=/projects/.opencode/share
+ENV XDG_CONFIG_HOME=/projects/.opencode/config
+ENV XDG_CACHE_HOME=/projects/.opencode/cache
+ENV XDG_STATE_HOME=/projects/.opencode/state
 
 ARG OPENCODE_VERSION=1.18.3
 
@@ -19,11 +20,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 RUN curl -fsSL "https://github.com/anomalyco/opencode/releases/download/v${OPENCODE_VERSION}/opencode-linux-x64.tar.gz" \
     | tar -xz -C /usr/local/bin opencode
 
-# Create non-root user
-RUN useradd -m -s /bin/bash opencode
-
 # Working directory for projects
-RUN mkdir -p /projects/default && chown -R opencode:opencode /projects
+RUN mkdir -p /projects/default /projects/.opencode
 
 COPY cleaner.py /cleaner.py
 COPY entrypoint.sh /entrypoint.sh

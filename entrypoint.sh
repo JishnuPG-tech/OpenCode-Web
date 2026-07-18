@@ -6,11 +6,17 @@ echo "Starting OpenCode Space entrypoint..."
 # Configure Git to trust all directories inside the container to prevent ownership errors
 git config --global --add safe.directory '*' || true
 
+# Ensure the opencode data directories exist inside /projects (which is persistent)
+mkdir -p /projects/.opencode/share
+mkdir -p /projects/.opencode/config
+mkdir -p /projects/.opencode/cache
+mkdir -p /projects/.opencode/state
+mkdir -p /projects/default
+
 # Start the SQLite self-healing database daemon in the background
 python3 /cleaner.py &
 
 # Navigate to the default projects directory
-mkdir -p /projects/default
 cd /projects/default
 
 # If GITHUB_REPO is provided, try to clone it if the directory is empty
@@ -27,7 +33,7 @@ if [ -n "$GITHUB_REPO" ]; then
     fi
 fi
 
-# Ensure a git repo is initialized if nothing else is present (OpenCode TUI requires a git repository to work properly)
+# Ensure a git repo is initialized (OpenCode requires one to serve properly)
 if [ ! -d .git ]; then
     echo "No git repository found. Initializing empty repository..."
     git init
