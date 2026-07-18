@@ -15,10 +15,23 @@ mkdir -p /data/config/opencode 2>/dev/null || echo "[WARN] Could not create /dat
 mkdir -p /data/cache/opencode 2>/dev/null || echo "[WARN] Could not create /data/cache/opencode"
 mkdir -p /data/state/opencode 2>/dev/null || echo "[WARN] Could not create /data/state/opencode"
 
-# Remove any previously broken config - let OpenCode use its built-in defaults
-if [ -f /data/config/opencode/opencode.json ]; then
-    echo "[CONFIG] Removing old config to use OpenCode built-in defaults..."
-    rm -f /data/config/opencode/opencode.json
+# Ensure config exists with correct model setting
+if [ ! -f /data/config/opencode/opencode.json ]; then
+    echo "[CONFIG] Creating config with default model..."
+    cat > /data/config/opencode/opencode.json << 'EOF'
+{
+  "$schema": "https://opencode.ai/config.json",
+  "model": "opencode/mimo-v2.5-free",
+  "autoupdate": true,
+  "server": {
+    "port": 4096,
+    "hostname": "0.0.0.0"
+  }
+}
+EOF
+else
+    echo "[CONFIG] Config exists:"
+    cat /data/config/opencode/opencode.json
 fi
 
 # Log disk space
