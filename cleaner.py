@@ -20,7 +20,7 @@ if not db_path:
 print(f"OpenCode Self-Healing Daemon: watching database {db_path}...", flush=True)
 
 while True:
-    time.sleep(5)
+    time.sleep(3)  # check every 3 seconds for faster recovery
     if not os.path.exists(db_path):
         continue
     try:
@@ -33,15 +33,27 @@ while True:
             conn.close()
             continue
             
-        # 1. Update directory to a safe path if it contains invalid characters
-        cursor.execute("SELECT id, directory FROM session")
+        # 1. Update directory and path if they contain invalid characters
+        cursor.execute("SELECT id, directory, path FROM session")
         rows = cursor.fetchall()
-        for row_id, directory in rows:
+        for row_id, directory, path in rows:
+            need_update = False
+            new_directory = directory
+            new_path = path
+            
             if directory and ("\ufffd" in directory or "\xef\xbf\xbd" in directory or "??#y" in directory):
-                print(f"[Self-Healing] Found corrupted directory '{directory}' in session '{row_id}'. Fixing to '/projects/default'...", flush=True)
+                new_directory = "/projects/default"
+                need_update = True
+            
+            if path and ("\ufffd" in path or "\xef\xbf\xbd" in path or "??#y" in path):
+                new_path = "projects/default"
+                need_update = True
+                
+            if need_update:
+                print(f"[Self-Healing] Session '{row_id}' has corrupted path/directory. Fixing directory='{new_directory}', path='{new_path}'...", flush=True)
                 cursor.execute(
-                    "UPDATE session SET directory = ? WHERE id = ?",
-                    ("/projects/default", row_id)
+                    "UPDATE session SET directory = ?, path = ? WHERE id = ?",
+                    (new_directory, new_path, row_id)
                 )
                 conn.commit()
                 
