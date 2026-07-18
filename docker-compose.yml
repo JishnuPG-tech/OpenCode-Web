@@ -1,30 +1,26 @@
-version: '3.8'
+version: "3.8"
+
 services:
-  app:
+  opencode:
     build: .
-    container_name: antigravity-bridge
+    ports:
+      - "4096:4096"
     environment:
-      - BOT_TOKEN=${BOT_TOKEN}
-      - AUTHORIZED_USERS=${AUTHORIZED_USERS}
-      - WORKSPACE_PATH=${WORKSPACE_PATH:-/workspaces}
-      - UPLOAD_LIMIT=${UPLOAD_LIMIT:-104857600}
+      # Set your API keys here
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      # Optional: enable HTTP basic auth
+      - OPENCODE_SERVER_USERNAME=${OPENCODE_SERVER_USERNAME:-}
+      - OPENCODE_SERVER_PASSWORD=${OPENCODE_SERVER_PASSWORD:-}
     volumes:
-      - ./workspaces:/workspaces
-      - ./logs:/app/logs
-    ports:
-      - "7860:7860"
+      # Mount a directory for projects to persist data
+      - opencode-data:/projects
     restart: unless-stopped
-version: '3.8'
-services:
-  antigravity-bot:
-    build: .
-    container_name: antigravity-bot
-    restart: always
-    env_file:
-      - .env
-    volumes:
-      - ./workspaces:/workspaces
-      - ./logs:/logs
-    ports:
-      - "8000:8000"
-    shm_size: '512mb'
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:4096/api/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+volumes:
+  opencode-data:

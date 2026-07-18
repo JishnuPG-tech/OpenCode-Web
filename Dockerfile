@@ -1,35 +1,27 @@
-FROM python:3.12-slim
+FROM debian:bookworm-slim
 
-ENV DEBIAN_FRONTEND=noninteractive
-ENV WORKSPACE_PATH=/data/workspaces
-ENV LOG_LEVEL=INFO
+ARG OPENCODE_VERSION=1.18.3
 
+# Install dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    tmux \
     curl \
     ca-certificates \
-    supervisor \
-    unzip \
-    git \
- && curl -fsSL https://github.com/anomalyco/opencode/releases/download/v1.18.3/opencode-linux-x64.tar.gz -o /tmp/opencode.tar.gz \
- && tar -xzf /tmp/opencode.tar.gz -C /usr/bin/ \
- && chmod +x /usr/bin/opencode \
- && rm -f /tmp/opencode.tar.gz \
  && rm -rf /var/lib/apt/lists/*
 
-RUN useradd -m -s /bin/bash appuser \
- && mkdir -p /data/workspaces /data/bin /data/logs \
- && chown -R appuser:appuser /data
+# Download opencode binary
+RUN curl -fsSL "https://github.com/anomalyco/opencode/releases/download/v${OPENCODE_VERSION}/opencode-linux-x64.tar.gz" \
+    | tar -xz -C /usr/local/bin opencode
 
-WORKDIR /app
+# Create non-root user
+RUN useradd -m -s /bin/bash opencode
 
-COPY requirements.txt /app/
-RUN pip install --no-cache-dir -r requirements.txt
+# Working directory for projects
+RUN mkdir -p /projects && chown opencode:opencode /projects
 
-COPY . /app
-RUN chmod +x /app/scripts/*.sh || true
+USER opencode
+WORKDIR /projects
 
-EXPOSE 7860
+EXPOSE 4096
 
-ENTRYPOINT ["/app/scripts/entrypoint.sh"]
-
+# Default: pre-create default project folder, auto-clone GITHUB_REPO if set, and serve
+CMD ["sh", "-c", "mkdir -p /projects/default && if [ -n \"$GITHUB_REPO\" ] && [ ! -d /projects/default/.git ]; then echo 'Cloning GITHUB_REPO...'; git clone \"$GITHUB_REPO\" /projects/default || true; fi; exec opencode serve --port 4096 --hostname 0.0.0.0"]

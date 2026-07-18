@@ -1,10 +1,5 @@
-__pycache__/
-*.pyc
+node_modules/
+.expo/
+dist/
+*.tsbuildinfo
 .env
-.env.*
-!.env.example
-sessions/
-workspaces/
-*.log
-venv/
-.pytest_cache/

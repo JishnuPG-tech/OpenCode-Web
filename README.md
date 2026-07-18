@@ -4,18 +4,18 @@ emoji: 🖥️
 colorFrom: green
 colorTo: blue
 sdk: docker
-app_port: 7860
+app_port: 4096
 pinned: false
 ---
 
-# Opencode CLI - Web Console & Telegram Bridge
+# Opencode CLI Server
 
-A production-ready FastAPI backend, Web Console, and Telegram Bot bridge for the [OpenCode AI coding agent](https://opencode.ai). This Space runs the OpenCode CLI inside a Docker container.
+This Hugging Face Space hosts the backend `opencode serve` API server on port 4096.
 
-## Features
+## Connection Setup for Mobile App
 
-- Full OpenCode CLI access via Web Terminal (`/webapp` route)
-- Telegram Bot Bridge with persistent tmux sessions per user
-- WebSocket-based terminal streaming with fast change detection
-- Auto-sleep/auto-resume (5-minute inactivity timeout) to conserve Space memory
-- Production deployment with Docker & Supervisor
+To connect your OpenCode mobile client to this server:
+1. Open the mobile app and go to **Settings**.
+2. Under **Server URL**, enter the Space's direct domain:
+   `https://jishnupg-opencode-cli.hf.space` (or your corresponding Space URL)
+3. Set your **Auth Type** and credentials if you configured `OPENCODE_SERVER_USERNAME`/`OPENCODE_SERVER_PASSWORD` secrets.
