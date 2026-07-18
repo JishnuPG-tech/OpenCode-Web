@@ -2,11 +2,12 @@ FROM debian:bookworm-slim
 
 ARG OPENCODE_VERSION=1.18.3
 
-# Install dependencies (including git for project initialization)
+# Install dependencies (including git for project initialization and python3 for DB self-healing)
 RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     ca-certificates \
     git \
+    python3 \
  && rm -rf /var/lib/apt/lists/*
 
 # Download opencode binary
@@ -19,9 +20,11 @@ RUN useradd -m -s /bin/bash opencode
 # Working directory for projects
 RUN mkdir -p /projects/default && chown -R opencode:opencode /projects
 
+COPY cleaner.py /cleaner.py
+
 WORKDIR /projects/default
 
 EXPOSE 4096
 
-# Default: check if git is initialized (in case of persistent volume mount) and serve
-CMD ["sh", "-c", "if [ ! -d .git ]; then git init && git config user.email 'opencode@local.com' && git config user.name 'OpenCode' && git commit --allow-empty -m 'Initial commit'; fi; exec opencode serve --port 4096 --hostname 0.0.0.0"]
+# Default: start database self-healing daemon, check if git is initialized, and serve opencode
+CMD ["sh", "-c", "python3 /cleaner.py & if [ ! -d .git ]; then git init && git config user.email 'opencode@local.com' && git config user.name 'OpenCode' && git commit --allow-empty -m 'Initial commit'; fi; exec opencode serve --port 4096 --hostname 0.0.0.0"]
