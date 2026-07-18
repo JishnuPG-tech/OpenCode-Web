@@ -116,6 +116,18 @@ echo "[GIT] Files: $(ls -1 . 2>/dev/null | grep -v '^\.git$' | tr '\n' ', ')"
 echo "[ENV] API keys: ANTHROPIC=$(if [ -n \"$ANTHROPIC_API_KEY\" ]; then echo SET; else echo NOT_SET; fi) OPENAI=$(if [ -n \"$OPENAI_API_KEY\" ]; then echo SET; else echo NOT_SET; fi)"
 echo "[ENV] Auth: USER=$(if [ -n \"$OPENCODE_SERVER_USERNAME\" ]; then echo SET; else echo NOT_SET; fi) PASS=$(if [ -n \"$OPENCODE_SERVER_PASSWORD\" ]; then echo SET; else echo NOT_SET; fi)"
 
+# Test connectivity to OpenCode Zen API
+echo "[NET] Testing connectivity to opencode.ai/zen..."
+ZEN_STATUS=$(curl -s -o /dev/null -w "%{http_code}" --connect-timeout 5 "https://opencode.ai/zen/v1/models" 2>/dev/null || echo "000")
+echo "[NET] OpenCode Zen API status: $ZEN_STATUS"
+
+if [ "$ZEN_STATUS" = "200" ]; then
+    echo "[NET] OpenCode Zen API is reachable"
+else
+    echo "[NET] WARNING: OpenCode Zen API may not be reachable from this container"
+    echo "[NET] This means free models may not work - AI responses will fail silently"
+fi
+
 echo "============================================"
 echo "=== Launching OpenCode server ==="
 echo "============================================"
