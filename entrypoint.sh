@@ -15,8 +15,25 @@ mkdir -p /data/config/opencode 2>/dev/null || echo "[WARN] Could not create /dat
 mkdir -p /data/cache/opencode 2>/dev/null || echo "[WARN] Could not create /data/cache/opencode"
 mkdir -p /data/state/opencode 2>/dev/null || echo "[WARN] Could not create /data/state/opencode"
 
-# Ensure config exists with correct model setting (big-pickle is the active free model ID)
+# Ensure config exists with correct model setting
+# Model IDs MUST use "provider/model" format per OpenCode docs (e.g. "opencode/big-pickle")
 echo "[CONFIG] Setting up default configuration..."
+
+# Remove stale config that may have wrong model format
+python3 -c "
+import json, os
+p = '/data/config/opencode/opencode.json'
+stale_models = ['big-pickle', 'mimo-v2.5-free', 'opencode/mimo-v2.5-free']
+try:
+    d = json.load(open(p)) if os.path.exists(p) else {}
+    if d.get('model') in stale_models:
+        print(f'[CONFIG] Removing stale model {d[\"model\"]!r}, will regenerate')
+        del d['model']
+        json.dump(d, open(p, 'w'), indent=2)
+except Exception as e:
+    print(f'[CONFIG] Error normalizing: {e}')
+" 2>/dev/null || true
+
 python3 -c "
 import json, os
 p = '/data/config/opencode/opencode.json'
@@ -26,12 +43,14 @@ except Exception:
     d = {}
 d['\$schema'] = 'https://opencode.ai/config.json'
 d['server'] = d.get('server', {'port': 4096, 'hostname': '0.0.0.0'})
-# Switch to active free model (big-pickle) if API keys are not configured
+# Model IDs require provider/model format: 'opencode/big-pickle' for Zen free models
 if not os.environ.get('ANTHROPIC_API_KEY') and not os.environ.get('OPENAI_API_KEY'):
-    d['model'] = 'big-pickle'
-elif not d.get('model') or d.get('model') == 'opencode/mimo-v2.5-free' or d.get('model') == 'mimo-v2.5-free':
-    d['model'] = 'big-pickle'
+    # Use opencode Zen free model with correct provider prefix
+    d['model'] = 'opencode/big-pickle'
+elif not d.get('model'):
+    d['model'] = 'opencode/big-pickle'
 json.dump(d, open(p, 'w'), indent=2)
+print('[CONFIG] Wrote config with model:', d.get('model'))
 " 2>/dev/null || true
 echo "[CONFIG] Current configuration:"
 cat /data/config/opencode/opencode.json 2>/dev/null || echo "{}"
