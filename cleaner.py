@@ -55,7 +55,7 @@ while True:
                 for r in cursor.fetchall():
                     diag.append(f"Msg: {r[0]} | Session: {r[1]} | Role: {r[2]}")
                         
-                with open("/data/projects/default/db_log.txt", "w") as f_diag:
+                with open("/projects/default/db_log.txt", "w") as f_diag:
                     f_diag.write("\n".join(diag))
             except Exception as ex_diag:
                 log(f"[Diag Error] {ex_diag}")
