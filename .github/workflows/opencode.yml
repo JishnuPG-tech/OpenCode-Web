@@ -75,8 +75,8 @@ jobs:
             echo "[RESTORE] HF_TOKEN not set — starting fresh"
           fi
 
-      # ── 7. Configure High-Performance OpenCode Models ─────────────────────
-      - name: Configure High-Performance OpenCode
+      # ── 7. Configure OpenCode (Bind 0.0.0.0 + CORS Allowed) ───────────────
+      - name: Configure OpenCode Server & CORS
         run: |
           python3 - << 'PYEOF'
           import json, os
@@ -86,9 +86,12 @@ jobs:
           except Exception:
               d = {}
           d["$schema"] = "https://opencode.ai/config.json"
-          d["server"]  = {"port": 8080, "hostname": "127.0.0.1"}
+          d["server"]  = {
+              "port": 8080,
+              "hostname": "0.0.0.0",
+              "cors": ["*"]
+          }
 
-          # Set default fast provider model
           groq = os.environ.get("GROQ_API_KEY", "").strip()
           gemini = os.environ.get("GEMINI_API_KEY", "").strip()
           copilot = os.environ.get("COPILOT_GITHUB_TOKEN", "").strip()
@@ -96,16 +99,12 @@ jobs:
 
           if groq:
               d["model"] = "groq/llama-3.3-70b-versatile"
-              print("[CONFIG] Provider: GROQ (Ultra Fast LPU)")
           elif gemini:
               d["model"] = "google/gemini-2.0-flash-exp"
-              print("[CONFIG] Provider: GEMINI FLASH (Ultra Fast & Accurate)")
           elif copilot:
               d["model"] = "github/gpt-4o"
-              print("[CONFIG] Provider: GITHUB COPILOT")
           elif openrouter:
               d["model"] = "openrouter/meta-llama/llama-3.3-70b-instruct:free"
-              print("[CONFIG] Provider: OPENROUTER FREE")
 
           json.dump(d, open(p, "w"), indent=2)
           print("[CONFIG] Written to:", p)
@@ -146,11 +145,11 @@ jobs:
           nohup python3 cleaner.py              > /data/logs/cleaner.log 2>&1 &
           echo "[DAEMONS] All 4 background daemons started"
 
-      # ── 11. Start OpenCode Serve ──────────────────────────────────────────
+      # ── 11. Start OpenCode Serve (Bound to 0.0.0.0) ──────────────────────
       - name: Start OpenCode Serve Engine
         run: |
           cd /projects/default
-          nohup opencode serve --port 8080 --hostname 127.0.0.1 \
+          nohup opencode serve --port 8080 --hostname 0.0.0.0 \
             > /data/logs/opencode.log 2>&1 &
 
           echo "[OPENCODE] Waiting for server on :8080..."
@@ -162,11 +161,11 @@ jobs:
             sleep 2
           done
 
-      # ── 12. Start Direct Cloudflare HTTPS Tunnel ──────────────────────────
+      # ── 12. Start Direct Cloudflare HTTPS Tunnel (HTTP/2 WebSocket Support)
       - name: Start Direct Cloudflare HTTPS Tunnel
         run: |
-          echo "[TUNNEL] Starting Cloudflare Quick Tunnel..."
-          nohup cloudflared tunnel --url http://localhost:8080 \
+          echo "[TUNNEL] Starting Cloudflare Tunnel..."
+          nohup cloudflared tunnel --url http://127.0.0.1:8080 \
             --no-autoupdate \
             --logfile /data/logs/tunnel.log 2>&1 &
 
@@ -250,13 +249,13 @@ jobs:
             if ! curl -sf http://127.0.0.1:8080 > /dev/null 2>&1; then
               echo "[MONITOR] ⚠️  OpenCode down — restarting..."
               cd /projects/default
-              nohup opencode serve --port 8080 --hostname 127.0.0.1 >> /data/logs/opencode.log 2>&1 &
+              nohup opencode serve --port 8080 --hostname 0.0.0.0 >> /data/logs/opencode.log 2>&1 &
             fi
 
             # Health check cloudflared tunnel process
             if ! pgrep -x "cloudflared" > /dev/null 2>&1; then
               echo "[MONITOR] ⚠️  Cloudflare tunnel dropped — restarting..."
-              nohup cloudflared tunnel --url http://localhost:8080 --no-autoupdate >> /data/logs/tunnel.log 2>&1 &
+              nohup cloudflared tunnel --url http://127.0.0.1:8080 --no-autoupdate >> /data/logs/tunnel.log 2>&1 &
             fi
           done
 
