@@ -64,13 +64,11 @@ jobs:
           sudo chmod +x /usr/local/bin/opencode
           echo "[OK] $(opencode --version)"
 
-      # ── 5. Install Ngrok Binary (Direct Download) ─────────────────────────
+      # ── 5. Install Ngrok via npm ──────────────────────────────────────────
       - name: Install Ngrok
         run: |
-          curl -fsSL https://bin.equinox.io/c/b4Pvu237nvh/ngrok-v3-stable-linux-amd64.tgz \
-            | sudo tar -xz -C /usr/local/bin
-          sudo chmod +x /usr/local/bin/ngrok
-          echo "[OK] $(ngrok --version)"
+          sudo npm install -g ngrok --unsafe-perm
+          echo "[OK] $(ngrok --version || npx ngrok --version)"
 
       # ── 6. Restore Workspace & Memory from HF Dataset ────────────────────
       - name: Restore Workspace from HF Dataset
@@ -172,14 +170,14 @@ jobs:
       - name: Start Ngrok Tunnel
         run: |
           echo "[NGROK] Setting authtoken..."
-          ngrok config add-authtoken "${NGROK_AUTHTOKEN}"
+          npx ngrok config add-authtoken "${NGROK_AUTHTOKEN}" || ngrok config add-authtoken "${NGROK_AUTHTOKEN}"
 
           if [ -n "${NGROK_DOMAIN}" ]; then
             echo "[NGROK] Starting tunnel on fixed domain: ${NGROK_DOMAIN}..."
-            nohup ngrok http --url="${NGROK_DOMAIN}" 8080 > /data/logs/ngrok.log 2>&1 &
+            nohup npx ngrok http --url="${NGROK_DOMAIN}" 8080 > /data/logs/ngrok.log 2>&1 &
           else
             echo "[NGROK] Starting tunnel..."
-            nohup ngrok http 8080 > /data/logs/ngrok.log 2>&1 &
+            nohup npx ngrok http 8080 > /data/logs/ngrok.log 2>&1 &
           fi
 
           sleep 5
@@ -262,12 +260,12 @@ jobs:
             fi
 
             # Health check ngrok process
-            if ! pgrep -x "ngrok" > /dev/null 2>&1; then
+            if ! pgrep -f "ngrok" > /dev/null 2>&1; then
               echo "[MONITOR] ⚠️  Ngrok dropped — restarting..."
               if [ -n "${NGROK_DOMAIN}" ]; then
-                nohup ngrok http --url="${NGROK_DOMAIN}" 8080 >> /data/logs/ngrok.log 2>&1 &
+                nohup npx ngrok http --url="${NGROK_DOMAIN}" 8080 >> /data/logs/ngrok.log 2>&1 &
               else
-                nohup ngrok http 8080 >> /data/logs/ngrok.log 2>&1 &
+                nohup npx ngrok http 8080 >> /data/logs/ngrok.log 2>&1 &
               fi
             fi
           done
