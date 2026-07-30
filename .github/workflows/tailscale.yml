@@ -161,12 +161,12 @@ jobs:
             sleep 2
           done
 
-      # ── 12. Start Tailscale Funnel (Public HTTPS Bridge) ─────────────────
+      # ── 12. Start Tailscale Serve & Funnel ────────────────────────────────
       - name: Start Tailscale Funnel HTTPS Bridge
         run: |
-          echo "[TAILSCALE] Enabling public HTTPS Funnel on port 8080..."
-          sudo tailscale serve --bg 8080 || true
-          sudo tailscale funnel --bg 8080 || true
+          echo "[TAILSCALE] Serving port 8080 on HTTPS 443..."
+          sudo tailscale serve --bg --https=443 http://127.0.0.1:8080 || sudo tailscale serve --bg 8080 || true
+          sudo tailscale funnel --bg 443 on || sudo tailscale funnel --bg 8080 || true
 
           sleep 5
           echo "[TAILSCALE] Getting status & DNS domain..."
@@ -245,7 +245,8 @@ jobs:
             # Health check tailscale funnel
             if ! pgrep -f "tailscale" > /dev/null 2>&1; then
               echo "[MONITOR] ⚠️  Tailscale dropped — restarting..."
-              sudo tailscale funnel --bg 8080 >> /data/logs/tailscale.log 2>&1 &
+              sudo tailscale serve --bg --https=443 http://127.0.0.1:8080 || true
+              sudo tailscale funnel --bg 443 on || true
             fi
           done
 
