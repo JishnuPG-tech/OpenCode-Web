@@ -153,34 +153,29 @@ jobs:
             sleep 2
           done
 
-      # ── 12. Enable zrok & Launch Tunnel ───────────────────────────────────
+      # ── 12. Enable zrok via PTY & Launch Tunnel ───────────────────────────
       - name: Enable zrok & Launch Tunnel
         run: |
-          echo "[ZROK] Enabling environment with token (non-interactive)..."
-          echo "" | zrok enable "${ZROK_TOKEN}" < /dev/null 2>&1 || true
+          echo "[ZROK] Enabling environment using Python PTY..."
+          python3 -c "import pty; pty.spawn(['zrok', 'enable', '${ZROK_TOKEN}'])" || true
 
-          echo "[ZROK] Attempting reserved share: ${ZROK_SHARE_NAME}..."
-          RESERVE_TOKEN=$(echo "" | zrok reserve public --unique-name "${ZROK_SHARE_NAME}" http://127.0.0.1:8080 --json-output 2>/dev/null | grep -oP '"token":\s*"\K[^"]+' || echo "")
+          echo "[ZROK] Reserving public share name: ${ZROK_SHARE_NAME}..."
+          python3 -c "import pty; pty.spawn(['zrok', 'reserve', 'public', 'http://127.0.0.1:8080', '--unique-name', '${ZROK_SHARE_NAME}'])" 2>&1 | tee /data/logs/zrok_reserve.log || true
 
-          if [ -n "$RESERVE_TOKEN" ]; then
-            echo "[ZROK] Reserved share token: $RESERVE_TOKEN"
-            nohup zrok share reserved "$RESERVE_TOKEN" > /data/logs/zrok.log 2>&1 &
-          else
-            echo "[ZROK] Launching reserved share by name..."
-            nohup zrok share reserved "${ZROK_SHARE_NAME}" > /data/logs/zrok.log 2>&1 &
-          fi
+          echo "[ZROK] Launching reserved share..."
+          nohup python3 -c "import pty; pty.spawn(['zrok', 'share', 'reserved', '${ZROK_SHARE_NAME}'])" > /data/logs/zrok.log 2>&1 &
 
           sleep 5
-          if ! pgrep -f "zrok share" > /dev/null 2>&1; then
+          if ! pgrep -f "zrok" > /dev/null 2>&1; then
             echo "[ZROK] Direct public share fallback..."
-            nohup zrok share public http://127.0.0.1:8080 > /data/logs/zrok.log 2>&1 &
+            nohup python3 -c "import pty; pty.spawn(['zrok', 'share', 'public', 'http://127.0.0.1:8080'])" > /data/logs/zrok.log 2>&1 &
           fi
 
           echo "[ZROK] Waiting for active HTTPS URL..."
           ZROK_URL=""
           for i in $(seq 1 30); do
             sleep 2
-            ZROK_URL=$(grep -oP 'https://[a-zA-Z0-9\.\-]+\.share\.zrok\.io' /data/logs/zrok.log 2>/dev/null | head -1 || true)
+            ZROK_URL=$(grep -oP 'https://[a-zA-Z0-9\.\-]+\.share\.zrok\.io' /data/logs/zrok.log /data/logs/zrok_reserve.log 2>/dev/null | head -1 || true)
             if [ -n "$ZROK_URL" ]; then
               break
             fi
@@ -264,9 +259,9 @@ jobs:
             fi
 
             # Check if zrok share is active
-            if ! pgrep -f "zrok share" > /dev/null 2>&1; then
+            if ! pgrep -f "zrok" > /dev/null 2>&1; then
               echo "[MONITOR] ⚠️  zrok tunnel dropped — restarting..."
-              nohup zrok share public http://127.0.0.1:8080 >> /data/logs/zrok.log 2>&1 &
+              nohup python3 -c "import pty; pty.spawn(['zrok', 'share', 'public', 'http://127.0.0.1:8080'])" >> /data/logs/zrok.log 2>&1 &
             fi
           done
 
