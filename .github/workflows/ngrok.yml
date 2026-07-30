@@ -1,0 +1,293 @@
+name: OpenCode Serve — Ngrok Tunnel (Fixed Static Domain & Ultra Fast WebSockets)
+
+on:
+  workflow_dispatch:
+    inputs:
+      domain:
+        description: 'Your free Ngrok static domain (e.g. opencode-jishnu.ngrok-free.app)'
+        required: false
+        default: ''
+  schedule:
+    - cron: '0 */5 * * *'   # Auto-restart every 5 hours for 24/7 continuous uptime
+
+jobs:
+  serve:
+    name: OpenCode Serve + Ngrok Static Tunnel
+    runs-on: ubuntu-latest
+    timeout-minutes: 330   # 5.5 hours
+
+    env:
+      HF_TOKEN:                 ${{ secrets.HF_TOKEN }}
+      OPENCODE_SERVER_PASSWORD: ${{ secrets.OPENCODE_SERVER_PASSWORD }}
+      COPILOT_GITHUB_TOKEN:     ${{ secrets.COPILOT_GITHUB_TOKEN }}
+      OPENROUTER_API_KEY:       ${{ secrets.OPENROUTER_API_KEY }}
+      GEMINI_API_KEY:           ${{ secrets.GEMINI_API_KEY }}
+      GROQ_API_KEY:             ${{ secrets.GROQ_API_KEY }}
+      OPENAI_API_KEY:           ${{ secrets.OPENAI_API_KEY }}
+      ANTHROPIC_API_KEY:        ${{ secrets.ANTHROPIC_API_KEY }}
+      NGROK_AUTHTOKEN:          ${{ secrets.NGROK_AUTHTOKEN }}
+      NGROK_DOMAIN:             ${{ github.event.inputs.domain || secrets.NGROK_DOMAIN }}
+      XDG_DATA_HOME:            /data/share
+      XDG_CONFIG_HOME:          /data/config
+      XDG_CACHE_HOME:           /data/cache
+      XDG_STATE_HOME:           /data/state
+
+    steps:
+      # ── 1. Checkout ──────────────────────────────────────────────────────
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      # ── 2. Create Required Directories ───────────────────────────────────
+      - name: Setup System Directories
+        run: |
+          sudo mkdir -p /data/share/opencode /data/config/opencode \
+                        /data/cache/opencode /data/state/opencode \
+                        /data/logs /projects/default/memory/sessions
+          sudo chmod -R 777 /data /projects
+          git config --global --add safe.directory '*'
+
+      # ── 3. Python 3.11 Setup ─────────────────────────────────────────────
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install Python Dependencies
+        run: pip install --quiet "huggingface_hub>=0.23" python-dotenv requests
+
+      # ── 4. Install OpenCode Binary ────────────────────────────────────────
+      - name: Install OpenCode Serve
+        run: |
+          OPENCODE_VERSION="1.18.3"
+          curl -fsSL "https://github.com/anomalyco/opencode/releases/download/v${OPENCODE_VERSION}/opencode-linux-x64.tar.gz" \
+            | sudo tar -xz -C /usr/local/bin opencode
+          sudo chmod +x /usr/local/bin/opencode
+          echo "[OK] $(opencode --version)"
+
+      # ── 5. Install Ngrok Binary ───────────────────────────────────────────
+      - name: Install Ngrok
+        run: |
+          curl -shttps://ngrok-agent.s3.amazonaws.com/ngrok.asc | sudo tee /etc/apt/trusted.gpg.d/ngrok.asc >/dev/null
+          echo "deb https://ngrok-agent.s3.amazonaws.com buster main" | sudo tee /etc/apt/sources.list.d/ngrok.list
+          sudo apt update && sudo apt install ngrok -y
+          echo "[OK] $(ngrok --version)"
+
+      # ── 6. Restore Workspace & Memory from HF Dataset ────────────────────
+      - name: Restore Workspace from HF Dataset
+        run: |
+          if [ -n "$HF_TOKEN" ]; then
+            echo "[RESTORE] Restoring workspace from Jishnupg/OpenCode-Storage..."
+            python3 sync_engine.py restore 2>&1 | tail -20 || true
+          else
+            echo "[RESTORE] HF_TOKEN not set — starting fresh"
+          fi
+
+      # ── 7. Configure OpenCode Server & CORS ───────────────────────────────
+      - name: Configure OpenCode Server
+        run: |
+          python3 - << 'PYEOF'
+          import json, os
+          p = "/data/config/opencode/opencode.json"
+          try:
+              d = json.load(open(p)) if os.path.exists(p) else {}
+          except Exception:
+              d = {}
+          d["$schema"] = "https://opencode.ai/config.json"
+          d["server"]  = {
+              "port": 8080,
+              "hostname": "0.0.0.0",
+              "cors": ["*"]
+          }
+
+          groq = os.environ.get("GROQ_API_KEY", "").strip()
+          gemini = os.environ.get("GEMINI_API_KEY", "").strip()
+          copilot = os.environ.get("COPILOT_GITHUB_TOKEN", "").strip()
+          openrouter = os.environ.get("OPENROUTER_API_KEY", "").strip()
+
+          if groq:
+              d["model"] = "groq/llama-3.3-70b-versatile"
+          elif gemini:
+              d["model"] = "google/gemini-2.0-flash-exp"
+          elif copilot:
+              d["model"] = "github/gpt-4o"
+          elif openrouter:
+              d["model"] = "openrouter/meta-llama/llama-3.3-70b-instruct:free"
+
+          json.dump(d, open(p, "w"), indent=2)
+          print("[CONFIG] Written to:", p)
+          print(json.dumps(d, indent=2))
+          PYEOF
+
+      # ── 8. Bootstrap Memory Templates ────────────────────────────────────
+      - name: Bootstrap Memory Templates
+        run: |
+          python3 - << 'PYEOF'
+          from pathlib import Path
+          MEMORY_DIR = Path("/projects/default/memory")
+          (MEMORY_DIR / "sessions").mkdir(parents=True, exist_ok=True)
+          templates = {
+            "GLOBAL.md":       "# Global Memory\n\n## User Preferences\n",
+            "PROJECT.md":      "# Project Memory\n\n## Overview\n",
+            "CONVENTIONS.md":  "# Coding Conventions\n\n## Naming\n",
+            "TODO.md":         "# Pending Tasks\n\n## High Priority\n",
+          }
+          for name, content in templates.items():
+              fp = MEMORY_DIR / name
+              if not fp.exists():
+                  fp.write_text(content)
+                  print(f"[MEMORY] Created: {name}")
+          print("[MEMORY] Bootstrap complete")
+          PYEOF
+
+      # ── 9. Assemble Memory Context ────────────────────────────────────────
+      - name: Assemble Memory Context
+        run: python3 memory_updater.py once 2>&1 | tail -10 || true
+
+      # ── 10. Start All Daemons ─────────────────────────────────────────────
+      - name: Start Daemons (Sync, Memory, Sessions, Cleaner)
+        run: |
+          nohup python3 sync_engine.py watch    > /data/logs/sync.log    2>&1 &
+          nohup python3 memory_updater.py watch > /data/logs/memory.log  2>&1 &
+          nohup python3 session_watcher.py      > /data/logs/sessions.log 2>&1 &
+          nohup python3 cleaner.py              > /data/logs/cleaner.log 2>&1 &
+          echo "[DAEMONS] All 4 background daemons started"
+
+      # ── 11. Start OpenCode Serve ──────────────────────────────────────────
+      - name: Start OpenCode Serve Engine
+        run: |
+          cd /projects/default
+          nohup opencode serve --port 8080 --hostname 0.0.0.0 \
+            > /data/logs/opencode.log 2>&1 &
+
+          echo "[OPENCODE] Waiting for server on :8080..."
+          for i in $(seq 1 30); do
+            if curl -sf http://127.0.0.1:8080 > /dev/null 2>&1; then
+              echo "[OPENCODE] ✅ Server ready after ${i}s"
+              break
+            fi
+            sleep 2
+          done
+
+      # ── 12. Start Ngrok Tunnel (Fixed Static Domain) ──────────────────────
+      - name: Start Ngrok Tunnel
+        run: |
+          echo "[NGROK] Setting authtoken..."
+          ngrok config add-authtoken "${NGROK_AUTHTOKEN}"
+
+          if [ -n "${NGROK_DOMAIN}" ]; then
+            echo "[NGROK] Starting tunnel on fixed domain: ${NGROK_DOMAIN}..."
+            nohup ngrok http --url="${NGROK_DOMAIN}" 8080 > /data/logs/ngrok.log 2>&1 &
+          else
+            echo "[NGROK] Starting tunnel..."
+            nohup ngrok http 8080 > /data/logs/ngrok.log 2>&1 &
+          fi
+
+          sleep 5
+          echo "[NGROK] Fetching live tunnel URL..."
+          NGROK_URL=""
+          for i in $(seq 1 20); do
+            sleep 2
+            NGROK_URL=$(curl -sf http://127.0.0.1:4040/api/tunnels | python3 -c "import sys, json; print(json.load(sys.stdin)['tunnels'][0]['public_url'])" 2>/dev/null || echo "")
+            if [ -n "$NGROK_URL" ]; then
+              break
+            fi
+          done
+
+          if [ -z "$NGROK_URL" ] && [ -n "${NGROK_DOMAIN}" ]; then
+            NGROK_URL="https://${NGROK_DOMAIN}"
+          fi
+
+          echo "NGROK_URL=$NGROK_URL" >> $GITHUB_ENV
+
+          echo ""
+          echo "╔══════════════════════════════════════════════════════════════╗"
+          echo "║  🌐 NGROK TUNNEL ACTIVE AT:                                  ║"
+          echo "║  $NGROK_URL"
+          echo "╚══════════════════════════════════════════════════════════════╝"
+
+      # ── 13. Push URL → HF Dataset for Auto-Discovery ──────────────────────
+      - name: Sync Live URL to HF Dataset (Auto-Discovery)
+        run: |
+          python3 - << PYEOF
+          import os, time, io
+          try:
+              from huggingface_hub import HfApi
+              token = os.environ.get("HF_TOKEN", "")
+              url   = os.environ.get("NGROK_URL", "")
+              if token and url:
+                  api = HfApi(token=token)
+                  api.create_repo("Jishnupg/OpenCode-Storage", repo_type="dataset", private=True, exist_ok=True)
+                  content = f"{url}\nupdated: {time.strftime('%Y-%m-%d %H:%M:%S UTC', time.gmtime())}\n"
+                  api.upload_file(
+                      repo_id="Jishnupg/OpenCode-Storage",
+                      repo_type="dataset",
+                      path_in_repo="server-url.txt",
+                      path_or_fileobj=io.BytesIO(content.encode()),
+                      commit_message="runner: update ngrok URL",
+                  )
+                  print(f"[HF] ✅ server-url.txt updated: {url}")
+          except Exception as e:
+              print(f"[HF] Warning: {e}")
+          PYEOF
+
+      # ── 14. GitHub Summary Output ────────────────────────────────────────
+      - name: Create GitHub Summary Output
+        run: |
+          python3 - << 'PYEOF'
+          import os
+          url = os.environ.get("NGROK_URL", "")
+          summary_file = os.environ.get("GITHUB_STEP_SUMMARY", "")
+          if summary_file:
+              with open(summary_file, "a") as f:
+                  f.write(f"## 🚀 OpenCode Serve — Ngrok Static Domain\n\n")
+                  f.write(f"| Property | Status / Value |\n")
+                  f.write(f"|---|---|\n")
+                  f.write(f"| **Live HTTPS URL** | **[{url}]({url})** |\n")
+                  f.write(f"| **Workspace Persistence** | Synced to `Jishnupg/OpenCode-Storage` |\n")
+          PYEOF
+
+      # ── 15. Keep Alive & Health Monitor ──────────────────────────────────
+      - name: Keep Alive (5.5 Hours)
+        run: |
+          END_TIME=$(($(date +%s) + 19800))   # 5.5 hours
+
+          while [ $(date +%s) -lt $END_TIME ]; do
+            sleep 30
+
+            # Health check opencode server
+            if ! curl -sf http://127.0.0.1:8080 > /dev/null 2>&1; then
+              echo "[MONITOR] ⚠️  OpenCode down — restarting..."
+              cd /projects/default
+              nohup opencode serve --port 8080 --hostname 0.0.0.0 >> /data/logs/opencode.log 2>&1 &
+            fi
+
+            # Health check ngrok process
+            if ! pgrep -x "ngrok" > /dev/null 2>&1; then
+              echo "[MONITOR] ⚠️  Ngrok dropped — restarting..."
+              if [ -n "${NGROK_DOMAIN}" ]; then
+                nohup ngrok http --url="${NGROK_DOMAIN}" 8080 >> /data/logs/ngrok.log 2>&1 &
+              else
+                nohup ngrok http 8080 >> /data/logs/ngrok.log 2>&1 &
+              fi
+            fi
+          done
+
+          echo "[MONITOR] 5.5 hours completed — initiating clean self-restart"
+
+      # ── 16. Final Sync Before Restart ────────────────────────────────────
+      - name: Final Workspace Sync
+        if: always()
+        run: |
+          echo "[SYNC] Final sync to HF Dataset before restart..."
+          python3 sync_engine.py sync 2>&1 | tail -5 || true
+
+      # ── 17. Trigger Self-Restart ──────────────────────────────────────────
+      - name: Trigger Self-Restart
+        if: always()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh workflow run ngrok.yml \
+            --repo JishnuPG-tech/OpenCode-Web \
+            --ref main || echo "[RESTART] Warning: could not queue self-restart"
+          echo "[RESTART] ✅ Continuous uptime loop triggered"
