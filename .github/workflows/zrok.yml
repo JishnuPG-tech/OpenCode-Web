@@ -2,11 +2,6 @@ name: OpenCode Serve — zrok.io Tunnel (Fixed Custom URL & Ultra Fast)
 
 on:
   workflow_dispatch:
-    inputs:
-      subdomain:
-        description: 'Custom zrok reserved share name'
-        required: false
-        default: 'opencode-jishnu'
   schedule:
     - cron: '0 */5 * * *'   # Auto-restart every 5 hours
 
@@ -26,7 +21,6 @@ jobs:
       OPENAI_API_KEY:           ${{ secrets.OPENAI_API_KEY }}
       ANTHROPIC_API_KEY:        ${{ secrets.ANTHROPIC_API_KEY }}
       ZROK_TOKEN:               ${{ secrets.ZROK_TOKEN || 'W4zWGtzTAHnM' }}
-      ZROK_SHARE_NAME:          ${{ github.event.inputs.subdomain || 'opencode-jishnu' }}
       XDG_DATA_HOME:            /data/share
       XDG_CONFIG_HOME:          /data/config
       XDG_CACHE_HOME:           /data/cache
@@ -153,37 +147,29 @@ jobs:
             sleep 2
           done
 
-      # ── 12. Enable zrok via PTY & Launch Tunnel ───────────────────────────
-      - name: Enable zrok & Launch Tunnel
+      # ── 12. Enable zrok & Launch Direct Public Share ──────────────────────
+      - name: Enable zrok & Launch Public Share
         run: |
-          echo "[ZROK] Enabling environment using Python PTY..."
+          echo "[ZROK] Enabling environment with token..."
           python3 -c "import pty; pty.spawn(['zrok', 'enable', '${ZROK_TOKEN}'])" || true
 
-          echo "[ZROK] Reserving public share name: ${ZROK_SHARE_NAME}..."
-          python3 -c "import pty; pty.spawn(['zrok', 'reserve', 'public', 'http://127.0.0.1:8080', '--unique-name', '${ZROK_SHARE_NAME}'])" 2>&1 | tee /data/logs/zrok_reserve.log || true
-
-          echo "[ZROK] Launching reserved share..."
-          nohup python3 -c "import pty; pty.spawn(['zrok', 'share', 'reserved', '${ZROK_SHARE_NAME}'])" > /data/logs/zrok.log 2>&1 &
-
-          sleep 5
-          if ! pgrep -f "zrok" > /dev/null 2>&1; then
-            echo "[ZROK] Direct public share fallback..."
-            nohup python3 -c "import pty; pty.spawn(['zrok', 'share', 'public', 'http://127.0.0.1:8080'])" > /data/logs/zrok.log 2>&1 &
-          fi
+          echo "[ZROK] Launching direct zrok public share..."
+          nohup python3 -c "import pty; pty.spawn(['zrok', 'share', 'public', 'http://127.0.0.1:8080', '--backend-mode', 'proxy'])" > /data/logs/zrok.log 2>&1 &
 
           echo "[ZROK] Waiting for active HTTPS URL..."
           ZROK_URL=""
-          for i in $(seq 1 30); do
+          for i in $(seq 1 35); do
             sleep 2
-            ZROK_URL=$(grep -oP 'https://[a-zA-Z0-9\.\-]+\.share\.zrok\.io' /data/logs/zrok.log /data/logs/zrok_reserve.log 2>/dev/null | head -1 || true)
+            ZROK_URL=$(grep -oP 'https://[a-zA-Z0-9\.\-]+\.share\.zrok\.io' /data/logs/zrok.log 2>/dev/null | head -1 || true)
             if [ -n "$ZROK_URL" ]; then
               break
             fi
           done
 
           if [ -z "$ZROK_URL" ]; then
+            echo "[ZROK] Log output:"
             cat /data/logs/zrok.log | head -30 || true
-            ZROK_URL="https://${ZROK_SHARE_NAME}.share.zrok.io"
+            ZROK_URL=$(grep -oP 'https://[^\s]+' /data/logs/zrok.log | head -1 || true)
           fi
 
           echo "ZROK_URL=$ZROK_URL" >> $GITHUB_ENV
@@ -227,7 +213,7 @@ jobs:
           echo "════════════════════════════════════════════════════════"
           echo "  ✅ OpenCode Serve is LIVE via zrok.io"
           echo "════════════════════════════════════════════════════════"
-          echo "  🔗 Fixed Custom URL  : $ZROK_URL"
+          echo "  🔗 Live HTTPS URL    : $ZROK_URL"
           echo "  📦 HF Dataset        : Jishnupg/OpenCode-Storage → server-url.txt"
           echo "  🧠 RAM available     : $(free -h | awk '/^Mem:/{print $2}')"
           echo "  ⏱  Will restart in   : ~5.5 hours"
@@ -238,7 +224,7 @@ jobs:
 
           | Property | Value |
           |---|---|
-          | **Fixed Custom URL** | $ZROK_URL |
+          | **Live HTTPS URL** | $ZROK_URL |
           | **RAM** | $(free -h | awk '/^Mem:/{print $2}') |
           | **Started** | $(date -u '+%Y-%m-%d %H:%M UTC') |
           SUMMARY
@@ -261,7 +247,7 @@ jobs:
             # Check if zrok share is active
             if ! pgrep -f "zrok" > /dev/null 2>&1; then
               echo "[MONITOR] ⚠️  zrok tunnel dropped — restarting..."
-              nohup python3 -c "import pty; pty.spawn(['zrok', 'share', 'public', 'http://127.0.0.1:8080'])" >> /data/logs/zrok.log 2>&1 &
+              nohup python3 -c "import pty; pty.spawn(['zrok', 'share', 'public', 'http://127.0.0.1:8080', '--backend-mode', 'proxy'])" >> /data/logs/zrok.log 2>&1 &
             fi
           done
 
@@ -280,7 +266,6 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           gh workflow run zrok.yml \
-            -f subdomain="${ZROK_SHARE_NAME}" \
             --repo JishnuPG-tech/OpenCode-Web \
             --ref main || echo "[RESTART] Warning: could not trigger restart"
           echo "[RESTART] ✅ Next run queued"
