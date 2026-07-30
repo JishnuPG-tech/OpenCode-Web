@@ -183,23 +183,16 @@ jobs:
       # ── 12. Configure & Start Nginx Reverse Proxy (8080) ──────────────────
       - name: Configure & Start Nginx Proxy
         run: |
-          cat << 'NGINX_CONF' | sudo tee /etc/nginx/sites-available/default > /dev/null
+          sudo rm -f /etc/nginx/sites-enabled/* /etc/nginx/conf.d/*
+
+          cat << 'NGINX_CONF' | sudo tee /etc/nginx/sites-available/opencode > /dev/null
           server {
               listen 8080 default_server;
               listen [::]:8080 default_server;
 
               # Terminal (ttyd PTY bash on :7681)
-              location /terminal/ {
-                  proxy_pass         http://127.0.0.1:7681/terminal/;
-                  proxy_http_version 1.1;
-                  proxy_set_header   Upgrade $http_upgrade;
-                  proxy_set_header   Connection "upgrade";
-                  proxy_set_header   Host $host;
-                  proxy_read_timeout 86400;
-              }
-
               location /terminal {
-                  proxy_pass         http://127.0.0.1:7681/terminal;
+                  proxy_pass         http://127.0.0.1:7681;
                   proxy_http_version 1.1;
                   proxy_set_header   Upgrade $http_upgrade;
                   proxy_set_header   Connection "upgrade";
@@ -221,11 +214,9 @@ jobs:
           }
           NGINX_CONF
 
-          sudo mkdir -p /etc/nginx/sites-enabled /etc/nginx/conf.d
-          sudo cp /etc/nginx/sites-available/default /etc/nginx/sites-enabled/default 2>/dev/null || true
-          sudo cp /etc/nginx/sites-available/default /etc/nginx/conf.d/default.conf 2>/dev/null || true
-
-          sudo service nginx restart || sudo nginx -s reload || sudo nginx
+          sudo ln -sf /etc/nginx/sites-available/opencode /etc/nginx/sites-enabled/default
+          sudo nginx -t
+          sudo service nginx restart || sudo systemctl restart nginx || sudo nginx -s reload || sudo nginx
           echo "[NGINX] Reverse proxy started on port 8080"
 
       # ── 13. Start Ngrok Tunnel (Fixed Static Domain) ──────────────────────
@@ -263,7 +254,7 @@ jobs:
           echo "╔══════════════════════════════════════════════════════════════╗"
           echo "║  🌐 NGROK TUNNEL ACTIVE AT:                                  ║"
           echo "║  Chat UI:   $NGROK_URL"
-          echo "║  Terminal:  $NGROK_URL/terminal/"
+          echo "║  Terminal:  $NGROK_URL/terminal"
           echo "╚══════════════════════════════════════════════════════════════╝"
 
       # ── 14. Push URL → HF Dataset for Auto-Discovery ──────────────────────
@@ -304,7 +295,7 @@ jobs:
                   f.write(f"| Property | Status / Value |\n")
                   f.write(f"|---|---|\n")
                   f.write(f"| **Chat UI** | **[{url}]({url})** |\n")
-                  f.write(f"| **Live Web Terminal** | **[{url}/terminal/]({url}/terminal/)** |\n")
+                  f.write(f"| **Live Web Terminal** | **[{url}/terminal]({url}/terminal)** |\n")
                   f.write(f"| **Workspace Persistence** | Synced to `Jishnupg/OpenCode-Storage` |\n")
           PYEOF
 
