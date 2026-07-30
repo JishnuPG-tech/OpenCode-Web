@@ -183,7 +183,7 @@ jobs:
       # ── 12. Configure & Start Nginx Reverse Proxy (8080) ──────────────────
       - name: Configure & Start Nginx Proxy
         run: |
-          sudo cat > /etc/nginx/sites-available/default << 'NGINX_CONF'
+          cat << 'NGINX_CONF' | sudo tee /etc/nginx/sites-available/default > /dev/null
           server {
               listen 8080 default_server;
               listen [::]:8080 default_server;
