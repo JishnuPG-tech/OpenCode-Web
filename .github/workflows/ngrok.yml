@@ -37,14 +37,17 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@v4
 
-      # ── 2. Create Required Directories ───────────────────────────────────
-      - name: Setup System Directories
+      # ── 2. Create Required Directories & Install System Packages ─────────
+      - name: Setup System Directories & Install Nginx + ttyd
         run: |
           sudo mkdir -p /data/share/opencode /data/config/opencode \
                         /data/cache/opencode /data/state/opencode \
                         /data/logs /projects/default/memory/sessions
           sudo chmod -R 777 /data /projects
           git config --global --add safe.directory '*'
+
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq nginx ttyd
 
       # ── 3. Python 3.11 Setup ─────────────────────────────────────────────
       - name: Set up Python
@@ -92,8 +95,8 @@ jobs:
               d = {}
           d["$schema"] = "https://opencode.ai/config.json"
           d["server"]  = {
-              "port": 8080,
-              "hostname": "0.0.0.0",
+              "port": 8081,
+              "hostname": "127.0.0.1",
               "cors": ["*"]
           }
 
@@ -150,23 +153,69 @@ jobs:
           nohup python3 cleaner.py              > /data/logs/cleaner.log 2>&1 &
           echo "[DAEMONS] All 4 background daemons started"
 
-      # ── 11. Start OpenCode Serve ──────────────────────────────────────────
-      - name: Start OpenCode Serve Engine
+      # ── 11. Start OpenCode Serve (8081) & ttyd Web Terminal (7681) ───────
+      - name: Start OpenCode Engine & ttyd Terminal
         run: |
+          # Start OpenCode serve on :8081
           cd /projects/default
-          nohup opencode serve --port 8080 --hostname 0.0.0.0 \
+          nohup opencode serve --port 8081 --hostname 127.0.0.1 \
             > /data/logs/opencode.log 2>&1 &
 
-          echo "[OPENCODE] Waiting for server on :8080..."
+          # Start ttyd web terminal on :7681 (with /terminal base path)
+          nohup ttyd -p 7681 -i 127.0.0.1 \
+            -b /terminal \
+            -W \
+            -t fontSize=15 \
+            -t lineHeight=1.1 \
+            -t cursorBlink=true \
+            -t scrollback=2000 \
+            bash -l > /data/logs/ttyd.log 2>&1 &
+
+          echo "[OPENCODE] Waiting for opencode on :8081..."
           for i in $(seq 1 30); do
-            if curl -sf http://127.0.0.1:8080 > /dev/null 2>&1; then
-              echo "[OPENCODE] ✅ Server ready after ${i}s"
+            if curl -sf http://127.0.0.1:8081 > /dev/null 2>&1; then
+              echo "[OPENCODE] ✅ Server ready on :8081"
               break
             fi
             sleep 2
           done
 
-      # ── 12. Start Ngrok Tunnel (Fixed Static Domain) ──────────────────────
+      # ── 12. Configure & Start Nginx Reverse Proxy (8080) ──────────────────
+      - name: Configure & Start Nginx Proxy
+        run: |
+          sudo cat > /etc/nginx/sites-available/default << 'NGINX_CONF'
+          server {
+              listen 8080 default_server;
+              listen [::]:8080 default_server;
+
+              # Terminal (ttyd PTY bash on :7681)
+              location /terminal {
+                  proxy_pass         http://127.0.0.1:7681;
+                  proxy_http_version 1.1;
+                  proxy_set_header   Upgrade $http_upgrade;
+                  proxy_set_header   Connection "upgrade";
+                  proxy_set_header   Host $host;
+                  proxy_read_timeout 86400;
+              }
+
+              # OpenCode Chat UI & API (opencode serve on :8081)
+              location / {
+                  proxy_pass         http://127.0.0.1:8081;
+                  proxy_http_version 1.1;
+                  proxy_set_header   Upgrade $http_upgrade;
+                  proxy_set_header   Connection $http_connection;
+                  proxy_set_header   Host $host;
+                  proxy_set_header   X-Real-IP $remote_addr;
+                  proxy_buffering    off;
+                  proxy_read_timeout 86400;
+              }
+          }
+          NGINX_CONF
+
+          sudo systemctl restart nginx || sudo service nginx restart || sudo nginx -s reload || sudo nginx
+          echo "[NGINX] Reverse proxy started on port 8080"
+
+      # ── 13. Start Ngrok Tunnel (Fixed Static Domain) ──────────────────────
       - name: Start Ngrok Tunnel
         run: |
           echo "[NGROK] Setting authtoken..."
@@ -200,10 +249,11 @@ jobs:
           echo ""
           echo "╔══════════════════════════════════════════════════════════════╗"
           echo "║  🌐 NGROK TUNNEL ACTIVE AT:                                  ║"
-          echo "║  $NGROK_URL"
+          echo "║  Chat UI:   $NGROK_URL"
+          echo "║  Terminal:  $NGROK_URL/terminal"
           echo "╚══════════════════════════════════════════════════════════════╝"
 
-      # ── 13. Push URL → HF Dataset for Auto-Discovery ──────────────────────
+      # ── 14. Push URL → HF Dataset for Auto-Discovery ──────────────────────
       - name: Sync Live URL to HF Dataset (Auto-Discovery)
         run: |
           python3 - << PYEOF
@@ -228,7 +278,7 @@ jobs:
               print(f"[HF] Warning: {e}")
           PYEOF
 
-      # ── 14. GitHub Summary Output ────────────────────────────────────────
+      # ── 15. GitHub Summary Output ────────────────────────────────────────
       - name: Create GitHub Summary Output
         run: |
           python3 - << 'PYEOF'
@@ -237,14 +287,15 @@ jobs:
           summary_file = os.environ.get("GITHUB_STEP_SUMMARY", "")
           if summary_file:
               with open(summary_file, "a") as f:
-                  f.write(f"## 🚀 OpenCode Serve — Ngrok Static Domain\n\n")
+                  f.write(f"## 🚀 OpenCode Serve — Chat UI & Live Web Terminal\n\n")
                   f.write(f"| Property | Status / Value |\n")
                   f.write(f"|---|---|\n")
-                  f.write(f"| **Live HTTPS URL** | **[{url}]({url})** |\n")
+                  f.write(f"| **Chat UI** | **[{url}]({url})** |\n")
+                  f.write(f"| **Live Web Terminal** | **[{url}/terminal]({url}/terminal)** |\n")
                   f.write(f"| **Workspace Persistence** | Synced to `Jishnupg/OpenCode-Storage` |\n")
           PYEOF
 
-      # ── 15. Keep Alive & Health Monitor ──────────────────────────────────
+      # ── 16. Keep Alive & Health Monitor ──────────────────────────────────
       - name: Keep Alive (5.5 Hours)
         run: |
           END_TIME=$(($(date +%s) + 19800))   # 5.5 hours
@@ -253,10 +304,16 @@ jobs:
             sleep 30
 
             # Health check opencode server
-            if ! curl -sf http://127.0.0.1:8080 > /dev/null 2>&1; then
+            if ! curl -sf http://127.0.0.1:8081 > /dev/null 2>&1; then
               echo "[MONITOR] ⚠️  OpenCode down — restarting..."
               cd /projects/default
-              nohup opencode serve --port 8080 --hostname 0.0.0.0 >> /data/logs/opencode.log 2>&1 &
+              nohup opencode serve --port 8081 --hostname 127.0.0.1 >> /data/logs/opencode.log 2>&1 &
+            fi
+
+            # Health check ttyd terminal
+            if ! pgrep -x "ttyd" > /dev/null 2>&1; then
+              echo "[MONITOR] ⚠️  ttyd terminal down — restarting..."
+              nohup ttyd -p 7681 -i 127.0.0.1 -b /terminal -W -t fontSize=15 bash -l >> /data/logs/ttyd.log 2>&1 &
             fi
 
             # Health check ngrok process
@@ -272,14 +329,14 @@ jobs:
 
           echo "[MONITOR] 5.5 hours completed — initiating clean self-restart"
 
-      # ── 16. Final Sync Before Restart ────────────────────────────────────
+      # ── 17. Final Sync Before Restart ────────────────────────────────────
       - name: Final Workspace Sync
         if: always()
         run: |
           echo "[SYNC] Final sync to HF Dataset before restart..."
           python3 sync_engine.py sync 2>&1 | tail -5 || true
 
-      # ── 17. Trigger Self-Restart ──────────────────────────────────────────
+      # ── 18. Trigger Self-Restart ──────────────────────────────────────────
       - name: Trigger Self-Restart
         if: always()
         env:
