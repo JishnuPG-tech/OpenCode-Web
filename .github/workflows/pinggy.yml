@@ -2,6 +2,11 @@ name: OpenCode Serve — Pinggy.io Tunnel
 
 on:
   workflow_dispatch:
+    inputs:
+      alias:
+        description: 'Custom Pinggy Subdomain Alias (e.g. opencode-jishnu)'
+        required: false
+        default: 'opencode-jishnu'
   schedule:
     - cron: '0 */5 * * *'   # Auto-restart every 5 hours
 
@@ -20,6 +25,8 @@ jobs:
       GROQ_API_KEY:             ${{ secrets.GROQ_API_KEY }}
       OPENAI_API_KEY:           ${{ secrets.OPENAI_API_KEY }}
       ANTHROPIC_API_KEY:        ${{ secrets.ANTHROPIC_API_KEY }}
+      PINGGY_TOKEN:             ${{ secrets.PINGGY_TOKEN }}
+      PINGGY_ALIAS:             ${{ github.event.inputs.alias || secrets.PINGGY_ALIAS || 'opencode-jishnu' }}
       XDG_DATA_HOME:            /data/share
       XDG_CONFIG_HOME:          /data/config
       XDG_CACHE_HOME:           /data/cache
@@ -133,26 +140,43 @@ jobs:
             sleep 2
           done
 
-      # ── 11. Start Pinggy.io Tunnel ────────────────────────────────────────
+      # ── 11. Start Pinggy.io Tunnel (Authenticated Token / Custom Alias) ───
       - name: Start Pinggy.io Tunnel
         run: |
           echo "[PINGGY] Connecting Pinggy.io tunnel..."
           mkdir -p ~/.ssh
           ssh-keyscan -p 443 a.pinggy.io >> ~/.ssh/known_hosts 2>/dev/null || true
 
-          # Launch Pinggy SSH tunnel
-          nohup ssh -p 443 \
-                    -o StrictHostKeyChecking=no \
-                    -o ServerAliveInterval=60 \
-                    -o ServerAliveCountMax=3 \
-                    -R0:localhost:8080 \
-                    a.pinggy.io > /data/logs/pinggy.log 2>&1 &
+          SSH_USER=""
+          if [ -n "$PINGGY_TOKEN" ]; then
+            SSH_USER="${PINGGY_TOKEN}@"
+            echo "[PINGGY] Using authenticated Pinggy Access Token"
+          else
+            echo "[PINGGY] No PINGGY_TOKEN secret set — using free anonymous mode"
+          fi
+
+          # Launch Pinggy SSH tunnel with custom alias if token provided
+          if [ -n "$PINGGY_TOKEN" ] && [ -n "$PINGGY_ALIAS" ]; then
+            nohup ssh -p 443 \
+                      -o StrictHostKeyChecking=no \
+                      -o ServerAliveInterval=60 \
+                      -o ServerAliveCountMax=3 \
+                      -R ${PINGGY_ALIAS}:80:localhost:8080 \
+                      ${SSH_USER}a.pinggy.io > /data/logs/pinggy.log 2>&1 &
+          else
+            nohup ssh -p 443 \
+                      -o StrictHostKeyChecking=no \
+                      -o ServerAliveInterval=60 \
+                      -o ServerAliveCountMax=3 \
+                      -R0:localhost:8080 \
+                      ${SSH_USER}a.pinggy.io > /data/logs/pinggy.log 2>&1 &
+          fi
 
           echo "[PINGGY] Waiting for HTTPS URL..."
           PINGGY_URL=""
           for i in $(seq 1 30); do
             sleep 2
-            PINGGY_URL=$(grep -oP 'https://[a-zA-Z0-9\-]+\.pinggy\.link' \
+            PINGGY_URL=$(grep -oP 'https://[a-zA-Z0-9\.\-]+\.pinggy[a-zA-Z0-9\.\-]*' \
               /data/logs/pinggy.log 2>/dev/null | head -1 || true)
             if [ -n "$PINGGY_URL" ]; then
               break
@@ -160,10 +184,9 @@ jobs:
           done
 
           if [ -z "$PINGGY_URL" ]; then
-            echo "[PINGGY] ⚠️  Could not find pinggy.link URL, checking log:"
+            echo "[PINGGY] Check log output:"
             cat /data/logs/pinggy.log | head -30
-            # Fallback regex if subdomains differ
-            PINGGY_URL=$(grep -oP 'https://[^\s]+' /data/logs/pinggy.log | head -1 || true)
+            PINGGY_URL="https://${PINGGY_ALIAS}.pinggy.link"
           fi
 
           echo "PINGGY_URL=$PINGGY_URL" >> $GITHUB_ENV
@@ -241,12 +264,13 @@ jobs:
             # Check if Pinggy SSH tunnel is active
             if ! pgrep -f "a.pinggy.io" > /dev/null 2>&1; then
               echo "[MONITOR] ⚠️  Pinggy tunnel re-connecting..."
-              nohup ssh -p 443 \
-                        -o StrictHostKeyChecking=no \
-                        -o ServerAliveInterval=60 \
-                        -o ServerAliveCountMax=3 \
-                        -R0:localhost:8080 \
-                        a.pinggy.io >> /data/logs/pinggy.log 2>&1 &
+              SSH_USER=""
+              if [ -n "$PINGGY_TOKEN" ]; then SSH_USER="${PINGGY_TOKEN}@"; fi
+              if [ -n "$PINGGY_TOKEN" ] && [ -n "$PINGGY_ALIAS" ]; then
+                nohup ssh -p 443 -o StrictHostKeyChecking=no -o ServerAliveInterval=60 -o ServerAliveCountMax=3 -R ${PINGGY_ALIAS}:80:localhost:8080 ${SSH_USER}a.pinggy.io >> /data/logs/pinggy.log 2>&1 &
+              else
+                nohup ssh -p 443 -o StrictHostKeyChecking=no -o ServerAliveInterval=60 -o ServerAliveCountMax=3 -R0:localhost:8080 ${SSH_USER}a.pinggy.io >> /data/logs/pinggy.log 2>&1 &
+              fi
             fi
           done
 
