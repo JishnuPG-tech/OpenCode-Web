@@ -238,7 +238,7 @@ jobs:
           echo "════════════════════════════════════════════════════════"
           echo "  ✅ OpenCode Serve is LIVE"
           echo "════════════════════════════════════════════════════════"
-          echo "  🔗 Fixed Workers URL  : https://opencode-serve.jishnupg.workers.dev"
+          echo "  🔗 Fixed Workers URL  : https://opencode-web.jishnupg2005.workers.dev"
           echo "  🚇 Tunnel (temporary) : $TUNNEL_URL"
           echo "  📦 HF Dataset         : Jishnupg/OpenCode-Storage → server-url.txt"
           echo "  🧠 RAM available      : $(free -h | awk '/^Mem:/{print $2}')"
@@ -252,7 +252,7 @@ jobs:
 
           | | |
           |---|---|
-          | **Fixed URL** | https://opencode-serve.jishnupg.workers.dev |
+          | **Fixed URL** | https://opencode-web.jishnupg2005.workers.dev |
           | **Tunnel URL** | $TUNNEL_URL |
           | **RAM** | $(free -h | awk '/^Mem:/{print $2}') |
           | **Started** | $(date -u '+%Y-%m-%d %H:%M UTC') |
