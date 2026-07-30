@@ -152,21 +152,20 @@ jobs:
             SSH_USER="${PINGGY_TOKEN}@"
             echo "[PINGGY] Using authenticated Pinggy Access Token"
           else
-            echo "[PINGGY] No PINGGY_TOKEN secret set — using free anonymous mode"
+            echo "[PINGGY] ⚠️ PINGGY_TOKEN secret not set — running in free mode"
           fi
 
-          # Launch Pinggy SSH tunnel with custom alias if token provided
           if [ -n "$PINGGY_TOKEN" ] && [ -n "$PINGGY_ALIAS" ]; then
             nohup ssh -p 443 \
                       -o StrictHostKeyChecking=no \
-                      -o ServerAliveInterval=60 \
+                      -o ServerAliveInterval=30 \
                       -o ServerAliveCountMax=3 \
                       -R ${PINGGY_ALIAS}:80:localhost:8080 \
                       ${SSH_USER}a.pinggy.io > /data/logs/pinggy.log 2>&1 &
           else
             nohup ssh -p 443 \
                       -o StrictHostKeyChecking=no \
-                      -o ServerAliveInterval=60 \
+                      -o ServerAliveInterval=30 \
                       -o ServerAliveCountMax=3 \
                       -R0:localhost:8080 \
                       ${SSH_USER}a.pinggy.io > /data/logs/pinggy.log 2>&1 &
@@ -174,19 +173,20 @@ jobs:
 
           echo "[PINGGY] Waiting for HTTPS URL..."
           PINGGY_URL=""
-          for i in $(seq 1 30); do
+          for i in $(seq 1 35); do
             sleep 2
-            PINGGY_URL=$(grep -oP 'https://[a-zA-Z0-9\.\-]+\.pinggy[a-zA-Z0-9\.\-]*' \
-              /data/logs/pinggy.log 2>/dev/null | head -1 || true)
+            # Filter out dashboard link and grab actual tunnel endpoint
+            PINGGY_URL=$(grep -oP 'https://[a-zA-Z0-9\.\-]+\.(pinggy\.link|pinggy-free\.link|pinggy\.net)' \
+              /data/logs/pinggy.log 2>/dev/null | grep -v 'dashboard' | head -1 || true)
             if [ -n "$PINGGY_URL" ]; then
               break
             fi
           done
 
           if [ -z "$PINGGY_URL" ]; then
-            echo "[PINGGY] Check log output:"
+            echo "[PINGGY] Fallback extraction from logs:"
             cat /data/logs/pinggy.log | head -30
-            PINGGY_URL="https://${PINGGY_ALIAS}.pinggy.link"
+            PINGGY_URL=$(grep -oP 'https://[^\s]+' /data/logs/pinggy.log | grep -v 'dashboard' | head -1 || true)
           fi
 
           echo "PINGGY_URL=$PINGGY_URL" >> $GITHUB_ENV
@@ -246,13 +246,13 @@ jobs:
           | **Started** | $(date -u '+%Y-%m-%d %H:%M UTC') |
           SUMMARY
 
-      # ── 14. Keep Alive + Health Monitor ──────────────────────────────────
+      # ── 14. Keep Alive + Auto-Reconnect ──────────────────────────────────
       - name: Keep Alive (5.5 hours)
         run: |
           END_TIME=$(($(date +%s) + 19800))   # 5.5 hours
 
           while [ $(date +%s) -lt $END_TIME ]; do
-            sleep 60
+            sleep 30
 
             # Check if OpenCode is responding locally
             if ! curl -sf http://127.0.0.1:8080 > /dev/null 2>&1; then
@@ -261,15 +261,31 @@ jobs:
               nohup opencode serve --port 8080 --hostname 127.0.0.1 >> /data/logs/opencode.log 2>&1 &
             fi
 
-            # Check if Pinggy SSH tunnel is active
+            # Check if Pinggy SSH tunnel is active — auto-reconnect if dropped
             if ! pgrep -f "a.pinggy.io" > /dev/null 2>&1; then
-              echo "[MONITOR] ⚠️  Pinggy tunnel re-connecting..."
+              echo "[MONITOR] ⚠️  Pinggy tunnel dropped — auto-reconnecting..."
               SSH_USER=""
               if [ -n "$PINGGY_TOKEN" ]; then SSH_USER="${PINGGY_TOKEN}@"; fi
               if [ -n "$PINGGY_TOKEN" ] && [ -n "$PINGGY_ALIAS" ]; then
-                nohup ssh -p 443 -o StrictHostKeyChecking=no -o ServerAliveInterval=60 -o ServerAliveCountMax=3 -R ${PINGGY_ALIAS}:80:localhost:8080 ${SSH_USER}a.pinggy.io >> /data/logs/pinggy.log 2>&1 &
+                nohup ssh -p 443 -o StrictHostKeyChecking=no -o ServerAliveInterval=30 -o ServerAliveCountMax=3 -R ${PINGGY_ALIAS}:80:localhost:8080 ${SSH_USER}a.pinggy.io >> /data/logs/pinggy.log 2>&1 &
               else
-                nohup ssh -p 443 -o StrictHostKeyChecking=no -o ServerAliveInterval=60 -o ServerAliveCountMax=3 -R0:localhost:8080 ${SSH_USER}a.pinggy.io >> /data/logs/pinggy.log 2>&1 &
+                nohup ssh -p 443 -o StrictHostKeyChecking=no -o ServerAliveInterval=30 -o ServerAliveCountMax=3 -R0:localhost:8080 ${SSH_USER}a.pinggy.io >> /data/logs/pinggy.log 2>&1 &
+              fi
+
+              # Extract & update new URL if reconnected
+              sleep 5
+              NEW_URL=$(grep -oP 'https://[a-zA-Z0-9\.\-]+\.(pinggy\.link|pinggy-free\.link|pinggy\.net)' /data/logs/pinggy.log 2>/dev/null | grep -v 'dashboard' | tail -1 || true)
+              if [ -n "$NEW_URL" ]; then
+                echo "[MONITOR] 🔄 Reconnected! New URL: $NEW_URL"
+                python3 -c "
+import os, time, io
+from huggingface_hub import HfApi
+token = '$HF_TOKEN'
+if token:
+    api = HfApi(token=token)
+    content = f'$NEW_URL\nreconnected: {time.strftime(\"%Y-%m-%d %H:%M:%S UTC\", time.gmtime())}\n'
+    api.upload_file(repo_id='Jishnupg/OpenCode-Storage', repo_type='dataset', path_in_repo='server-url.txt', path_or_fileobj=io.BytesIO(content.encode()), commit_message='runner: auto-reconnect update')
+" || true
               fi
             fi
           done
