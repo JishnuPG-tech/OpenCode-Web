@@ -75,8 +75,8 @@ jobs:
             echo "[RESTORE] HF_TOKEN not set — starting fresh"
           fi
 
-      # ── 7. Configure OpenCode ─────────────────────────────────────────────
-      - name: Configure OpenCode
+      # ── 7. Configure High-Performance OpenCode Models ─────────────────────
+      - name: Configure High-Performance OpenCode
         run: |
           python3 - << 'PYEOF'
           import json, os
@@ -87,8 +87,29 @@ jobs:
               d = {}
           d["$schema"] = "https://opencode.ai/config.json"
           d["server"]  = {"port": 8080, "hostname": "127.0.0.1"}
+
+          # Set default fast provider model
+          groq = os.environ.get("GROQ_API_KEY", "").strip()
+          gemini = os.environ.get("GEMINI_API_KEY", "").strip()
+          copilot = os.environ.get("COPILOT_GITHUB_TOKEN", "").strip()
+          openrouter = os.environ.get("OPENROUTER_API_KEY", "").strip()
+
+          if groq:
+              d["model"] = "groq/llama-3.3-70b-versatile"
+              print("[CONFIG] Provider: GROQ (Ultra Fast LPU)")
+          elif gemini:
+              d["model"] = "google/gemini-2.0-flash-exp"
+              print("[CONFIG] Provider: GEMINI FLASH (Ultra Fast & Accurate)")
+          elif copilot:
+              d["model"] = "github/gpt-4o"
+              print("[CONFIG] Provider: GITHUB COPILOT")
+          elif openrouter:
+              d["model"] = "openrouter/meta-llama/llama-3.3-70b-instruct:free"
+              print("[CONFIG] Provider: OPENROUTER FREE")
+
           json.dump(d, open(p, "w"), indent=2)
-          print("[CONFIG] Written:", json.dumps(d, indent=2))
+          print("[CONFIG] Written to:", p)
+          print(json.dumps(d, indent=2))
           PYEOF
 
       # ── 8. Bootstrap Memory Templates ────────────────────────────────────
