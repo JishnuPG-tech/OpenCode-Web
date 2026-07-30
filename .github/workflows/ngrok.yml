@@ -49,9 +49,8 @@ jobs:
           sudo apt-get update -qq
           sudo apt-get install -y -qq nginx
 
-          # Download official ttyd standalone Linux binary (v1.7.7)
-          TTYD_VERSION="v1.7.7"
-          sudo curl -fsSL "https://github.com/tsl09/ttyd/releases/download/${TTYD_VERSION}/ttyd.x86_64" \
+          # Download official ttyd standalone Linux binary from tsl0922/ttyd
+          sudo curl -fsSL "https://github.com/tsl0922/ttyd/releases/download/1.7.7/ttyd.x86_64" \
             -o /usr/local/bin/ttyd
           sudo chmod +x /usr/local/bin/ttyd
           echo "[OK] ttyd version: $(ttyd -v)"
