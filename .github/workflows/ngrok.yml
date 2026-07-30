@@ -64,12 +64,12 @@ jobs:
           sudo chmod +x /usr/local/bin/opencode
           echo "[OK] $(opencode --version)"
 
-      # ── 5. Install Ngrok Binary ───────────────────────────────────────────
+      # ── 5. Install Ngrok Binary (Direct Download) ─────────────────────────
       - name: Install Ngrok
         run: |
-          curl -shttps://ngrok-agent.s3.amazonaws.com/ngrok.asc | sudo tee /etc/apt/trusted.gpg.d/ngrok.asc >/dev/null
-          echo "deb https://ngrok-agent.s3.amazonaws.com buster main" | sudo tee /etc/apt/sources.list.d/ngrok.list
-          sudo apt update && sudo apt install ngrok -y
+          curl -fsSL https://bin.equinox.io/c/b4Pvu237nvh/ngrok-v3-stable-linux-amd64.tgz \
+            | sudo tar -xz -C /usr/local/bin
+          sudo chmod +x /usr/local/bin/ngrok
           echo "[OK] $(ngrok --version)"
 
       # ── 6. Restore Workspace & Memory from HF Dataset ────────────────────
