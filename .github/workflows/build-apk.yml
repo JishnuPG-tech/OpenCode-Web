@@ -1,0 +1,74 @@
+name: Build Android APK (OpenCode Mobile App)
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'mobile/**'
+
+jobs:
+  build-apk:
+    name: Build OpenCode Standalone Android APK
+    runs-on: ubuntu-latest
+
+    steps:
+      # ── 1. Checkout Repository ───────────────────────────────────────────
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      # ── 2. Set up Java 17 (Required for Android Gradle) ─────────────────
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      # ── 3. Set up Android SDK ────────────────────────────────────────────
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      # ── 4. Set up Node.js 20 ─────────────────────────────────────────────
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: 'mobile/package-lock.json'
+
+      # ── 5. Install Dependencies ──────────────────────────────────────────
+      - name: Install Mobile Dependencies
+        run: |
+          cd mobile
+          npm ci || npm install
+
+      # ── 6. Expo Prebuild (Generate Android Project) ──────────────────────
+      - name: Generate Android Native Project
+        run: |
+          cd mobile
+          npx expo prebuild --platform android --clean
+
+      # ── 7. Build Android APK ─────────────────────────────────────────────
+      - name: Build Android APK with Gradle
+        run: |
+          cd mobile/android
+          chmod +x gradlew
+          ./gradlew assembleRelease --no-daemon
+
+      # ── 8. Upload APK Artifact ───────────────────────────────────────────
+      - name: Upload Android APK Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: opencode-mobile-app-apk
+          path: mobile/android/app/build/outputs/apk/release/*.apk
+          retention-days: 30
+
+      # ── 9. Summary ───────────────────────────────────────────────────────
+      - name: Create Summary
+        run: |
+          cat >> $GITHUB_STEP_SUMMARY << SUMMARY
+          ## 📱 OpenCode Standalone Android APK Built!
+
+          ✅ **Android APK Build Successful**
+          - You can download **\`opencode-mobile-app-apk\`** directly from the Action Artifacts tab at the bottom of this run page!
+          - Transfer the **\`app-release.apk\`** file to your Android phone and install it.
+          SUMMARY
