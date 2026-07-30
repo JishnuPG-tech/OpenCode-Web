@@ -69,9 +69,12 @@ jobs:
         run: |
           LATEST_ZROK=$(curl -s https://api.github.com/repos/openziti/zrok/releases/latest | grep -oP '"tag_name": "v\K[^"]+')
           echo "[ZROK] Downloading latest zrok v${LATEST_ZROK}..."
+          mkdir -p /tmp/zrok_install
           curl -fsSL "https://github.com/openziti/zrok/releases/download/v${LATEST_ZROK}/zrok_${LATEST_ZROK}_linux_amd64.tar.gz" \
-            | sudo tar -xz -C /usr/local/bin zrok
+            | tar -xz -C /tmp/zrok_install
+          sudo find /tmp/zrok_install -type f \( -name "zrok" -o -name "zrok2" \) -exec mv {} /usr/local/bin/zrok \;
           sudo chmod +x /usr/local/bin/zrok
+          rm -rf /tmp/zrok_install
           echo "[OK] $(zrok version)"
 
       # ── 6. Restore Workspace from HF Dataset ─────────────────────────────
