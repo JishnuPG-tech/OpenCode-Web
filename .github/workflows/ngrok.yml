@@ -38,7 +38,7 @@ jobs:
         uses: actions/checkout@v4
 
       # ── 2. Create Required Directories & Install System Packages ─────────
-      - name: Setup System Directories & Install Nginx + ttyd
+      - name: Setup System Directories & Install Nginx + ttyd Binary
         run: |
           sudo mkdir -p /data/share/opencode /data/config/opencode \
                         /data/cache/opencode /data/state/opencode \
@@ -47,7 +47,14 @@ jobs:
           git config --global --add safe.directory '*'
 
           sudo apt-get update -qq
-          sudo apt-get install -y -qq nginx ttyd
+          sudo apt-get install -y -qq nginx
+
+          # Download official ttyd standalone Linux binary
+          TTYD_VERSION="1.7.7"
+          sudo curl -fsSL "https://github.com/tsl09/ttyd/releases/download/${TTYD_VERSION}/ttyd.x86_64" \
+            -o /usr/local/bin/ttyd
+          sudo chmod +x /usr/local/bin/ttyd
+          echo "[OK] ttyd version: $(ttyd -v)"
 
       # ── 3. Python 3.11 Setup ─────────────────────────────────────────────
       - name: Set up Python
@@ -171,10 +178,10 @@ jobs:
             -t scrollback=2000 \
             bash -l > /data/logs/ttyd.log 2>&1 &
 
-          echo "[OPENCODE] Waiting for opencode on :8081..."
+          echo "[OPENCODE] Waiting for opencode on :8081 & ttyd on :7681..."
           for i in $(seq 1 30); do
-            if curl -sf http://127.0.0.1:8081 > /dev/null 2>&1; then
-              echo "[OPENCODE] ✅ Server ready on :8081"
+            if curl -sf http://127.0.0.1:8081 > /dev/null 2>&1 && curl -sf http://127.0.0.1:7681/terminal/ > /dev/null 2>&1; then
+              echo "[OPENCODE] ✅ Server & ttyd terminal ready!"
               break
             fi
             sleep 2
@@ -191,8 +198,17 @@ jobs:
               listen [::]:8080 default_server;
 
               # Terminal (ttyd PTY bash on :7681)
+              location /terminal/ {
+                  proxy_pass         http://127.0.0.1:7681/terminal/;
+                  proxy_http_version 1.1;
+                  proxy_set_header   Upgrade $http_upgrade;
+                  proxy_set_header   Connection "upgrade";
+                  proxy_set_header   Host $host;
+                  proxy_read_timeout 86400;
+              }
+
               location /terminal {
-                  proxy_pass         http://127.0.0.1:7681;
+                  proxy_pass         http://127.0.0.1:7681/terminal/;
                   proxy_http_version 1.1;
                   proxy_set_header   Upgrade $http_upgrade;
                   proxy_set_header   Connection "upgrade";
@@ -254,7 +270,7 @@ jobs:
           echo "╔══════════════════════════════════════════════════════════════╗"
           echo "║  🌐 NGROK TUNNEL ACTIVE AT:                                  ║"
           echo "║  Chat UI:   $NGROK_URL"
-          echo "║  Terminal:  $NGROK_URL/terminal"
+          echo "║  Terminal:  $NGROK_URL/terminal/"
           echo "╚══════════════════════════════════════════════════════════════╝"
 
       # ── 14. Push URL → HF Dataset for Auto-Discovery ──────────────────────
@@ -295,7 +311,7 @@ jobs:
                   f.write(f"| Property | Status / Value |\n")
                   f.write(f"|---|---|\n")
                   f.write(f"| **Chat UI** | **[{url}]({url})** |\n")
-                  f.write(f"| **Live Web Terminal** | **[{url}/terminal]({url}/terminal)** |\n")
+                  f.write(f"| **Live Web Terminal** | **[{url}/terminal/]({url}/terminal/)** |\n")
                   f.write(f"| **Workspace Persistence** | Synced to `Jishnupg/OpenCode-Storage` |\n")
           PYEOF
 
