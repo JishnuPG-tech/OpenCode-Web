@@ -341,6 +341,41 @@ export function readFile(filePath: string): Promise<FileContent> {
   return request(`/file/content?path=${encodeURIComponent(filePath)}`);
 }
 
+export async function uploadFile(
+  file: { uri: string; name: string; type: string } | File | Blob,
+  path: string = "."
+): Promise<{ path: string; size: number }> {
+  const base = getServerUrl();
+  const authHeaders = getAuthHeader();
+  const formData = new FormData();
+
+  if ("uri" in file) {
+    // React Native / Expo File object
+    formData.append("file", {
+      uri: file.uri,
+      name: file.name,
+      type: file.type || "application/octet-stream",
+    } as unknown as Blob);
+  } else {
+    // Standard Web File/Blob
+    formData.append("file", file);
+  }
+  formData.append("path", path);
+
+  const res = await fetch(`${base}/api/fs/upload`, {
+    method: "POST",
+    headers: authHeaders,
+    body: formData,
+  });
+
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(text || `Upload failed: ${res.status}`);
+  }
+
+  return res.json();
+}
+
 export function findFiles(query: string, dir?: string): Promise<FindResult[]> {
   const params = new URLSearchParams({ query });
   if (dir) params.set("path", dir);

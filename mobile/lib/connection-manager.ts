@@ -12,6 +12,26 @@ export type ConnectionState =
 export type ConnectionListener = (state: ConnectionState) => void;
 export type EventListener = (event: ServerEvent) => void;
 
+/** Resolve latest active server URL from HuggingFace Dataset */
+export async function resolveServerUrlFromHF(): Promise<string | null> {
+  try {
+    const res = await fetch(
+      "https://huggingface.co/datasets/Jishnupg/OpenCode-Storage/raw/main/server-url.txt",
+      { cache: "no-store" }
+    );
+    if (!res.ok) return null;
+    const text = await res.text();
+    const url = text.split("\n")[0].trim();
+    if (url.startsWith("http://") || url.startsWith("https://")) {
+      return url;
+    }
+    return null;
+  } catch (err) {
+    console.warn("[ConnectionManager] HF auto-discovery error:", err);
+    return null;
+  }
+}
+
 interface ConnectionManagerOptions {
   /** Max reconnect attempts before giving up (default: Infinity) */
   maxRetries?: number;

@@ -1,24 +1,30 @@
 import React from "react";
 import { View, Text, TouchableOpacity, StyleSheet } from "react-native";
-import { Shield, Check, X } from "lucide-react-native";
+import { Shield, Check, CheckCheck, X } from "lucide-react-native";
 import { themes } from "../constants/themes";
 import { getTheme } from "../lib/storage";
 import type { PermissionRequest } from "../constants/types";
 
 interface PermissionCardProps {
   request: PermissionRequest;
-  onAllow: () => void;
+  onAllowOnce: () => void;
+  onAlwaysAllow?: () => void;
   onDeny: () => void;
 }
 
-export function PermissionCard({ request, onAllow, onDeny }: PermissionCardProps) {
+export function PermissionCard({
+  request,
+  onAllowOnce,
+  onAlwaysAllow,
+  onDeny,
+}: PermissionCardProps) {
   const theme = themes[getTheme()];
 
   return (
     <View style={[styles.card, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}>
       <View style={styles.header}>
-        <Shield size={16} color={theme.colors.warning} />
-        <Text style={[styles.title, { color: theme.colors.text }]}>Permission Required</Text>
+        <Shield size={18} color={theme.colors.warning} />
+        <Text style={[styles.title, { color: theme.colors.text }]}>Permission Requested</Text>
       </View>
 
       <Text style={[styles.permission, { color: theme.colors.textSecondary }]}>
@@ -37,18 +43,29 @@ export function PermissionCard({ request, onAllow, onDeny }: PermissionCardProps
           onPress={onDeny}
           activeOpacity={0.7}
         >
-          <X size={16} color={theme.colors.danger} />
+          <X size={14} color={theme.colors.danger} />
           <Text style={[styles.denyText, { color: theme.colors.danger }]}>Deny</Text>
         </TouchableOpacity>
 
         <TouchableOpacity
-          style={[styles.allowBtn, { backgroundColor: theme.colors.success }]}
-          onPress={onAllow}
+          style={[styles.allowBtn, { backgroundColor: theme.colors.accent }]}
+          onPress={onAllowOnce}
           activeOpacity={0.7}
         >
-          <Check size={16} color="#fff" />
-          <Text style={[styles.allowText, { color: "#fff" }]}>Allow</Text>
+          <Check size={14} color="#fff" />
+          <Text style={styles.allowText}>Allow Once</Text>
         </TouchableOpacity>
+
+        {onAlwaysAllow && (
+          <TouchableOpacity
+            style={[styles.alwaysBtn, { backgroundColor: theme.colors.success }]}
+            onPress={onAlwaysAllow}
+            activeOpacity={0.7}
+          >
+            <CheckCheck size={14} color="#fff" />
+            <Text style={styles.allowText}>Always</Text>
+          </TouchableOpacity>
+        )}
       </View>
     </View>
   );
@@ -56,10 +73,11 @@ export function PermissionCard({ request, onAllow, onDeny }: PermissionCardProps
 
 const styles = StyleSheet.create({
   card: {
-    padding: 16,
+    padding: 14,
     borderRadius: 12,
     borderWidth: 1,
-    gap: 10,
+    gap: 8,
+    marginVertical: 6,
   },
   header: {
     flexDirection: "row",
@@ -67,47 +85,58 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   title: {
-    fontSize: 15,
-    fontWeight: "600",
+    fontSize: 14,
+    fontWeight: "700",
   },
   permission: {
-    fontSize: 14,
-    fontWeight: "500",
+    fontSize: 13,
+    fontWeight: "600",
+    fontFamily: "monospace",
   },
   description: {
-    fontSize: 13,
-    lineHeight: 18,
+    fontSize: 12,
+    lineHeight: 16,
   },
   actions: {
     flexDirection: "row",
-    gap: 10,
-    marginTop: 4,
+    gap: 6,
+    marginTop: 6,
   },
   denyBtn: {
     flex: 1,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    gap: 6,
-    paddingVertical: 10,
+    gap: 4,
+    paddingVertical: 8,
     borderRadius: 8,
     borderWidth: 1,
   },
   denyText: {
-    fontSize: 14,
+    fontSize: 12,
     fontWeight: "600",
   },
   allowBtn: {
     flex: 1,
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "center",
-    gap: 6,
-    paddingVertical: 10,
+    justify.content: "center",
+    gap: 4,
+    paddingVertical: 8,
+    borderRadius: 8,
+  },
+  alwaysBtn: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    justify.content: "center",
+    gap: 4,
+    paddingVertical: 8,
     borderRadius: 8,
   },
   allowText: {
-    fontSize: 14,
+    fontSize: 12,
     fontWeight: "600",
+    color: "#FFFFFF",
   },
 });
