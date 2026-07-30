@@ -156,22 +156,22 @@ jobs:
       # ── 12. Enable zrok & Launch Tunnel ───────────────────────────────────
       - name: Enable zrok & Launch Tunnel
         run: |
-          echo "[ZROK] Enabling environment..."
-          zrok enable "${ZROK_TOKEN}" || true
+          echo "[ZROK] Enabling environment with token (non-interactive)..."
+          echo "" | zrok enable "${ZROK_TOKEN}" < /dev/null 2>&1 || true
 
           echo "[ZROK] Attempting reserved share: ${ZROK_SHARE_NAME}..."
-          RESERVE_TOKEN=$(zrok reserve public --unique-name "${ZROK_SHARE_NAME}" http://127.0.0.1:8080 --json-output 2>/dev/null | grep -oP '"token":\s*"\K[^"]+' || echo "")
+          RESERVE_TOKEN=$(echo "" | zrok reserve public --unique-name "${ZROK_SHARE_NAME}" http://127.0.0.1:8080 --json-output 2>/dev/null | grep -oP '"token":\s*"\K[^"]+' || echo "")
 
           if [ -n "$RESERVE_TOKEN" ]; then
-            echo "[ZROK] Reserved share created with token: $RESERVE_TOKEN"
+            echo "[ZROK] Reserved share token: $RESERVE_TOKEN"
             nohup zrok share reserved "$RESERVE_TOKEN" > /data/logs/zrok.log 2>&1 &
           else
-            echo "[ZROK] Reserved share already exists or fallback to direct share..."
+            echo "[ZROK] Launching reserved share by name..."
             nohup zrok share reserved "${ZROK_SHARE_NAME}" > /data/logs/zrok.log 2>&1 &
           fi
 
-          sleep 4
-          if ! pgrep -x "zrok" > /dev/null 2>&1; then
+          sleep 5
+          if ! pgrep -f "zrok share" > /dev/null 2>&1; then
             echo "[ZROK] Direct public share fallback..."
             nohup zrok share public http://127.0.0.1:8080 > /data/logs/zrok.log 2>&1 &
           fi
@@ -264,7 +264,7 @@ jobs:
             fi
 
             # Check if zrok share is active
-            if ! pgrep -x "zrok" > /dev/null 2>&1; then
+            if ! pgrep -f "zrok share" > /dev/null 2>&1; then
               echo "[MONITOR] ⚠️  zrok tunnel dropped — restarting..."
               nohup zrok share public http://127.0.0.1:8080 >> /data/logs/zrok.log 2>&1 &
             fi
