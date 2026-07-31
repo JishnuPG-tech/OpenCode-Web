@@ -10,6 +10,11 @@ on:
   schedule:
     - cron: '0 */5 * * *'   # Auto-restart every 5 hours for 24/7 continuous uptime
 
+permissions:
+  contents: write
+  actions: write
+  workflows: write
+
 jobs:
   serve:
     name: OpenCode Serve + Ngrok Static Tunnel
