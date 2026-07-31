@@ -7,6 +7,8 @@ on:
         description: 'Your free Ngrok static domain (e.g. opencode-jishnu.ngrok-free.app)'
         required: false
         default: ''
+  repository_dispatch:
+    types: [start-server, ping]
   schedule:
     - cron: '0 */5 * * *'   # Auto-restart every 5 hours for 24/7 continuous uptime
 
