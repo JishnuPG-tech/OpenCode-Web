@@ -26,7 +26,7 @@ jobs:
       OPENAI_API_KEY:           ${{ secrets.OPENAI_API_KEY }}
       ANTHROPIC_API_KEY:        ${{ secrets.ANTHROPIC_API_KEY }}
       NGROK_AUTHTOKEN:          ${{ secrets.NGROK_AUTHTOKEN }}
-      NGROK_DOMAIN:             ${{ github.event.inputs.domain || secrets.NGROK_DOMAIN }}
+      NGROK_DOMAIN:             ${{ github.event.inputs.domain || secrets.NGROK_DOMAIN || vars.NGROK_DOMAIN }}
       XDG_DATA_HOME:            /data/share
       XDG_CONFIG_HOME:          /data/config
       XDG_CACHE_HOME:           /data/cache
