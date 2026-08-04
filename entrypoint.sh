@@ -52,7 +52,7 @@ try:
 except Exception:
     d = {}
 d['\$schema'] = 'https://opencode.ai/config.json'
-d['server'] = d.get('server', {'port': 4096, 'hostname': '0.0.0.0'})
+d['server'] = {'port': 4097, 'hostname': '127.0.0.1'}
 d['provider'] = d.get('provider', {})
 d['provider']['omniroute'] = {
     'name': 'OmniRoute Gateway',
@@ -163,6 +163,9 @@ else
 fi
 
 echo "============================================"
-echo "=== Launching OpenCode server ==="
+echo "=== Launching OpenCode server & Nginx Proxy ==="
 echo "============================================"
-exec opencode serve --port 4096 --hostname 0.0.0.0
+opencode serve --port 4097 --hostname 127.0.0.1 &
+sleep 2
+exec nginx -g "daemon off;" -c /nginx.conf
+

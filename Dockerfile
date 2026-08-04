@@ -9,12 +9,13 @@ ENV XDG_STATE_HOME=/data/state
 
 ARG OPENCODE_VERSION=1.18.3
 
-# Install dependencies (including git, python3, curl, ca-certificates)
+# Install dependencies (including git, python3, curl, ca-certificates, nginx)
 RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     ca-certificates \
     git \
     python3 \
+    nginx \
  && rm -rf /var/lib/apt/lists/*
 
 # Install Node.js 20 LTS (required for OmniRoute modern JS/Regex features)
@@ -23,8 +24,6 @@ RUN curl -fsSL https://nodejs.org/dist/v20.18.0/node-v20.18.0-linux-x64.tar.gz \
 
 # Install OmniRoute globally
 RUN npm install -g omniroute
-
-
 
 # Download opencode binary
 RUN curl -fsSL "https://github.com/anomalyco/opencode/releases/download/v${OPENCODE_VERSION}/opencode-linux-x64.tar.gz" \
@@ -35,7 +34,9 @@ RUN mkdir -p /projects/default
 
 COPY cleaner.py /cleaner.py
 COPY entrypoint.sh /entrypoint.sh
+COPY nginx.conf /nginx.conf
 RUN chmod +x /entrypoint.sh
+
 
 WORKDIR /projects/default
 
