@@ -31,17 +31,15 @@ RUN mkdir -p /etc/apt/keyrings \
  && apt-get update && apt-get install -y --no-install-recommends jellyfin-server jellyfin-web ffmpeg \
  && rm -rf /var/lib/apt/lists/*
 
-# Install aiohttp for Telegram Range Streamer
-RUN pip3 install --no-cache-dir aiohttp --break-system-packages || true
+# Install aiohttp, pyrogram, and tgcrypto for MTProto high-speed Telegram streaming
+RUN pip3 install --no-cache-dir aiohttp pyrogram tgcrypto --break-system-packages || true
 
 # Install Node.js 24 (recommended for OmniRoute secure runtime)
 RUN curl -fsSL https://nodejs.org/dist/v24.0.0/node-v24.0.0-linux-x64.tar.gz \
     | tar -xz -C /usr/local --strip-components=1
 
-
 # Install OmniRoute globally
 RUN npm install -g omniroute
-
 
 # Download opencode binary
 RUN curl -fsSL "https://github.com/anomalyco/opencode/releases/download/v${OPENCODE_VERSION}/opencode-linux-x64.tar.gz" \
@@ -55,7 +53,6 @@ COPY entrypoint.sh /entrypoint.sh
 COPY nginx.conf /nginx.conf
 COPY tg_streamer.py /tg_streamer.py
 RUN chmod +x /entrypoint.sh
-
 
 WORKDIR /projects/default
 

@@ -2,12 +2,15 @@ import os
 import sys
 import re
 import json
-import glob
-import socket
 import logging
 import asyncio
 import aiohttp
 from aiohttp import web
+
+# Pyrogram imports for MTProto direct chunk streaming
+from pyrogram import Client, filters
+from pyrogram.types import Message
+from pyrogram.errors import FloodWait, RPCError
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("TG_Drive_Streamer")
@@ -21,142 +24,37 @@ BOT_TOKEN = os.environ.get("TG_BOT_TOKEN")
 CHANNEL_ID = os.environ.get("TG_CHANNEL_ID")
 
 MEDIA_DIR = "/data/jellyfin/media/Movies"
-CACHE_FILE = "/data/jellyfin/file_ids.json"
 os.makedirs(MEDIA_DIR, exist_ok=True)
 
-# Persistent mapping from message_id -> file_id
-FILE_ID_CACHE = {}
-
-def load_file_id_cache():
-    global FILE_ID_CACHE
-    if os.path.exists(CACHE_FILE):
-        try:
-            with open(CACHE_FILE, "r") as f:
-                FILE_ID_CACHE = json.load(f)
-                logger.info(f"[CACHE] Loaded {len(FILE_ID_CACHE)} file_ids from disk cache.")
-        except Exception as e:
-            logger.warning(f"[CACHE] Error loading file_ids.json: {e}")
-
-def save_file_id_cache():
+# Initialize Pyrogram Bot Client
+tg_app = None
+if API_ID and API_HASH and BOT_TOKEN:
     try:
-        with open(CACHE_FILE, "w") as f:
-            json.dump(FILE_ID_CACHE, f, indent=2)
+        tg_app = Client(
+            "tg_jellyfin_streamer",
+            api_id=int(API_ID),
+            api_hash=API_HASH,
+            bot_token=BOT_TOKEN,
+            in_memory=True
+        )
+        logger.info("[PYROGRAM] Pyrogram client instantiated successfully.")
     except Exception as e:
-        logger.warning(f"[CACHE] Error saving file_ids.json: {e}")
-
-def cleanup_orphan_strm_files():
-    """Removes old .strm files that reference message IDs without valid file_id mappings"""
-    try:
-        strm_files = glob.glob(os.path.join(MEDIA_DIR, "*.strm"))
-        removed_count = 0
-        for strm_path in strm_files:
-            try:
-                with open(strm_path, "r") as f:
-                    content = f.read().strip()
-                if "file_id=" not in content:
-                    # Legacy URL format: /stream/{message_id}/{filename}
-                    match = re.search(r'/stream/(\d+)', content)
-                    if match:
-                        msg_id = match.group(1)
-                        if msg_id not in FILE_ID_CACHE:
-                            os.remove(strm_path)
-                            removed_count += 1
-                            logger.info(f"[CLEANUP] Removed orphan .strm file without file_id: {strm_path}")
-            except Exception as e:
-                logger.warning(f"[CLEANUP] Error checking {strm_path}: {e}")
-        if removed_count > 0:
-            logger.info(f"[CLEANUP] Removed {removed_count} orphan .strm file(s).")
-    except Exception as e:
-        logger.warning(f"[CLEANUP] General cleanup error: {e}")
-
-load_file_id_cache()
-cleanup_orphan_strm_files()
+        logger.error(f"[PYROGRAM] Error instantiating Pyrogram: {e}")
 
 routes = web.RouteTableDef()
 
 @routes.get("/")
 @routes.get("/health")
 async def health(request):
-    is_configured = bool(BOT_TOKEN)
+    is_ready = bool(tg_app and tg_app.is_connected)
     return web.json_response({
         "status": "ok",
-        "service": "TG-Drive Real Direct Streamer & Auto-Sync Engine",
-        "configured": is_configured,
+        "service": "TG-Drive MTProto Streamer & Auto-Sync Engine",
+        "pyrogram_connected": is_ready,
         "channel_id": CHANNEL_ID or "Not set",
         "media_dir": MEDIA_DIR,
-        "cached_files": len(FILE_ID_CACHE),
-        "mode": "Persistent Telegram Binary Streamer"
+        "mode": "Pyrogram MTProto High-Speed Direct Streamer"
     })
-
-@routes.get("/stream_file")
-@routes.get("/stream/{message_id}")
-@routes.get("/stream/{message_id}/{filename}")
-async def stream_file(request):
-    """
-    Real HTTP 206 Partial Content Range Proxy for Telegram Files
-    Pipes actual binary chunks from Telegram to Jellyfin on-the-fly.
-    """
-    file_id = request.query.get("file_id")
-    message_id = request.match_info.get("message_id")
-    filename = request.match_info.get("filename", "video.mp4")
-
-    if not file_id and message_id:
-        file_id = FILE_ID_CACHE.get(str(message_id))
-
-    if not file_id or not BOT_TOKEN:
-        logger.error(f"[STREAM] Missing file_id or BOT_TOKEN for message_id: {message_id}")
-        return web.Response(status=404, text=f"File ID not found for message {message_id}. Please re-forward the file to your Telegram channel.")
-
-    connector = aiohttp.TCPConnector(family=socket.AF_INET)
-    headers_req = {"User-Agent": "Mozilla/5.0"}
-    
-    async with aiohttp.ClientSession(connector=connector, headers=headers_req) as session:
-        # Step 1: Get File Path from Telegram API
-        get_file_url = f"https://api.telegram.org/bot{BOT_TOKEN}/getFile?file_id={file_id}"
-        async with session.get(get_file_url) as resp:
-            if resp.status != 200:
-                logger.error(f"[STREAM] Telegram getFile failed with status {resp.status}")
-                return web.Response(status=resp.status, text="Failed to resolve file path from Telegram")
-            
-            data = await resp.json()
-            file_path = data.get("result", {}).get("file_path")
-            file_size = data.get("result", {}).get("file_size", 0)
-
-        if not file_path:
-            logger.error("[STREAM] File path empty in Telegram response")
-            return web.Response(status=404, text="Telegram file path not found")
-
-        # Step 2: Proxy Binary Media Stream with Range Header Support
-        download_url = f"https://api.telegram.org/file/bot{BOT_TOKEN}/{file_path}"
-        pass_headers = {}
-        if "Range" in request.headers:
-            pass_headers["Range"] = request.headers["Range"]
-
-        logger.info(f"[STREAM] Proxying {filename} (Size: {file_size} bytes, Range: {pass_headers.get('Range', 'Full')})")
-
-        async with session.get(download_url, headers=pass_headers) as stream_resp:
-            resp_headers = {
-                "Content-Type": "video/mp4",
-                "Accept-Ranges": "bytes",
-                "Access-Control-Allow-Origin": "*",
-                "Content-Disposition": f'inline; filename="{filename}"'
-            }
-            
-            if "Content-Length" in stream_resp.headers:
-                resp_headers["Content-Length"] = stream_resp.headers["Content-Length"]
-            if "Content-Range" in stream_resp.headers:
-                resp_headers["Content-Range"] = stream_resp.headers["Content-Range"]
-
-            response = web.StreamResponse(
-                status=stream_resp.status,
-                headers=resp_headers
-            )
-            await response.prepare(request)
-            
-            async for chunk in stream_resp.content.iter_chunked(64 * 1024):
-                await response.write(chunk)
-            
-            return response
 
 def clean_movie_title(text):
     """Clean filename/caption to a nice movie title"""
@@ -165,6 +63,30 @@ def clean_movie_title(text):
     text = re.sub(r'\.(mp4|mkv|avi|mov|wmv|flv)$', '', text, flags=re.IGNORECASE)
     text = text.replace('.', ' ').replace('_', ' ')
     return text.strip()
+
+def process_telegram_message(message: Message):
+    """Generates .strm file in Jellyfin media directory for a Telegram Message"""
+    if not message or not message.media:
+        return None
+        
+    msg_id = message.id
+    media = getattr(message, message.media.value, None)
+    if not media:
+        return None
+
+    file_name = getattr(media, "file_name", None) or message.caption or f"Telegram_Movie_{msg_id}"
+    clean_title = clean_movie_title(file_name) or f"Movie_{msg_id}"
+    
+    strm_filename = f"{clean_title}.strm"
+    strm_path = os.path.join(MEDIA_DIR, strm_filename)
+    
+    stream_url = f"http://127.0.0.1:8080/stream/{msg_id}/{clean_title}.mp4"
+
+    with open(strm_path, "w") as f:
+        f.write(stream_url)
+    
+    logger.info(f"[AUTO-SYNC] 🎉 Indexed movie: {strm_filename} -> {strm_path}")
+    return strm_filename
 
 async def trigger_jellyfin_scan():
     """Trigger Jellyfin Library Scan automatically"""
@@ -176,81 +98,133 @@ async def trigger_jellyfin_scan():
     except Exception as e:
         logger.warning(f"Could not trigger Jellyfin library refresh: {e}")
 
-def process_telegram_post(post):
-    """Processes a Telegram channel post or message and creates a .strm file with file_id"""
-    if not post:
-        return None
-        
-    message_id = post.get("message_id")
-    video = post.get("video") or post.get("document")
-    
-    if video and message_id:
-        file_id = video.get("file_id")
-        file_name = video.get("file_name") or post.get("caption") or f"Telegram_Movie_{message_id}"
-        clean_title = clean_movie_title(file_name) or f"Movie_{message_id}"
-        
-        if file_id:
-            FILE_ID_CACHE[str(message_id)] = file_id
-            save_file_id_cache()
-        
-        strm_filename = f"{clean_title}.strm"
-        strm_path = os.path.join(MEDIA_DIR, strm_filename)
-        
-        # Write .strm file with file_id directly embedded
-        if file_id:
-            stream_url = f"http://127.0.0.1:8080/stream_file?file_id={file_id}&filename={clean_title}.mp4"
-        else:
-            stream_url = f"http://127.0.0.1:8080/stream/{message_id}/{clean_title}.mp4"
+@routes.get("/stream_file")
+@routes.get("/stream/{message_id}")
+@routes.get("/stream/{message_id}/{filename}")
+async def stream_file(request):
+    """
+    MTProto High-Speed Chunk Streamer via Pyrogram.
+    Pipes binary chunks directly from Telegram servers to Jellyfin with Range seeking support.
+    """
+    msg_id_str = request.match_info.get("message_id") or request.query.get("message_id")
+    filename = request.match_info.get("filename", "video.mp4")
 
-        with open(strm_path, "w") as f:
-            f.write(stream_url)
-        
-        logger.info(f"[AUTO-SYNC] 🎉 Automatically indexed: {strm_filename} -> {strm_path}")
-        return strm_filename
-    return None
+    if not msg_id_str:
+        return web.Response(status=400, text="Missing message_id")
 
-@routes.post("/telegram-webhook")
-async def telegram_webhook(request):
-    """Instant Telegram Webhook Endpoint"""
     try:
-        update = await request.json()
-        post = update.get("channel_post") or update.get("message")
-        strm = process_telegram_post(post)
-        if strm:
-            await trigger_jellyfin_scan()
-        return web.json_response({"status": "ok"})
-    except Exception as e:
-        logger.error(f"[WEBHOOK] Error processing Telegram update: {e}")
-        return web.json_response({"status": "error", "message": str(e)}, status=400)
+        message_id = int(msg_id_str)
+    except ValueError:
+        return web.Response(status=400, text="Invalid message_id")
 
-def register_webhook_sync():
-    """Sets up Telegram Webhook automatically on startup using urllib"""
-    if not BOT_TOKEN:
+    if not tg_app or not tg_app.is_connected:
+        logger.error("[STREAM] Pyrogram Client is not connected!")
+        return web.Response(status=503, text="Telegram Client not connected")
+
+    chat_id = int(CHANNEL_ID) if CHANNEL_ID else None
+    if not chat_id:
+        return web.Response(status=400, text="TG_CHANNEL_ID not set")
+
+    try:
+        # Fetch Telegram Message via MTProto
+        message = await tg_app.get_messages(chat_id, message_id)
+        if not message or not message.media:
+            logger.error(f"[STREAM] Message {message_id} media not found in channel {chat_id}")
+            return web.Response(status=404, text=f"Media not found for message {message_id}")
+
+        media = getattr(message, message.media.value, None)
+        file_size = getattr(media, "file_size", 0)
+
+        # Parse HTTP Range header
+        range_header = request.headers.get("Range")
+        offset = 0
+        limit = file_size
+
+        if range_header:
+            match = re.match(r"^bytes=(\d+)-(\d+)?$", range_header)
+            if match:
+                start = int(match.group(1))
+                end = int(match.group(2)) if match.group(2) else file_size - 1
+                offset = start
+                limit = end - start + 1
+
+        # Calculate chunk parameters for Pyrogram (1MB chunks)
+        chunk_size = 1024 * 1024
+        chunk_offset = offset // chunk_size
+        chunk_limit = ((limit + chunk_size - 1) // chunk_size) + 1 if limit > 0 else 0
+
+        status = 206 if range_header else 200
+        headers = {
+            "Content-Type": "video/mp4",
+            "Accept-Ranges": "bytes",
+            "Access-Control-Allow-Origin": "*",
+            "Content-Disposition": f'inline; filename="{filename}"',
+            "Content-Length": str(limit if range_header else file_size)
+        }
+        if range_header:
+            headers["Content-Range"] = f"bytes {offset}-{offset + limit - 1}/{file_size}"
+
+        logger.info(f"[STREAM] Proxying Msg #{message_id} ({filename}) - Size: {file_size} bytes, Offset: {offset}, Limit: {limit}")
+
+        response = web.StreamResponse(status=status, headers=headers)
+        await response.prepare(request)
+
+        async for chunk in tg_app.stream_media(message, offset=chunk_offset, limit=chunk_limit):
+            await response.write(chunk)
+
+        return response
+    except RPCError as e:
+        logger.error(f"[STREAM] Pyrogram RPCError streaming message {message_id}: {e}")
+        return web.Response(status=500, text=f"Telegram API Error: {e}")
+    except Exception as e:
+        logger.error(f"[STREAM] Error streaming message {message_id}: {e}")
+        return web.Response(status=500, text=str(e))
+
+async def start_pyrogram():
+    """Starts Pyrogram Client & auto-scans channel history on boot"""
+    if not tg_app:
+        logger.warning("[PYROGRAM] Pyrogram client not configured (Missing TG_API_ID/TG_API_HASH/TG_BOT_TOKEN).")
         return
-    webhook_url = "https://jishnupg-opencode-cli.hf.space/tg-stream/telegram-webhook"
-    api_url = f"https://api.telegram.org/bot{BOT_TOKEN}/setWebhook?url={webhook_url}"
-    try:
-        import urllib.request
-        import json
-        import ssl
-        req = urllib.request.Request(api_url, headers={"User-Agent": "Mozilla/5.0"})
-        ctx = ssl._create_unverified_context()
-        with urllib.request.urlopen(req, timeout=10, context=ctx) as response:
-            data = json.loads(response.read().decode())
-            logger.info(f"[WEBHOOK] Telegram Webhook registration response: {data}")
-    except Exception as e:
-        logger.warning(f"[WEBHOOK] Webhook registration warning: {e}")
 
-async def setup_telegram_webhook():
-    await asyncio.to_thread(register_webhook_sync)
+    logger.info("[PYROGRAM] Starting Pyrogram MTProto Client...")
+    await tg_app.start()
+    logger.info("[PYROGRAM] Pyrogram Client started successfully!")
+
+    # Register live channel listener
+    if CHANNEL_ID:
+        try:
+            target_chat = int(CHANNEL_ID)
+            @tg_app.on_message(filters.chat(target_chat))
+            async def handle_new_post(client, message: Message):
+                if message.media:
+                    process_telegram_message(message)
+                    await trigger_jellyfin_scan()
+
+            # Initial channel history scan (recent 50 messages)
+            logger.info(f"[AUTO-SYNC] Scanning recent channel history for chat {target_chat}...")
+            async for message in tg_app.get_chat_history(target_chat, limit=50):
+                if message.media:
+                    process_telegram_message(message)
+            await trigger_jellyfin_scan()
+        except Exception as e:
+            logger.warning(f"[AUTO-SYNC] Channel listener/history setup warning: {e}")
+
+async def stop_pyrogram():
+    if tg_app and tg_app.is_connected:
+        await tg_app.stop()
 
 async def start_background_tasks(app):
-    await setup_telegram_webhook()
+    app['pyrogram_task'] = asyncio.create_task(start_pyrogram())
+
+async def cleanup_background_tasks(app):
+    await stop_pyrogram()
 
 app = web.Application()
 app.add_routes(routes)
 app.on_startup.append(start_background_tasks)
+app.on_cleanup.append(cleanup_background_tasks)
 
 if __name__ == "__main__":
-    logger.info(f"Starting TG-Drive Range Stream Proxy on {HOST}:{PORT}")
+    import socket
+    logger.info(f"Starting TG-Drive MTProto Stream Proxy on {HOST}:{PORT}")
     web.run_app(app, host=HOST, port=PORT)
