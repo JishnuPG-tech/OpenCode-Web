@@ -31,7 +31,7 @@ CACHE_FILE = os.path.join(DATA_DIR, "file_ids.json")
 CONFIG_FILE = os.path.join(DATA_DIR, "channel_config.json")
 os.makedirs(MEDIA_DIR, exist_ok=True)
 
-# Persistent mapping: message_id -> file_id and learned channel_id
+# Persistent mapping: message_id -> {file_id, chat_id, file_size, title}
 FILE_ID_CACHE = {}
 DETECTED_CHANNEL_ID = None
 
@@ -86,7 +86,6 @@ def get_candidate_chat_ids():
             try:
                 num = int(val)
                 candidates.append(num)
-                # Try adding or stripping -100 prefix
                 if str(num).startswith("-100"):
                     raw_num = int(str(num)[4:])
                     candidates.append(raw_num)
@@ -96,7 +95,6 @@ def get_candidate_chat_ids():
             except ValueError:
                 candidates.append(val)
                 
-    # Deduplicate candidate list
     seen = set()
     result = []
     for c in candidates:
@@ -146,7 +144,7 @@ def clean_movie_title(text):
     return text.strip()
 
 def process_telegram_message(message: Message):
-    """Generates .strm file in Jellyfin media directory for a Telegram Message"""
+    """Generates .strm file in Jellyfin media directory for a Pyrogram Message"""
     if not message or not message.media:
         return None
         
@@ -160,21 +158,25 @@ def process_telegram_message(message: Message):
         return None
 
     file_id = getattr(media, "file_id", None)
+    file_name = getattr(media, "file_name", None) or message.caption or f"Telegram_Movie_{msg_id}"
+    clean_title = clean_movie_title(file_name) or f"Movie_{msg_id}"
+
     if file_id:
         FILE_ID_CACHE[str(msg_id)] = {
             "file_id": file_id,
             "chat_id": chat_id,
-            "file_size": getattr(media, "file_size", 0)
+            "file_size": getattr(media, "file_size", 0),
+            "title": clean_title
         }
         save_cache()
 
-    file_name = getattr(media, "file_name", None) or message.caption or f"Telegram_Movie_{msg_id}"
-    clean_title = clean_movie_title(file_name) or f"Movie_{msg_id}"
-    
+    return create_strm_file(msg_id, file_id, clean_title)
+
+def create_strm_file(msg_id, file_id, clean_title):
+    """Writes .strm file into Jellyfin Movies directory"""
     strm_filename = f"{clean_title}.strm"
     strm_path = os.path.join(MEDIA_DIR, strm_filename)
     
-    # Always include file_id in stream URL for 100% instant fallback streaming!
     if file_id:
         stream_url = f"http://127.0.0.1:8080/stream_file?file_id={file_id}&message_id={msg_id}&filename={clean_title}.mp4"
     else:
@@ -183,7 +185,7 @@ def process_telegram_message(message: Message):
     with open(strm_path, "w") as f:
         f.write(stream_url)
     
-    logger.info(f"[AUTO-SYNC] 🎉 Indexed movie: {strm_filename} -> {strm_path}")
+    logger.info(f"[AUTO-SYNC] 🎉 Created movie .strm file: {strm_filename} -> {strm_path}")
     return strm_filename
 
 async def trigger_jellyfin_scan():
@@ -196,28 +198,56 @@ async def trigger_jellyfin_scan():
     except Exception as e:
         logger.warning(f"Could not trigger Jellyfin library refresh: {e}")
 
-def cleanup_orphan_strm_files():
-    """Removes old .strm files that reference missing media to prevent 404/FileNotFound errors in Jellyfin"""
+@routes.post("/")
+@routes.post("/telegram-webhook")
+@routes.post("/webhook")
+async def telegram_webhook(request):
+    """
+    Telegram Webhook Handler:
+    Parses live incoming channel posts / forwarded messages sent to the bot/channel,
+    extracts file_id + movie title, creates .strm file, and triggers Jellyfin rescan!
+    """
     try:
-        strm_files = glob.glob(os.path.join(MEDIA_DIR, "*.strm"))
-        removed = 0
-        for strm_path in strm_files:
-            try:
-                with open(strm_path, "r") as f:
-                    content = f.read().strip()
-                if "file_id=" not in content:
-                    match = re.search(r'/stream/(\d+)', content)
-                    if match:
-                        msg_id = match.group(1)
-                        if msg_id not in FILE_ID_CACHE:
-                            os.remove(strm_path)
-                            removed += 1
-            except Exception:
-                pass
-        if removed > 0:
-            logger.info(f"[CLEANUP] Cleaned {removed} orphan .strm file(s).")
+        data = await request.json()
+        logger.info(f"[WEBHOOK] Received update from Telegram: update_id={data.get('update_id')}")
+
+        post = data.get("channel_post") or data.get("message")
+        if not post:
+            return web.json_response({"ok": True})
+
+        msg_id = post.get("message_id")
+        chat = post.get("chat", {})
+        chat_id = chat.get("id")
+        if chat_id and chat_id != DETECTED_CHANNEL_ID:
+            save_channel_config(chat_id)
+
+        # Extract video / document / audio / animation media
+        media_obj = post.get("video") or post.get("document") or post.get("audio") or post.get("animation")
+        if not media_obj:
+            return web.json_response({"ok": True})
+
+        file_id = media_obj.get("file_id")
+        file_name = media_obj.get("file_name") or post.get("caption") or f"Telegram_Movie_{msg_id}"
+        file_size = media_obj.get("file_size", 0)
+        clean_title = clean_movie_title(file_name) or f"Movie_{msg_id}"
+
+        if file_id and msg_id:
+            FILE_ID_CACHE[str(msg_id)] = {
+                "file_id": file_id,
+                "chat_id": chat_id,
+                "file_size": file_size,
+                "title": clean_title
+            }
+            save_cache()
+
+            strm_name = create_strm_file(msg_id, file_id, clean_title)
+            logger.info(f"[WEBHOOK] 🎉 Successfully indexed movie from Webhook: {strm_name}")
+            await trigger_jellyfin_scan()
+
+        return web.json_response({"ok": True})
     except Exception as e:
-        logger.warning(f"[CLEANUP] Warning during cleanup: {e}")
+        logger.error(f"[WEBHOOK] Error processing webhook payload: {e}")
+        return web.json_response({"ok": True})
 
 async def stream_via_bot_api(request, file_id, filename):
     """Fallback Streamer using Telegram Bot API getFile + HTTP Range Proxy"""
@@ -288,7 +318,7 @@ async def stream_file(request):
         else:
             file_id = cached_entry
 
-    # Attempt 1: Try Pyrogram MTProto Direct Streaming
+    # Attempt 1: Pyrogram MTProto Direct Streaming
     if tg_app and tg_app.is_connected and msg_id_str:
         try:
             message_id = int(msg_id_str)
@@ -360,10 +390,26 @@ async def stream_file(request):
         return await stream_via_bot_api(request, file_id, filename)
 
     logger.error(f"[STREAM] Could not stream message {msg_id_str} - No valid MTProto peer or file_id.")
-    return web.Response(status=404, text=f"Media not available for message {msg_id_str}. Please forward the video file to your Telegram Channel.")
+    return web.Response(status=404, text=f"Media not available for message {msg_id_str}.")
+
+async def restore_cached_strm_files():
+    """Restores all cached movie .strm files from FILE_ID_CACHE on boot"""
+    count = 0
+    for msg_id, data in FILE_ID_CACHE.items():
+        if isinstance(data, dict):
+            file_id = data.get("file_id")
+            title = data.get("title") or f"Movie_{msg_id}"
+            if file_id and title:
+                create_strm_file(msg_id, file_id, title)
+                count += 1
+    if count > 0:
+        logger.info(f"[RESTORE] Restored {count} movie .strm file(s) from persistent disk cache.")
+        await trigger_jellyfin_scan()
 
 async def start_pyrogram():
-    """Starts Pyrogram Client, resolves candidate chats, and registers live message listener"""
+    """Starts Pyrogram Client, restores cached movies, and resolves candidate chats"""
+    await restore_cached_strm_files()
+
     if not tg_app:
         logger.warning("[PYROGRAM] Pyrogram client not configured.")
         return
@@ -371,8 +417,6 @@ async def start_pyrogram():
     logger.info("[PYROGRAM] Starting Pyrogram MTProto Client...")
     await tg_app.start()
     logger.info("[PYROGRAM] Pyrogram Client started successfully!")
-
-    cleanup_orphan_strm_files()
 
     # Register global message listener for any channel/chat the bot is in
     @tg_app.on_message(filters.channel | filters.group)
