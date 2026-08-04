@@ -112,21 +112,27 @@ async def telegram_webhook(request):
         logger.error(f"[WEBHOOK] Error processing Telegram update: {e}")
         return web.json_response({"status": "error", "message": str(e)}, status=400)
 
-async def setup_telegram_webhook():
-    """Sets up Telegram Webhook automatically on startup"""
+def register_webhook_sync():
+    """Sets up Telegram Webhook automatically on startup using urllib"""
     if not BOT_TOKEN:
         return
     webhook_url = "https://jishnupg-opencode-cli.hf.space/tg-stream/telegram-webhook"
     api_url = f"https://api.telegram.org/bot{BOT_TOKEN}/setWebhook?url={webhook_url}"
     try:
-        connector = aiohttp.TCPConnector(family=socket.AF_INET)
-        headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
-        async with aiohttp.ClientSession(connector=connector, headers=headers) as session:
-            async with session.get(api_url) as resp:
-                data = await resp.json()
-                logger.info(f"[WEBHOOK] Telegram Webhook registration response: {data}")
+        import urllib.request
+        import json
+        import ssl
+        req = urllib.request.Request(api_url, headers={"User-Agent": "Mozilla/5.0"})
+        ctx = ssl._create_unverified_context()
+        with urllib.request.urlopen(req, timeout=10, context=ctx) as response:
+            data = json.loads(response.read().decode())
+            logger.info(f"[WEBHOOK] Telegram Webhook registration response: {data}")
     except Exception as e:
         logger.warning(f"[WEBHOOK] Webhook registration warning: {e}")
+
+async def setup_telegram_webhook():
+    await asyncio.to_thread(register_webhook_sync)
+
 
 async def auto_sync_telegram_channel():
     """
