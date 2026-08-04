@@ -14,7 +14,7 @@ mkdir -p /data/share/opencode 2>/dev/null || echo "[WARN] Could not create /data
 mkdir -p /data/config/opencode 2>/dev/null || echo "[WARN] Could not create /data/config/opencode"
 mkdir -p /data/cache/opencode 2>/dev/null || echo "[WARN] Could not create /data/cache/opencode"
 mkdir -p /data/state/opencode 2>/dev/null || echo "[WARN] Could not create /data/state/opencode"
-mkdir -p /data/jellyfin/data /data/jellyfin/config /data/jellyfin/cache /data/jellyfin/log 2>/dev/null || true
+mkdir -p /data/jellyfin/data /data/jellyfin/config /data/jellyfin/cache /data/jellyfin/log /data/jellyfin/media/Movies /data/jellyfin/media/TVShows 2>/dev/null || true
 
 # Start Telegram Direct Range Stream Proxy in background
 echo "[INIT] Starting Telegram Direct Stream Proxy on port 8080..."
@@ -22,7 +22,7 @@ python3 /tg_streamer.py &
 
 # Start Jellyfin Media Server in background
 echo "[INIT] Starting Jellyfin Media Server on port 8096..."
-mkdir -p /data/jellyfin/data /data/jellyfin/config /data/jellyfin/cache /data/jellyfin/log 2>/dev/null || true
+
 
 WEBDIR_OPT=""
 if [ -d "/usr/share/jellyfin/web" ]; then
