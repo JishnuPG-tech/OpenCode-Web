@@ -2,6 +2,7 @@ import os
 import sys
 import re
 import json
+import glob
 import socket
 import logging
 import asyncio
@@ -43,7 +44,33 @@ def save_file_id_cache():
     except Exception as e:
         logger.warning(f"[CACHE] Error saving file_ids.json: {e}")
 
+def cleanup_orphan_strm_files():
+    """Removes old .strm files that reference message IDs without valid file_id mappings"""
+    try:
+        strm_files = glob.glob(os.path.join(MEDIA_DIR, "*.strm"))
+        removed_count = 0
+        for strm_path in strm_files:
+            try:
+                with open(strm_path, "r") as f:
+                    content = f.read().strip()
+                if "file_id=" not in content:
+                    # Legacy URL format: /stream/{message_id}/{filename}
+                    match = re.search(r'/stream/(\d+)', content)
+                    if match:
+                        msg_id = match.group(1)
+                        if msg_id not in FILE_ID_CACHE:
+                            os.remove(strm_path)
+                            removed_count += 1
+                            logger.info(f"[CLEANUP] Removed orphan .strm file without file_id: {strm_path}")
+            except Exception as e:
+                logger.warning(f"[CLEANUP] Error checking {strm_path}: {e}")
+        if removed_count > 0:
+            logger.info(f"[CLEANUP] Removed {removed_count} orphan .strm file(s).")
+    except Exception as e:
+        logger.warning(f"[CLEANUP] General cleanup error: {e}")
+
 load_file_id_cache()
+cleanup_orphan_strm_files()
 
 routes = web.RouteTableDef()
 
@@ -61,32 +88,6 @@ async def health(request):
         "mode": "Persistent Telegram Binary Streamer"
     })
 
-async def resolve_file_id_from_telegram(message_id):
-    """Fallback resolver: queries Telegram to discover file_id for message_id"""
-    if not BOT_TOKEN or not message_id:
-        return None
-    url = f"https://api.telegram.org/bot{BOT_TOKEN}/getUpdates"
-    connector = aiohttp.TCPConnector(family=socket.AF_INET)
-    headers = {"User-Agent": "Mozilla/5.0"}
-    try:
-        async with aiohttp.ClientSession(connector=connector, headers=headers) as session:
-            async with session.get(url, params={"offset": 0, "limit": 100}) as resp:
-                if resp.status == 200:
-                    data = await resp.json()
-                    for update in data.get("result", []):
-                        post = update.get("channel_post") or update.get("message")
-                        if post:
-                            m_id = post.get("message_id")
-                            video = post.get("video") or post.get("document")
-                            if video and m_id:
-                                f_id = video.get("file_id")
-                                if f_id:
-                                    FILE_ID_CACHE[str(m_id)] = f_id
-                    save_file_id_cache()
-    except Exception as e:
-        logger.warning(f"[RESOLVER] Error resolving file_id for msg {message_id}: {e}")
-    return FILE_ID_CACHE.get(str(message_id))
-
 @routes.get("/stream_file")
 @routes.get("/stream/{message_id}")
 @routes.get("/stream/{message_id}/{filename}")
@@ -101,13 +102,10 @@ async def stream_file(request):
 
     if not file_id and message_id:
         file_id = FILE_ID_CACHE.get(str(message_id))
-        if not file_id:
-            logger.info(f"[STREAM] file_id not in cache for msg {message_id}, attempting fallback resolution...")
-            file_id = await resolve_file_id_from_telegram(message_id)
 
     if not file_id or not BOT_TOKEN:
         logger.error(f"[STREAM] Missing file_id or BOT_TOKEN for message_id: {message_id}")
-        return web.Response(status=404, text=f"File ID or Bot Token not set for message_id {message_id}")
+        return web.Response(status=404, text=f"File ID not found for message {message_id}. Please re-forward the file to your Telegram channel.")
 
     connector = aiohttp.TCPConnector(family=socket.AF_INET)
     headers_req = {"User-Agent": "Mozilla/5.0"}
@@ -198,7 +196,7 @@ def process_telegram_post(post):
         strm_filename = f"{clean_title}.strm"
         strm_path = os.path.join(MEDIA_DIR, strm_filename)
         
-        # Use file_id directly in stream URL for instant lookup
+        # Write .strm file with file_id directly embedded
         if file_id:
             stream_url = f"http://127.0.0.1:8080/stream_file?file_id={file_id}&filename={clean_title}.mp4"
         else:
@@ -246,52 +244,12 @@ def register_webhook_sync():
 async def setup_telegram_webhook():
     await asyncio.to_thread(register_webhook_sync)
 
-async def auto_sync_telegram_channel():
-    """
-    IPv4-Forced Telegram Polling Fallback Loop
-    """
-    if not BOT_TOKEN:
-        logger.warning("[AUTO-SYNC] TG_BOT_TOKEN not configured, auto-sync paused.")
-        return
-
-    logger.info("[AUTO-SYNC] Starting IPv4 Telegram Channel listener bot...")
-    await setup_telegram_webhook()
-    
-    offset = 0
-    url = f"https://api.telegram.org/bot{BOT_TOKEN}/getUpdates"
-
-    connector = aiohttp.TCPConnector(family=socket.AF_INET)
-    headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
-    timeout_config = aiohttp.ClientTimeout(total=10, connect=5)
-
-    async with aiohttp.ClientSession(connector=connector, headers=headers, timeout=timeout_config) as session:
-        while True:
-            try:
-                params = {"offset": offset, "timeout": 0}
-                async with session.get(url, params=params) as resp:
-                    if resp.status == 200:
-                        data = await resp.json()
-                        for update in data.get("result", []):
-                            offset = update["update_id"] + 1
-                            post = update.get("channel_post") or update.get("message")
-                            strm = process_telegram_post(post)
-                            if strm:
-                                await trigger_jellyfin_scan()
-            except Exception as e:
-                pass
-            
-            await asyncio.sleep(5)
-
 async def start_background_tasks(app):
-    app['tg_sync_task'] = asyncio.create_task(auto_sync_telegram_channel())
-
-async def cleanup_background_tasks(app):
-    app['tg_sync_task'].cancel()
+    await setup_telegram_webhook()
 
 app = web.Application()
 app.add_routes(routes)
 app.on_startup.append(start_background_tasks)
-app.on_cleanup.append(cleanup_background_tasks)
 
 if __name__ == "__main__":
     logger.info(f"Starting TG-Drive Range Stream Proxy on {HOST}:{PORT}")
