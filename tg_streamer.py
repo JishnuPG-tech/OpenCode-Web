@@ -1,6 +1,7 @@
 import os
 import sys
 import re
+import json
 import socket
 import logging
 import asyncio
@@ -19,10 +20,30 @@ BOT_TOKEN = os.environ.get("TG_BOT_TOKEN")
 CHANNEL_ID = os.environ.get("TG_CHANNEL_ID")
 
 MEDIA_DIR = "/data/jellyfin/media/Movies"
+CACHE_FILE = "/data/jellyfin/file_ids.json"
 os.makedirs(MEDIA_DIR, exist_ok=True)
 
-# In-memory mapping from message_id -> file_id
+# Persistent mapping from message_id -> file_id
 FILE_ID_CACHE = {}
+
+def load_file_id_cache():
+    global FILE_ID_CACHE
+    if os.path.exists(CACHE_FILE):
+        try:
+            with open(CACHE_FILE, "r") as f:
+                FILE_ID_CACHE = json.load(f)
+                logger.info(f"[CACHE] Loaded {len(FILE_ID_CACHE)} file_ids from disk cache.")
+        except Exception as e:
+            logger.warning(f"[CACHE] Error loading file_ids.json: {e}")
+
+def save_file_id_cache():
+    try:
+        with open(CACHE_FILE, "w") as f:
+            json.dump(FILE_ID_CACHE, f, indent=2)
+    except Exception as e:
+        logger.warning(f"[CACHE] Error saving file_ids.json: {e}")
+
+load_file_id_cache()
 
 routes = web.RouteTableDef()
 
@@ -37,8 +58,34 @@ async def health(request):
         "channel_id": CHANNEL_ID or "Not set",
         "media_dir": MEDIA_DIR,
         "cached_files": len(FILE_ID_CACHE),
-        "mode": "Real Telegram Binary Streaming"
+        "mode": "Persistent Telegram Binary Streamer"
     })
+
+async def resolve_file_id_from_telegram(message_id):
+    """Fallback resolver: queries Telegram to discover file_id for message_id"""
+    if not BOT_TOKEN or not message_id:
+        return None
+    url = f"https://api.telegram.org/bot{BOT_TOKEN}/getUpdates"
+    connector = aiohttp.TCPConnector(family=socket.AF_INET)
+    headers = {"User-Agent": "Mozilla/5.0"}
+    try:
+        async with aiohttp.ClientSession(connector=connector, headers=headers) as session:
+            async with session.get(url, params={"offset": 0, "limit": 100}) as resp:
+                if resp.status == 200:
+                    data = await resp.json()
+                    for update in data.get("result", []):
+                        post = update.get("channel_post") or update.get("message")
+                        if post:
+                            m_id = post.get("message_id")
+                            video = post.get("video") or post.get("document")
+                            if video and m_id:
+                                f_id = video.get("file_id")
+                                if f_id:
+                                    FILE_ID_CACHE[str(m_id)] = f_id
+                    save_file_id_cache()
+    except Exception as e:
+        logger.warning(f"[RESOLVER] Error resolving file_id for msg {message_id}: {e}")
+    return FILE_ID_CACHE.get(str(message_id))
 
 @routes.get("/stream_file")
 @routes.get("/stream/{message_id}")
@@ -54,10 +101,13 @@ async def stream_file(request):
 
     if not file_id and message_id:
         file_id = FILE_ID_CACHE.get(str(message_id))
+        if not file_id:
+            logger.info(f"[STREAM] file_id not in cache for msg {message_id}, attempting fallback resolution...")
+            file_id = await resolve_file_id_from_telegram(message_id)
 
     if not file_id or not BOT_TOKEN:
         logger.error(f"[STREAM] Missing file_id or BOT_TOKEN for message_id: {message_id}")
-        return web.Response(status=404, text="File ID or Telegram Bot Token not set")
+        return web.Response(status=404, text=f"File ID or Bot Token not set for message_id {message_id}")
 
     connector = aiohttp.TCPConnector(family=socket.AF_INET)
     headers_req = {"User-Agent": "Mozilla/5.0"}
@@ -143,11 +193,12 @@ def process_telegram_post(post):
         
         if file_id:
             FILE_ID_CACHE[str(message_id)] = file_id
+            save_file_id_cache()
         
         strm_filename = f"{clean_title}.strm"
         strm_path = os.path.join(MEDIA_DIR, strm_filename)
         
-        # Use file_id in stream URL for direct lookup
+        # Use file_id directly in stream URL for instant lookup
         if file_id:
             stream_url = f"http://127.0.0.1:8080/stream_file?file_id={file_id}&filename={clean_title}.mp4"
         else:
