@@ -9,13 +9,19 @@ ENV XDG_STATE_HOME=/data/state
 
 ARG OPENCODE_VERSION=1.18.3
 
-# Install dependencies (including git for project initialization and python3 for DB self-healing)
+# Install dependencies (including git, python3, nodejs, and npm for OmniRoute)
 RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     ca-certificates \
     git \
     python3 \
+    nodejs \
+    npm \
  && rm -rf /var/lib/apt/lists/*
+
+# Install OmniRoute globally
+RUN npm install -g omniroute
+
 
 # Download opencode binary
 RUN curl -fsSL "https://github.com/anomalyco/opencode/releases/download/v${OPENCODE_VERSION}/opencode-linux-x64.tar.gz" \

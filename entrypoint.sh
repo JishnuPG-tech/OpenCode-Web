@@ -34,6 +34,16 @@ except Exception as e:
     print(f'[CONFIG] Error normalizing: {e}')
 " 2>/dev/null || true
 
+# Start OmniRoute AI Gateway in background
+echo "[INIT] Starting OmniRoute AI Gateway on port 20128..."
+if command -v omniroute >/dev/null 2>&1; then
+    omniroute serve --port 20128 --no-open &
+    echo "[INIT] OmniRoute started in background."
+else
+    echo "[WARN] omniroute binary not found, skipping background service."
+fi
+sleep 2
+
 python3 -c "
 import json, os
 p = '/data/config/opencode/opencode.json'
@@ -43,17 +53,22 @@ except Exception:
     d = {}
 d['\$schema'] = 'https://opencode.ai/config.json'
 d['server'] = d.get('server', {'port': 4096, 'hostname': '0.0.0.0'})
-# Model IDs require provider/model format: 'opencode/big-pickle' for Zen free models
+d['provider'] = d.get('provider', {})
+d['provider']['omniroute'] = {
+    'name': 'OmniRoute Gateway',
+    'endpoint': 'http://127.0.0.1:20128/v1',
+    'apiKey': 'omniroute'
+}
 if not os.environ.get('ANTHROPIC_API_KEY') and not os.environ.get('OPENAI_API_KEY'):
-    # Use opencode Zen free model with correct provider prefix
-    d['model'] = 'opencode/big-pickle'
+    d['model'] = d.get('model', 'omniroute/auto-best-coding')
 elif not d.get('model'):
-    d['model'] = 'opencode/big-pickle'
+    d['model'] = 'omniroute/auto-best-coding'
 json.dump(d, open(p, 'w'), indent=2)
 print('[CONFIG] Wrote config with model:', d.get('model'))
 " 2>/dev/null || true
 echo "[CONFIG] Current configuration:"
 cat /data/config/opencode/opencode.json 2>/dev/null || echo "{}"
+
 
 # Log disk space
 echo "[DISK] /data usage:"
