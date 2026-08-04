@@ -61,15 +61,6 @@ def save_cache():
     except Exception as e:
         logger.warning(f"[CACHE] Error saving file_ids.json: {e}")
 
-def save_channel_config(cid):
-    global DETECTED_CHANNEL_ID
-    DETECTED_CHANNEL_ID = cid
-    try:
-        with open(CONFIG_FILE, "w") as f:
-            json.dump({"channel_id": cid}, f, indent=2)
-    except Exception as e:
-        pass
-
 load_cache()
 
 # Persistent Pyrogram Bot Client
@@ -96,7 +87,7 @@ async def health(request):
     is_ready = bool(tg_app and tg_app.is_connected)
     return web.json_response({
         "status": "ok",
-        "service": "TG-Drive Direct FileId MTProto Streamer",
+        "service": "TG-Drive Direct FileId Streamer",
         "pyrogram_connected": is_ready,
         "cached_files": len(FILE_ID_CACHE),
         "media_dir": MEDIA_DIR
@@ -226,8 +217,11 @@ async def stream_via_bot_api(request, file_id, filename):
             response = web.StreamResponse(status=stream_resp.status, headers=resp_headers)
             await response.prepare(request)
             
-            async for chunk in stream_resp.content.iter_chunked(64 * 1024):
-                await response.write(chunk)
+            try:
+                async for chunk in stream_resp.content.iter_chunked(64 * 1024):
+                    await response.write(chunk)
+            except (ConnectionResetError, asyncio.CancelledError):
+                pass
             
             return response
 
@@ -238,7 +232,7 @@ async def stream_file(request):
     """
     Direct FileId MTProto Streamer:
     Streams movie bytes directly via Pyrogram MTProto using the raw file_id.
-    Zero peer resolution required! Zero channel requirements! Unlimited file size!
+    Handles socket closes cleanly without throwing false errors during FFmpeg probes!
     """
     file_id = request.query.get("file_id")
     msg_id_str = request.match_info.get("message_id") or request.query.get("message_id")
@@ -285,17 +279,19 @@ async def stream_file(request):
                 if range_header:
                     headers["Content-Range"] = f"bytes {offset}-{offset + limit - 1}/{file_size}"
 
-            logger.info(f"[MTPROTO-FILEID] Direct streaming ({filename}) via Pyrogram MTProto FileId")
-
             response = web.StreamResponse(status=status, headers=headers)
             await response.prepare(request)
 
-            async for chunk in tg_app.stream_media(file_id, offset=chunk_offset, limit=chunk_limit):
-                await response.write(chunk)
+            try:
+                async for chunk in tg_app.stream_media(file_id, offset=chunk_offset, limit=chunk_limit):
+                    await response.write(chunk)
+            except (ConnectionResetError, asyncio.CancelledError):
+                pass
 
             return response
         except Exception as e:
-            logger.warning(f"[STREAM] Direct MTProto stream via file_id failed ({e}), attempting Bot API fallback...")
+            if not isinstance(e, (ConnectionResetError, asyncio.CancelledError)):
+                logger.warning(f"[STREAM] MTProto stream notice ({e}), attempting Bot API fallback...")
 
     # Secondary Fallback: Bot API HTTP Proxy
     return await stream_via_bot_api(request, file_id, filename)
