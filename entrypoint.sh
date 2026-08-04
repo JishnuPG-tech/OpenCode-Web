@@ -59,9 +59,7 @@ d['provider']['omniroute'] = {
     'endpoint': 'http://127.0.0.1:20128/v1',
     'apiKey': 'omniroute'
 }
-if not os.environ.get('ANTHROPIC_API_KEY') and not os.environ.get('OPENAI_API_KEY'):
-    d['model'] = d.get('model', 'omniroute/auto-best-coding')
-elif not d.get('model'):
+if d.get('model') in [None, '', 'opencode/big-pickle', 'big-pickle', 'mimo-v2.5-free', 'opencode/mimo-v2.5-free']:
     d['model'] = 'omniroute/auto-best-coding'
 json.dump(d, open(p, 'w'), indent=2)
 print('[CONFIG] Wrote config with model:', d.get('model'))
