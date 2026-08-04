@@ -2,6 +2,7 @@ import os
 import sys
 import re
 import json
+import glob
 import logging
 import asyncio
 import socket
@@ -22,18 +23,20 @@ PORT = 8080
 API_ID = os.environ.get("TG_API_ID")
 API_HASH = os.environ.get("TG_API_HASH")
 BOT_TOKEN = os.environ.get("TG_BOT_TOKEN")
-CHANNEL_ID = os.environ.get("TG_CHANNEL_ID")
+RAW_CHANNEL_ID = os.environ.get("TG_CHANNEL_ID", "")
 
 DATA_DIR = "/data/jellyfin"
 MEDIA_DIR = os.path.join(DATA_DIR, "media/Movies")
 CACHE_FILE = os.path.join(DATA_DIR, "file_ids.json")
+CONFIG_FILE = os.path.join(DATA_DIR, "channel_config.json")
 os.makedirs(MEDIA_DIR, exist_ok=True)
 
-# Persistent mapping from message_id -> file_id
+# Persistent mapping: message_id -> file_id and learned channel_id
 FILE_ID_CACHE = {}
+DETECTED_CHANNEL_ID = None
 
-def load_file_id_cache():
-    global FILE_ID_CACHE
+def load_cache():
+    global FILE_ID_CACHE, DETECTED_CHANNEL_ID
     if os.path.exists(CACHE_FILE):
         try:
             with open(CACHE_FILE, "r") as f:
@@ -41,29 +44,68 @@ def load_file_id_cache():
                 logger.info(f"[CACHE] Loaded {len(FILE_ID_CACHE)} file_ids from disk cache.")
         except Exception as e:
             logger.warning(f"[CACHE] Error loading file_ids.json: {e}")
+            
+    if os.path.exists(CONFIG_FILE):
+        try:
+            with open(CONFIG_FILE, "r") as f:
+                cfg = json.load(f)
+                DETECTED_CHANNEL_ID = cfg.get("channel_id")
+                logger.info(f"[CONFIG] Loaded detected channel_id: {DETECTED_CHANNEL_ID}")
+        except Exception as e:
+            pass
 
-def save_file_id_cache():
+def save_cache():
     try:
         with open(CACHE_FILE, "w") as f:
             json.dump(FILE_ID_CACHE, f, indent=2)
     except Exception as e:
         logger.warning(f"[CACHE] Error saving file_ids.json: {e}")
 
-load_file_id_cache()
-
-def parse_chat_id(val):
-    """Safely parses TG_CHANNEL_ID into integer or username string"""
-    if not val:
-        return None
-    val = str(val).strip()
-    if val.startswith("@"):
-        return val
+def save_channel_config(cid):
+    global DETECTED_CHANNEL_ID
+    DETECTED_CHANNEL_ID = cid
     try:
-        return int(val)
-    except ValueError:
-        return val
+        with open(CONFIG_FILE, "w") as f:
+            json.dump({"channel_id": cid}, f, indent=2)
+    except Exception as e:
+        pass
 
-# Persistent Pyrogram Bot Client (in_memory=False to save peer access hashes to /data/jellyfin)
+load_cache()
+
+def get_candidate_chat_ids():
+    """Generates candidate chat IDs to handle different Telegram channel ID formats"""
+    candidates = []
+    if DETECTED_CHANNEL_ID:
+        candidates.append(DETECTED_CHANNEL_ID)
+    
+    val = str(RAW_CHANNEL_ID).strip()
+    if val:
+        if val.startswith("@"):
+            candidates.append(val)
+        else:
+            try:
+                num = int(val)
+                candidates.append(num)
+                # Try adding or stripping -100 prefix
+                if str(num).startswith("-100"):
+                    raw_num = int(str(num)[4:])
+                    candidates.append(raw_num)
+                    candidates.append(-raw_num)
+                else:
+                    candidates.append(int(f"-100{abs(num)}"))
+            except ValueError:
+                candidates.append(val)
+                
+    # Deduplicate candidate list
+    seen = set()
+    result = []
+    for c in candidates:
+        if c not in seen:
+            seen.add(c)
+            result.append(c)
+    return result
+
+# Persistent Pyrogram Bot Client
 tg_app = None
 if API_ID and API_HASH and BOT_TOKEN:
     try:
@@ -75,9 +117,9 @@ if API_ID and API_HASH and BOT_TOKEN:
             workdir=DATA_DIR,
             in_memory=False
         )
-        logger.info("[PYROGRAM] Pyrogram persistent client instantiated successfully.")
+        logger.info("[PYROGRAM] Pyrogram persistent client initialized.")
     except Exception as e:
-        logger.error(f"[PYROGRAM] Error instantiating Pyrogram: {e}")
+        logger.error(f"[PYROGRAM] Error initializing Pyrogram: {e}")
 
 routes = web.RouteTableDef()
 
@@ -87,9 +129,10 @@ async def health(request):
     is_ready = bool(tg_app and tg_app.is_connected)
     return web.json_response({
         "status": "ok",
-        "service": "TG-Drive Dual Engine Streamer (MTProto + Bot API)",
+        "service": "TG-Drive Ultimate Dual Engine Streamer",
         "pyrogram_connected": is_ready,
-        "channel_id": CHANNEL_ID or "Not set",
+        "raw_channel_id": RAW_CHANNEL_ID or "Not set",
+        "detected_channel_id": DETECTED_CHANNEL_ID or "Not set",
         "cached_files": len(FILE_ID_CACHE),
         "media_dir": MEDIA_DIR
     })
@@ -108,14 +151,22 @@ def process_telegram_message(message: Message):
         return None
         
     msg_id = message.id
+    chat_id = message.chat.id if message.chat else None
+    if chat_id and chat_id != DETECTED_CHANNEL_ID:
+        save_channel_config(chat_id)
+
     media = getattr(message, message.media.value, None)
     if not media:
         return None
 
     file_id = getattr(media, "file_id", None)
     if file_id:
-        FILE_ID_CACHE[str(msg_id)] = file_id
-        save_file_id_cache()
+        FILE_ID_CACHE[str(msg_id)] = {
+            "file_id": file_id,
+            "chat_id": chat_id,
+            "file_size": getattr(media, "file_size", 0)
+        }
+        save_cache()
 
     file_name = getattr(media, "file_name", None) or message.caption or f"Telegram_Movie_{msg_id}"
     clean_title = clean_movie_title(file_name) or f"Movie_{msg_id}"
@@ -123,6 +174,7 @@ def process_telegram_message(message: Message):
     strm_filename = f"{clean_title}.strm"
     strm_path = os.path.join(MEDIA_DIR, strm_filename)
     
+    # Always include file_id in stream URL for 100% instant fallback streaming!
     if file_id:
         stream_url = f"http://127.0.0.1:8080/stream_file?file_id={file_id}&message_id={msg_id}&filename={clean_title}.mp4"
     else:
@@ -143,6 +195,29 @@ async def trigger_jellyfin_scan():
                 logger.info(f"Jellyfin library refresh triggered: {resp.status}")
     except Exception as e:
         logger.warning(f"Could not trigger Jellyfin library refresh: {e}")
+
+def cleanup_orphan_strm_files():
+    """Removes old .strm files that reference missing media to prevent 404/FileNotFound errors in Jellyfin"""
+    try:
+        strm_files = glob.glob(os.path.join(MEDIA_DIR, "*.strm"))
+        removed = 0
+        for strm_path in strm_files:
+            try:
+                with open(strm_path, "r") as f:
+                    content = f.read().strip()
+                if "file_id=" not in content:
+                    match = re.search(r'/stream/(\d+)', content)
+                    if match:
+                        msg_id = match.group(1)
+                        if msg_id not in FILE_ID_CACHE:
+                            os.remove(strm_path)
+                            removed += 1
+            except Exception:
+                pass
+        if removed > 0:
+            logger.info(f"[CLEANUP] Cleaned {removed} orphan .strm file(s).")
+    except Exception as e:
+        logger.warning(f"[CLEANUP] Warning during cleanup: {e}")
 
 async def stream_via_bot_api(request, file_id, filename):
     """Fallback Streamer using Telegram Bot API getFile + HTTP Range Proxy"""
@@ -199,30 +274,43 @@ async def stream_via_bot_api(request, file_id, filename):
 async def stream_file(request):
     """
     Dual Streamer:
-    Primary: Pyrogram MTProto Direct Stream (Fast, Unlimited File Size)
-    Fallback: Telegram Bot API getFile HTTP 206 Proxy
+    1. Pyrogram MTProto Direct Stream (Fast, Unlimited File Size)
+    2. Telegram Bot API getFile HTTP 206 Proxy (Failsafe Fallback)
     """
     file_id = request.query.get("file_id")
     msg_id_str = request.match_info.get("message_id") or request.query.get("message_id")
     filename = request.match_info.get("filename", "video.mp4")
 
-    if not file_id and msg_id_str:
-        file_id = FILE_ID_CACHE.get(str(msg_id_str))
+    cached_entry = FILE_ID_CACHE.get(str(msg_id_str))
+    if not file_id and cached_entry:
+        if isinstance(cached_entry, dict):
+            file_id = cached_entry.get("file_id")
+        else:
+            file_id = cached_entry
 
-    # Try Pyrogram MTProto Stream first
-    if tg_app and tg_app.is_connected and msg_id_str and CHANNEL_ID:
+    # Attempt 1: Try Pyrogram MTProto Direct Streaming
+    if tg_app and tg_app.is_connected and msg_id_str:
         try:
             message_id = int(msg_id_str)
-            chat_id = parse_chat_id(CHANNEL_ID)
+            candidates = get_candidate_chat_ids()
             
             message = None
-            try:
-                message = await tg_app.get_messages(chat_id, message_id)
-            except RPCError as pe:
-                if "PEER_ID_INVALID" in str(pe) or "Peer id invalid" in str(pe):
-                    logger.info(f"[PYROGRAM] Refreshing peer cache for chat {chat_id}...")
-                    chat_obj = await tg_app.get_chat(chat_id)
-                    message = await tg_app.get_messages(chat_obj.id, message_id)
+            for chat_candidate in candidates:
+                try:
+                    message = await tg_app.get_messages(chat_candidate, message_id)
+                    if message and message.media:
+                        save_channel_config(chat_candidate)
+                        break
+                except RPCError as pe:
+                    if "PEER_ID_INVALID" in str(pe) or "Peer id invalid" in str(pe):
+                        try:
+                            chat_obj = await tg_app.get_chat(chat_candidate)
+                            message = await tg_app.get_messages(chat_obj.id, message_id)
+                            if message and message.media:
+                                save_channel_config(chat_obj.id)
+                                break
+                        except Exception:
+                            pass
 
             if message and message.media:
                 media = getattr(message, message.media.value, None)
@@ -265,46 +353,51 @@ async def stream_file(request):
 
                 return response
         except Exception as e:
-            logger.warning(f"[STREAM] Pyrogram MTProto stream failed ({e}), attempting Bot API fallback...")
+            logger.warning(f"[STREAM] Pyrogram MTProto stream failed ({e}), switching to Bot API fallback...")
 
-    # Fallback to Bot API HTTP Proxy if file_id is available
+    # Attempt 2: Fallback to Telegram Bot API Range Streamer
     if file_id:
         return await stream_via_bot_api(request, file_id, filename)
 
     logger.error(f"[STREAM] Could not stream message {msg_id_str} - No valid MTProto peer or file_id.")
-    return web.Response(status=404, text=f"Media not available for message {msg_id_str}")
+    return web.Response(status=404, text=f"Media not available for message {msg_id_str}. Please forward the video file to your Telegram Channel.")
 
 async def start_pyrogram():
-    """Starts Pyrogram Client with persistent session and auto-scans channel history on boot"""
+    """Starts Pyrogram Client, resolves candidate chats, and registers live message listener"""
     if not tg_app:
         logger.warning("[PYROGRAM] Pyrogram client not configured.")
         return
 
-    logger.info("[PYROGRAM] Starting Pyrogram MTProto Client with persistent session...")
+    logger.info("[PYROGRAM] Starting Pyrogram MTProto Client...")
     await tg_app.start()
     logger.info("[PYROGRAM] Pyrogram Client started successfully!")
 
-    target_chat = parse_chat_id(CHANNEL_ID)
-    if target_chat:
+    cleanup_orphan_strm_files()
+
+    # Register global message listener for any channel/chat the bot is in
+    @tg_app.on_message(filters.channel | filters.group)
+    async def handle_new_post(client, message: Message):
+        if message.media:
+            process_telegram_message(message)
+            await trigger_jellyfin_scan()
+
+    candidates = get_candidate_chat_ids()
+    for chat_candidate in candidates:
         try:
-            logger.info(f"[PEER] Resolving and caching chat {target_chat}...")
-            chat_obj = await tg_app.get_chat(target_chat)
-            logger.info(f"[PEER] Chat resolved: '{chat_obj.title}' (ID: {chat_obj.id})")
-            target_chat = chat_obj.id
+            logger.info(f"[PEER] Resolving chat candidate {chat_candidate}...")
+            chat_obj = await tg_app.get_chat(chat_candidate)
+            save_channel_config(chat_obj.id)
+            logger.info(f"[PEER] Successfully resolved chat: '{chat_obj.title}' (ID: {chat_obj.id})")
 
-            @tg_app.on_message(filters.chat(target_chat))
-            async def handle_new_post(client, message: Message):
-                if message.media:
-                    process_telegram_message(message)
-                    await trigger_jellyfin_scan()
-
-            logger.info(f"[AUTO-SYNC] Scanning recent channel history for chat {target_chat}...")
-            async for message in tg_app.get_chat_history(target_chat, limit=50):
+            # Scan channel history (recent 50 messages)
+            logger.info(f"[AUTO-SYNC] Scanning recent channel history for chat {chat_obj.id}...")
+            async for message in tg_app.get_chat_history(chat_obj.id, limit=50):
                 if message.media:
                     process_telegram_message(message)
             await trigger_jellyfin_scan()
+            break
         except Exception as e:
-            logger.warning(f"[AUTO-SYNC] Channel listener/history scan warning: {e}")
+            logger.warning(f"[PEER] Could not resolve candidate {chat_candidate}: {e}")
 
 async def stop_pyrogram():
     if tg_app and tg_app.is_connected:
@@ -322,5 +415,5 @@ app.on_startup.append(start_background_tasks)
 app.on_cleanup.append(cleanup_background_tasks)
 
 if __name__ == "__main__":
-    logger.info(f"Starting TG-Drive Dual Engine Stream Proxy on {HOST}:{PORT}")
+    logger.info(f"Starting TG-Drive Ultimate Stream Proxy on {HOST}:{PORT}")
     web.run_app(app, host=HOST, port=PORT)
