@@ -21,9 +21,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     g++ \
  && rm -rf /var/lib/apt/lists/*
 
-# Install Node.js 22 LTS (required for OmniRoute & undici dependencies)
-RUN curl -fsSL https://nodejs.org/dist/v22.14.0/node-v22.14.0-linux-x64.tar.gz \
+# Install Node.js 24 (recommended for OmniRoute secure runtime)
+RUN curl -fsSL https://nodejs.org/dist/v24.0.0/node-v24.0.0-linux-x64.tar.gz \
     | tar -xz -C /usr/local --strip-components=1
+
 
 # Install OmniRoute globally
 RUN npm install -g omniroute
