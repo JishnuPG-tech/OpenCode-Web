@@ -22,11 +22,22 @@ python3 /tg_streamer.py &
 
 # Start Jellyfin Media Server in background
 echo "[INIT] Starting Jellyfin Media Server on port 8096..."
-if command -v jellyfin-server >/dev/null 2>&1; then
-    jellyfin-server --datadir /data/jellyfin/data --configdir /data/jellyfin/config --cachedir /data/jellyfin/cache --logdir /data/jellyfin/log &
-elif command -v jellyfin >/dev/null 2>&1; then
-    jellyfin --datadir /data/jellyfin/data --configdir /data/jellyfin/config --cachedir /data/jellyfin/cache --logdir /data/jellyfin/log &
+export JELLYFIN_DATA_DIR=/data/jellyfin/data
+export JELLYFIN_CONFIG_DIR=/data/jellyfin/config
+export JELLYFIN_CACHE_DIR=/data/jellyfin/cache
+export JELLYFIN_LOG_DIR=/data/jellyfin/log
+
+if command -v jellyfin >/dev/null 2>&1; then
+    jellyfin --http-port 8096 &
+elif command -v jellyfin-server >/dev/null 2>&1; then
+    jellyfin-server --http-port 8096 &
+elif [ -f "/usr/bin/jellyfin" ]; then
+    /usr/bin/jellyfin --http-port 8096 &
+else
+    echo "[WARN] Could not find jellyfin binary"
 fi
+sleep 2
+
 
 # Ensure config exists with correct model setting
 echo "[CONFIG] Setting up default configuration..."
