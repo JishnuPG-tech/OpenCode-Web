@@ -89,12 +89,13 @@ async def auto_sync_telegram_channel():
     offset = 0
     url = f"https://api.telegram.org/bot{BOT_TOKEN}/getUpdates"
 
-    timeout_config = aiohttp.ClientTimeout(total=45, connect=10)
+    timeout_config = aiohttp.ClientTimeout(total=15, connect=10)
     async with aiohttp.ClientSession(timeout=timeout_config) as session:
         while True:
             try:
-                params = {"offset": offset, "timeout": 10}
+                params = {"offset": offset, "timeout": 0}
                 async with session.get(url, params=params) as resp:
+
 
                     if resp.status == 200:
                         data = await resp.json()
