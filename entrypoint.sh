@@ -14,10 +14,23 @@ mkdir -p /data/share/opencode 2>/dev/null || echo "[WARN] Could not create /data
 mkdir -p /data/config/opencode 2>/dev/null || echo "[WARN] Could not create /data/config/opencode"
 mkdir -p /data/cache/opencode 2>/dev/null || echo "[WARN] Could not create /data/cache/opencode"
 mkdir -p /data/state/opencode 2>/dev/null || echo "[WARN] Could not create /data/state/opencode"
+mkdir -p /data/jellyfin/data /data/jellyfin/config /data/jellyfin/cache /data/jellyfin/log 2>/dev/null || true
+
+# Start Telegram Direct Range Stream Proxy in background
+echo "[INIT] Starting Telegram Direct Stream Proxy on port 8080..."
+python3 /tg_streamer.py &
+
+# Start Jellyfin Media Server in background
+echo "[INIT] Starting Jellyfin Media Server on port 8096..."
+if command -v jellyfin-server >/dev/null 2>&1; then
+    jellyfin-server --datadir /data/jellyfin/data --configdir /data/jellyfin/config --cachedir /data/jellyfin/cache --logdir /data/jellyfin/log &
+elif command -v jellyfin >/dev/null 2>&1; then
+    jellyfin --datadir /data/jellyfin/data --configdir /data/jellyfin/config --cachedir /data/jellyfin/cache --logdir /data/jellyfin/log &
+fi
 
 # Ensure config exists with correct model setting
-# Model IDs MUST use "provider/model" format per OpenCode docs (e.g. "opencode/big-pickle")
 echo "[CONFIG] Setting up default configuration..."
+
 
 # Remove stale config that may have wrong model format
 python3 -c "
