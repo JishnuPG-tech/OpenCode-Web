@@ -26,6 +26,18 @@ CHANNEL_ID = os.environ.get("TG_CHANNEL_ID")
 MEDIA_DIR = "/data/jellyfin/media/Movies"
 os.makedirs(MEDIA_DIR, exist_ok=True)
 
+def parse_chat_id(val):
+    """Safely parses TG_CHANNEL_ID into integer or username string"""
+    if not val:
+        return None
+    val = str(val).strip()
+    if val.startswith("@"):
+        return val
+    try:
+        return int(val)
+    except ValueError:
+        return val
+
 # Initialize Pyrogram Bot Client
 tg_app = None
 if API_ID and API_HASH and BOT_TOKEN:
@@ -98,6 +110,17 @@ async def trigger_jellyfin_scan():
     except Exception as e:
         logger.warning(f"Could not trigger Jellyfin library refresh: {e}")
 
+async def get_telegram_message_with_retry(chat_id, message_id):
+    """Fetches a message from Telegram, resolving and caching channel peer if needed"""
+    try:
+        return await tg_app.get_messages(chat_id, message_id)
+    except RPCError as e:
+        if "PEER_ID_INVALID" in str(e) or "Peer id invalid" in str(e) or "ID_INVALID" in str(e):
+            logger.info(f"[PEER] Resolving and caching chat peer for {chat_id}...")
+            chat_obj = await tg_app.get_chat(chat_id)
+            return await tg_app.get_messages(chat_obj.id, message_id)
+        raise
+
 @routes.get("/stream_file")
 @routes.get("/stream/{message_id}")
 @routes.get("/stream/{message_id}/{filename}")
@@ -121,13 +144,13 @@ async def stream_file(request):
         logger.error("[STREAM] Pyrogram Client is not connected!")
         return web.Response(status=503, text="Telegram Client not connected")
 
-    chat_id = int(CHANNEL_ID) if CHANNEL_ID else None
+    chat_id = parse_chat_id(CHANNEL_ID)
     if not chat_id:
         return web.Response(status=400, text="TG_CHANNEL_ID not set")
 
     try:
-        # Fetch Telegram Message via MTProto
-        message = await tg_app.get_messages(chat_id, message_id)
+        # Fetch Telegram Message via MTProto with auto peer resolution
+        message = await get_telegram_message_with_retry(chat_id, message_id)
         if not message or not message.media:
             logger.error(f"[STREAM] Message {message_id} media not found in channel {chat_id}")
             return web.Response(status=404, text=f"Media not found for message {message_id}")
@@ -190,24 +213,30 @@ async def start_pyrogram():
     await tg_app.start()
     logger.info("[PYROGRAM] Pyrogram Client started successfully!")
 
-    # Register live channel listener
-    if CHANNEL_ID:
+    target_chat = parse_chat_id(CHANNEL_ID)
+    if target_chat:
         try:
-            target_chat = int(CHANNEL_ID)
+            # Resolve and cache the peer ID in Pyrogram's internal database
+            logger.info(f"[PEER] Pre-resolving peer for chat {target_chat}...")
+            chat_obj = await tg_app.get_chat(target_chat)
+            logger.info(f"[PEER] Resolved chat: '{chat_obj.title}' (ID: {chat_obj.id})")
+            target_chat = chat_obj.id
+
+            # Register live channel message handler
             @tg_app.on_message(filters.chat(target_chat))
             async def handle_new_post(client, message: Message):
                 if message.media:
                     process_telegram_message(message)
                     await trigger_jellyfin_scan()
 
-            # Initial channel history scan (recent 50 messages)
+            # Scan channel history (recent 50 messages)
             logger.info(f"[AUTO-SYNC] Scanning recent channel history for chat {target_chat}...")
             async for message in tg_app.get_chat_history(target_chat, limit=50):
                 if message.media:
                     process_telegram_message(message)
             await trigger_jellyfin_scan()
         except Exception as e:
-            logger.warning(f"[AUTO-SYNC] Channel listener/history setup warning: {e}")
+            logger.warning(f"[AUTO-SYNC] Channel peer resolution / history scan warning: {e}")
 
 async def stop_pyrogram():
     if tg_app and tg_app.is_connected:
