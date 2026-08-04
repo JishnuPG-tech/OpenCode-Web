@@ -72,37 +72,6 @@ def save_channel_config(cid):
 
 load_cache()
 
-def get_candidate_chat_ids():
-    """Generates candidate chat IDs to handle different Telegram channel ID formats"""
-    candidates = []
-    if DETECTED_CHANNEL_ID:
-        candidates.append(DETECTED_CHANNEL_ID)
-    
-    val = str(RAW_CHANNEL_ID).strip()
-    if val:
-        if val.startswith("@"):
-            candidates.append(val)
-        else:
-            try:
-                num = int(val)
-                candidates.append(num)
-                if str(num).startswith("-100"):
-                    raw_num = int(str(num)[4:])
-                    candidates.append(raw_num)
-                    candidates.append(-raw_num)
-                else:
-                    candidates.append(int(f"-100{abs(num)}"))
-            except ValueError:
-                candidates.append(val)
-                
-    seen = set()
-    result = []
-    for c in candidates:
-        if c not in seen:
-            seen.add(c)
-            result.append(c)
-    return result
-
 # Persistent Pyrogram Bot Client
 tg_app = None
 if API_ID and API_HASH and BOT_TOKEN:
@@ -127,10 +96,8 @@ async def health(request):
     is_ready = bool(tg_app and tg_app.is_connected)
     return web.json_response({
         "status": "ok",
-        "service": "TG-Drive Ultimate Dual Engine Streamer",
+        "service": "TG-Drive Direct FileId MTProto Streamer",
         "pyrogram_connected": is_ready,
-        "raw_channel_id": RAW_CHANNEL_ID or "Not set",
-        "detected_channel_id": DETECTED_CHANNEL_ID or "Not set",
         "cached_files": len(FILE_ID_CACHE),
         "media_dir": MEDIA_DIR
     })
@@ -143,44 +110,12 @@ def clean_movie_title(text):
     text = text.replace('.', ' ').replace('_', ' ')
     return text.strip()
 
-def process_telegram_message(message: Message):
-    """Generates .strm file in Jellyfin media directory for a Pyrogram Message"""
-    if not message or not message.media:
-        return None
-        
-    msg_id = message.id
-    chat_id = message.chat.id if message.chat else None
-    if chat_id and chat_id != DETECTED_CHANNEL_ID:
-        save_channel_config(chat_id)
-
-    media = getattr(message, message.media.value, None)
-    if not media:
-        return None
-
-    file_id = getattr(media, "file_id", None)
-    file_name = getattr(media, "file_name", None) or message.caption or f"Telegram_Movie_{msg_id}"
-    clean_title = clean_movie_title(file_name) or f"Movie_{msg_id}"
-
-    if file_id:
-        FILE_ID_CACHE[str(msg_id)] = {
-            "file_id": file_id,
-            "chat_id": chat_id,
-            "file_size": getattr(media, "file_size", 0),
-            "title": clean_title
-        }
-        save_cache()
-
-    return create_strm_file(msg_id, file_id, clean_title)
-
 def create_strm_file(msg_id, file_id, clean_title):
     """Writes .strm file into Jellyfin Movies directory"""
     strm_filename = f"{clean_title}.strm"
     strm_path = os.path.join(MEDIA_DIR, strm_filename)
     
-    if file_id:
-        stream_url = f"http://127.0.0.1:8080/stream_file?file_id={file_id}&message_id={msg_id}&filename={clean_title}.mp4"
-    else:
-        stream_url = f"http://127.0.0.1:8080/stream/{msg_id}/{clean_title}.mp4"
+    stream_url = f"http://127.0.0.1:8080/stream_file?file_id={file_id}&message_id={msg_id}&filename={clean_title}.mp4"
 
     with open(strm_path, "w") as f:
         f.write(stream_url)
@@ -218,8 +153,6 @@ async def telegram_webhook(request):
         msg_id = post.get("message_id")
         chat = post.get("chat", {})
         chat_id = chat.get("id")
-        if chat_id and chat_id != DETECTED_CHANNEL_ID:
-            save_channel_config(chat_id)
 
         # Extract video / document / audio / animation media
         media_obj = post.get("video") or post.get("document") or post.get("audio") or post.get("animation")
@@ -303,94 +236,69 @@ async def stream_via_bot_api(request, file_id, filename):
 @routes.get("/stream/{message_id}/{filename}")
 async def stream_file(request):
     """
-    Dual Streamer:
-    1. Pyrogram MTProto Direct Stream (Fast, Unlimited File Size)
-    2. Telegram Bot API getFile HTTP 206 Proxy (Failsafe Fallback)
+    Direct FileId MTProto Streamer:
+    Streams movie bytes directly via Pyrogram MTProto using the raw file_id.
+    Zero peer resolution required! Zero channel requirements! Unlimited file size!
     """
     file_id = request.query.get("file_id")
     msg_id_str = request.match_info.get("message_id") or request.query.get("message_id")
     filename = request.match_info.get("filename", "video.mp4")
 
     cached_entry = FILE_ID_CACHE.get(str(msg_id_str))
-    if not file_id and cached_entry:
-        if isinstance(cached_entry, dict):
+    file_size = 0
+    if isinstance(cached_entry, dict):
+        if not file_id:
             file_id = cached_entry.get("file_id")
-        else:
-            file_id = cached_entry
+        file_size = cached_entry.get("file_size", 0)
 
-    # Attempt 1: Pyrogram MTProto Direct Streaming
-    if tg_app and tg_app.is_connected and msg_id_str:
+    if not file_id:
+        return web.Response(status=404, text=f"Media not available for message {msg_id_str}.")
+
+    # Primary Direct Pyrogram MTProto Stream via file_id
+    if tg_app and tg_app.is_connected:
         try:
-            message_id = int(msg_id_str)
-            candidates = get_candidate_chat_ids()
-            
-            message = None
-            for chat_candidate in candidates:
-                try:
-                    message = await tg_app.get_messages(chat_candidate, message_id)
-                    if message and message.media:
-                        save_channel_config(chat_candidate)
-                        break
-                except RPCError as pe:
-                    if "PEER_ID_INVALID" in str(pe) or "Peer id invalid" in str(pe):
-                        try:
-                            chat_obj = await tg_app.get_chat(chat_candidate)
-                            message = await tg_app.get_messages(chat_obj.id, message_id)
-                            if message and message.media:
-                                save_channel_config(chat_obj.id)
-                                break
-                        except Exception:
-                            pass
+            range_header = request.headers.get("Range")
+            offset = 0
+            limit = file_size
 
-            if message and message.media:
-                media = getattr(message, message.media.value, None)
-                file_size = getattr(media, "file_size", 0)
+            if range_header and file_size > 0:
+                match = re.match(r"^bytes=(\d+)-(\d+)?$", range_header)
+                if match:
+                    start = int(match.group(1))
+                    end = int(match.group(2)) if match.group(2) else file_size - 1
+                    offset = start
+                    limit = end - start + 1
 
-                range_header = request.headers.get("Range")
-                offset = 0
-                limit = file_size
+            chunk_size = 1024 * 1024
+            chunk_offset = offset // chunk_size
+            chunk_limit = ((limit + chunk_size - 1) // chunk_size) + 1 if limit > 0 else 0
 
-                if range_header:
-                    match = re.match(r"^bytes=(\d+)-(\d+)?$", range_header)
-                    if match:
-                        start = int(match.group(1))
-                        end = int(match.group(2)) if match.group(2) else file_size - 1
-                        offset = start
-                        limit = end - start + 1
-
-                chunk_size = 1024 * 1024
-                chunk_offset = offset // chunk_size
-                chunk_limit = ((limit + chunk_size - 1) // chunk_size) + 1 if limit > 0 else 0
-
-                status = 206 if range_header else 200
-                headers = {
-                    "Content-Type": "video/mp4",
-                    "Accept-Ranges": "bytes",
-                    "Access-Control-Allow-Origin": "*",
-                    "Content-Disposition": f'inline; filename="{filename}"',
-                    "Content-Length": str(limit if range_header else file_size)
-                }
+            status = 206 if range_header and file_size > 0 else 200
+            headers = {
+                "Content-Type": "video/mp4",
+                "Accept-Ranges": "bytes",
+                "Access-Control-Allow-Origin": "*",
+                "Content-Disposition": f'inline; filename="{filename}"'
+            }
+            if file_size > 0:
+                headers["Content-Length"] = str(limit if range_header else file_size)
                 if range_header:
                     headers["Content-Range"] = f"bytes {offset}-{offset + limit - 1}/{file_size}"
 
-                logger.info(f"[PYROGRAM] Streaming Msg #{message_id} ({filename}) via MTProto")
+            logger.info(f"[MTPROTO-FILEID] Direct streaming ({filename}) via Pyrogram MTProto FileId")
 
-                response = web.StreamResponse(status=status, headers=headers)
-                await response.prepare(request)
+            response = web.StreamResponse(status=status, headers=headers)
+            await response.prepare(request)
 
-                async for chunk in tg_app.stream_media(message, offset=chunk_offset, limit=chunk_limit):
-                    await response.write(chunk)
+            async for chunk in tg_app.stream_media(file_id, offset=chunk_offset, limit=chunk_limit):
+                await response.write(chunk)
 
-                return response
+            return response
         except Exception as e:
-            logger.warning(f"[STREAM] Pyrogram MTProto stream failed ({e}), switching to Bot API fallback...")
+            logger.warning(f"[STREAM] Direct MTProto stream via file_id failed ({e}), attempting Bot API fallback...")
 
-    # Attempt 2: Fallback to Telegram Bot API Range Streamer
-    if file_id:
-        return await stream_via_bot_api(request, file_id, filename)
-
-    logger.error(f"[STREAM] Could not stream message {msg_id_str} - No valid MTProto peer or file_id.")
-    return web.Response(status=404, text=f"Media not available for message {msg_id_str}.")
+    # Secondary Fallback: Bot API HTTP Proxy
+    return await stream_via_bot_api(request, file_id, filename)
 
 async def restore_cached_strm_files():
     """Restores all cached movie .strm files from FILE_ID_CACHE on boot"""
@@ -407,7 +315,7 @@ async def restore_cached_strm_files():
         await trigger_jellyfin_scan()
 
 async def start_pyrogram():
-    """Starts Pyrogram Client, restores cached movies, and resolves candidate chats"""
+    """Starts Pyrogram Client and restores cached movies"""
     await restore_cached_strm_files()
 
     if not tg_app:
@@ -417,31 +325,6 @@ async def start_pyrogram():
     logger.info("[PYROGRAM] Starting Pyrogram MTProto Client...")
     await tg_app.start()
     logger.info("[PYROGRAM] Pyrogram Client started successfully!")
-
-    # Register global message listener for any channel/chat the bot is in
-    @tg_app.on_message(filters.channel | filters.group)
-    async def handle_new_post(client, message: Message):
-        if message.media:
-            process_telegram_message(message)
-            await trigger_jellyfin_scan()
-
-    candidates = get_candidate_chat_ids()
-    for chat_candidate in candidates:
-        try:
-            logger.info(f"[PEER] Resolving chat candidate {chat_candidate}...")
-            chat_obj = await tg_app.get_chat(chat_candidate)
-            save_channel_config(chat_obj.id)
-            logger.info(f"[PEER] Successfully resolved chat: '{chat_obj.title}' (ID: {chat_obj.id})")
-
-            # Scan channel history (recent 50 messages)
-            logger.info(f"[AUTO-SYNC] Scanning recent channel history for chat {chat_obj.id}...")
-            async for message in tg_app.get_chat_history(chat_obj.id, limit=50):
-                if message.media:
-                    process_telegram_message(message)
-            await trigger_jellyfin_scan()
-            break
-        except Exception as e:
-            logger.warning(f"[PEER] Could not resolve candidate {chat_candidate}: {e}")
 
 async def stop_pyrogram():
     if tg_app and tg_app.is_connected:
@@ -459,5 +342,5 @@ app.on_startup.append(start_background_tasks)
 app.on_cleanup.append(cleanup_background_tasks)
 
 if __name__ == "__main__":
-    logger.info(f"Starting TG-Drive Ultimate Stream Proxy on {HOST}:{PORT}")
+    logger.info(f"Starting TG-Drive Direct FileId Stream Proxy on {HOST}:{PORT}")
     web.run_app(app, host=HOST, port=PORT)
