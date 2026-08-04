@@ -4,6 +4,7 @@ import re
 import json
 import logging
 import asyncio
+import socket
 import aiohttp
 from aiohttp import web
 
@@ -23,8 +24,32 @@ API_HASH = os.environ.get("TG_API_HASH")
 BOT_TOKEN = os.environ.get("TG_BOT_TOKEN")
 CHANNEL_ID = os.environ.get("TG_CHANNEL_ID")
 
-MEDIA_DIR = "/data/jellyfin/media/Movies"
+DATA_DIR = "/data/jellyfin"
+MEDIA_DIR = os.path.join(DATA_DIR, "media/Movies")
+CACHE_FILE = os.path.join(DATA_DIR, "file_ids.json")
 os.makedirs(MEDIA_DIR, exist_ok=True)
+
+# Persistent mapping from message_id -> file_id
+FILE_ID_CACHE = {}
+
+def load_file_id_cache():
+    global FILE_ID_CACHE
+    if os.path.exists(CACHE_FILE):
+        try:
+            with open(CACHE_FILE, "r") as f:
+                FILE_ID_CACHE = json.load(f)
+                logger.info(f"[CACHE] Loaded {len(FILE_ID_CACHE)} file_ids from disk cache.")
+        except Exception as e:
+            logger.warning(f"[CACHE] Error loading file_ids.json: {e}")
+
+def save_file_id_cache():
+    try:
+        with open(CACHE_FILE, "w") as f:
+            json.dump(FILE_ID_CACHE, f, indent=2)
+    except Exception as e:
+        logger.warning(f"[CACHE] Error saving file_ids.json: {e}")
+
+load_file_id_cache()
 
 def parse_chat_id(val):
     """Safely parses TG_CHANNEL_ID into integer or username string"""
@@ -38,18 +63,19 @@ def parse_chat_id(val):
     except ValueError:
         return val
 
-# Initialize Pyrogram Bot Client
+# Persistent Pyrogram Bot Client (in_memory=False to save peer access hashes to /data/jellyfin)
 tg_app = None
 if API_ID and API_HASH and BOT_TOKEN:
     try:
         tg_app = Client(
-            "tg_jellyfin_streamer",
+            "tg_jellyfin_session",
             api_id=int(API_ID),
             api_hash=API_HASH,
             bot_token=BOT_TOKEN,
-            in_memory=True
+            workdir=DATA_DIR,
+            in_memory=False
         )
-        logger.info("[PYROGRAM] Pyrogram client instantiated successfully.")
+        logger.info("[PYROGRAM] Pyrogram persistent client instantiated successfully.")
     except Exception as e:
         logger.error(f"[PYROGRAM] Error instantiating Pyrogram: {e}")
 
@@ -61,11 +87,11 @@ async def health(request):
     is_ready = bool(tg_app and tg_app.is_connected)
     return web.json_response({
         "status": "ok",
-        "service": "TG-Drive MTProto Streamer & Auto-Sync Engine",
+        "service": "TG-Drive Dual Engine Streamer (MTProto + Bot API)",
         "pyrogram_connected": is_ready,
         "channel_id": CHANNEL_ID or "Not set",
-        "media_dir": MEDIA_DIR,
-        "mode": "Pyrogram MTProto High-Speed Direct Streamer"
+        "cached_files": len(FILE_ID_CACHE),
+        "media_dir": MEDIA_DIR
     })
 
 def clean_movie_title(text):
@@ -86,13 +112,21 @@ def process_telegram_message(message: Message):
     if not media:
         return None
 
+    file_id = getattr(media, "file_id", None)
+    if file_id:
+        FILE_ID_CACHE[str(msg_id)] = file_id
+        save_file_id_cache()
+
     file_name = getattr(media, "file_name", None) or message.caption or f"Telegram_Movie_{msg_id}"
     clean_title = clean_movie_title(file_name) or f"Movie_{msg_id}"
     
     strm_filename = f"{clean_title}.strm"
     strm_path = os.path.join(MEDIA_DIR, strm_filename)
     
-    stream_url = f"http://127.0.0.1:8080/stream/{msg_id}/{clean_title}.mp4"
+    if file_id:
+        stream_url = f"http://127.0.0.1:8080/stream_file?file_id={file_id}&message_id={msg_id}&filename={clean_title}.mp4"
+    else:
+        stream_url = f"http://127.0.0.1:8080/stream/{msg_id}/{clean_title}.mp4"
 
     with open(strm_path, "w") as f:
         f.write(stream_url)
@@ -110,133 +144,167 @@ async def trigger_jellyfin_scan():
     except Exception as e:
         logger.warning(f"Could not trigger Jellyfin library refresh: {e}")
 
-async def get_telegram_message_with_retry(chat_id, message_id):
-    """Fetches a message from Telegram, resolving and caching channel peer if needed"""
-    try:
-        return await tg_app.get_messages(chat_id, message_id)
-    except RPCError as e:
-        if "PEER_ID_INVALID" in str(e) or "Peer id invalid" in str(e) or "ID_INVALID" in str(e):
-            logger.info(f"[PEER] Resolving and caching chat peer for {chat_id}...")
-            chat_obj = await tg_app.get_chat(chat_id)
-            return await tg_app.get_messages(chat_obj.id, message_id)
-        raise
+async def stream_via_bot_api(request, file_id, filename):
+    """Fallback Streamer using Telegram Bot API getFile + HTTP Range Proxy"""
+    if not BOT_TOKEN or not file_id:
+        return web.Response(status=404, text="Missing file_id or BOT_TOKEN")
+
+    connector = aiohttp.TCPConnector(family=socket.AF_INET)
+    headers_req = {"User-Agent": "Mozilla/5.0"}
+    
+    async with aiohttp.ClientSession(connector=connector, headers=headers_req) as session:
+        get_file_url = f"https://api.telegram.org/bot{BOT_TOKEN}/getFile?file_id={file_id}"
+        async with session.get(get_file_url) as resp:
+            if resp.status != 200:
+                logger.error(f"[BOT-API] getFile failed with status {resp.status}")
+                return web.Response(status=resp.status, text="Failed to resolve file path from Telegram Bot API")
+            
+            data = await resp.json()
+            file_path = data.get("result", {}).get("file_path")
+            file_size = data.get("result", {}).get("file_size", 0)
+
+        if not file_path:
+            return web.Response(status=404, text="Telegram file path not found")
+
+        download_url = f"https://api.telegram.org/file/bot{BOT_TOKEN}/{file_path}"
+        pass_headers = {}
+        if "Range" in request.headers:
+            pass_headers["Range"] = request.headers["Range"]
+
+        logger.info(f"[BOT-API] Streaming {filename} via Bot API Proxy (Size: {file_size} bytes)")
+
+        async with session.get(download_url, headers=pass_headers) as stream_resp:
+            resp_headers = {
+                "Content-Type": "video/mp4",
+                "Accept-Ranges": "bytes",
+                "Access-Control-Allow-Origin": "*",
+                "Content-Disposition": f'inline; filename="{filename}"'
+            }
+            if "Content-Length" in stream_resp.headers:
+                resp_headers["Content-Length"] = stream_resp.headers["Content-Length"]
+            if "Content-Range" in stream_resp.headers:
+                resp_headers["Content-Range"] = stream_resp.headers["Content-Range"]
+
+            response = web.StreamResponse(status=stream_resp.status, headers=resp_headers)
+            await response.prepare(request)
+            
+            async for chunk in stream_resp.content.iter_chunked(64 * 1024):
+                await response.write(chunk)
+            
+            return response
 
 @routes.get("/stream_file")
 @routes.get("/stream/{message_id}")
 @routes.get("/stream/{message_id}/{filename}")
 async def stream_file(request):
     """
-    MTProto High-Speed Chunk Streamer via Pyrogram.
-    Pipes binary chunks directly from Telegram servers to Jellyfin with Range seeking support.
+    Dual Streamer:
+    Primary: Pyrogram MTProto Direct Stream (Fast, Unlimited File Size)
+    Fallback: Telegram Bot API getFile HTTP 206 Proxy
     """
+    file_id = request.query.get("file_id")
     msg_id_str = request.match_info.get("message_id") or request.query.get("message_id")
     filename = request.match_info.get("filename", "video.mp4")
 
-    if not msg_id_str:
-        return web.Response(status=400, text="Missing message_id")
+    if not file_id and msg_id_str:
+        file_id = FILE_ID_CACHE.get(str(msg_id_str))
 
-    try:
-        message_id = int(msg_id_str)
-    except ValueError:
-        return web.Response(status=400, text="Invalid message_id")
+    # Try Pyrogram MTProto Stream first
+    if tg_app and tg_app.is_connected and msg_id_str and CHANNEL_ID:
+        try:
+            message_id = int(msg_id_str)
+            chat_id = parse_chat_id(CHANNEL_ID)
+            
+            message = None
+            try:
+                message = await tg_app.get_messages(chat_id, message_id)
+            except RPCError as pe:
+                if "PEER_ID_INVALID" in str(pe) or "Peer id invalid" in str(pe):
+                    logger.info(f"[PYROGRAM] Refreshing peer cache for chat {chat_id}...")
+                    chat_obj = await tg_app.get_chat(chat_id)
+                    message = await tg_app.get_messages(chat_obj.id, message_id)
 
-    if not tg_app or not tg_app.is_connected:
-        logger.error("[STREAM] Pyrogram Client is not connected!")
-        return web.Response(status=503, text="Telegram Client not connected")
+            if message and message.media:
+                media = getattr(message, message.media.value, None)
+                file_size = getattr(media, "file_size", 0)
 
-    chat_id = parse_chat_id(CHANNEL_ID)
-    if not chat_id:
-        return web.Response(status=400, text="TG_CHANNEL_ID not set")
+                range_header = request.headers.get("Range")
+                offset = 0
+                limit = file_size
 
-    try:
-        # Fetch Telegram Message via MTProto with auto peer resolution
-        message = await get_telegram_message_with_retry(chat_id, message_id)
-        if not message or not message.media:
-            logger.error(f"[STREAM] Message {message_id} media not found in channel {chat_id}")
-            return web.Response(status=404, text=f"Media not found for message {message_id}")
+                if range_header:
+                    match = re.match(r"^bytes=(\d+)-(\d+)?$", range_header)
+                    if match:
+                        start = int(match.group(1))
+                        end = int(match.group(2)) if match.group(2) else file_size - 1
+                        offset = start
+                        limit = end - start + 1
 
-        media = getattr(message, message.media.value, None)
-        file_size = getattr(media, "file_size", 0)
+                chunk_size = 1024 * 1024
+                chunk_offset = offset // chunk_size
+                chunk_limit = ((limit + chunk_size - 1) // chunk_size) + 1 if limit > 0 else 0
 
-        # Parse HTTP Range header
-        range_header = request.headers.get("Range")
-        offset = 0
-        limit = file_size
+                status = 206 if range_header else 200
+                headers = {
+                    "Content-Type": "video/mp4",
+                    "Accept-Ranges": "bytes",
+                    "Access-Control-Allow-Origin": "*",
+                    "Content-Disposition": f'inline; filename="{filename}"',
+                    "Content-Length": str(limit if range_header else file_size)
+                }
+                if range_header:
+                    headers["Content-Range"] = f"bytes {offset}-{offset + limit - 1}/{file_size}"
 
-        if range_header:
-            match = re.match(r"^bytes=(\d+)-(\d+)?$", range_header)
-            if match:
-                start = int(match.group(1))
-                end = int(match.group(2)) if match.group(2) else file_size - 1
-                offset = start
-                limit = end - start + 1
+                logger.info(f"[PYROGRAM] Streaming Msg #{message_id} ({filename}) via MTProto")
 
-        # Calculate chunk parameters for Pyrogram (1MB chunks)
-        chunk_size = 1024 * 1024
-        chunk_offset = offset // chunk_size
-        chunk_limit = ((limit + chunk_size - 1) // chunk_size) + 1 if limit > 0 else 0
+                response = web.StreamResponse(status=status, headers=headers)
+                await response.prepare(request)
 
-        status = 206 if range_header else 200
-        headers = {
-            "Content-Type": "video/mp4",
-            "Accept-Ranges": "bytes",
-            "Access-Control-Allow-Origin": "*",
-            "Content-Disposition": f'inline; filename="{filename}"',
-            "Content-Length": str(limit if range_header else file_size)
-        }
-        if range_header:
-            headers["Content-Range"] = f"bytes {offset}-{offset + limit - 1}/{file_size}"
+                async for chunk in tg_app.stream_media(message, offset=chunk_offset, limit=chunk_limit):
+                    await response.write(chunk)
 
-        logger.info(f"[STREAM] Proxying Msg #{message_id} ({filename}) - Size: {file_size} bytes, Offset: {offset}, Limit: {limit}")
+                return response
+        except Exception as e:
+            logger.warning(f"[STREAM] Pyrogram MTProto stream failed ({e}), attempting Bot API fallback...")
 
-        response = web.StreamResponse(status=status, headers=headers)
-        await response.prepare(request)
+    # Fallback to Bot API HTTP Proxy if file_id is available
+    if file_id:
+        return await stream_via_bot_api(request, file_id, filename)
 
-        async for chunk in tg_app.stream_media(message, offset=chunk_offset, limit=chunk_limit):
-            await response.write(chunk)
-
-        return response
-    except RPCError as e:
-        logger.error(f"[STREAM] Pyrogram RPCError streaming message {message_id}: {e}")
-        return web.Response(status=500, text=f"Telegram API Error: {e}")
-    except Exception as e:
-        logger.error(f"[STREAM] Error streaming message {message_id}: {e}")
-        return web.Response(status=500, text=str(e))
+    logger.error(f"[STREAM] Could not stream message {msg_id_str} - No valid MTProto peer or file_id.")
+    return web.Response(status=404, text=f"Media not available for message {msg_id_str}")
 
 async def start_pyrogram():
-    """Starts Pyrogram Client & auto-scans channel history on boot"""
+    """Starts Pyrogram Client with persistent session and auto-scans channel history on boot"""
     if not tg_app:
-        logger.warning("[PYROGRAM] Pyrogram client not configured (Missing TG_API_ID/TG_API_HASH/TG_BOT_TOKEN).")
+        logger.warning("[PYROGRAM] Pyrogram client not configured.")
         return
 
-    logger.info("[PYROGRAM] Starting Pyrogram MTProto Client...")
+    logger.info("[PYROGRAM] Starting Pyrogram MTProto Client with persistent session...")
     await tg_app.start()
     logger.info("[PYROGRAM] Pyrogram Client started successfully!")
 
     target_chat = parse_chat_id(CHANNEL_ID)
     if target_chat:
         try:
-            # Resolve and cache the peer ID in Pyrogram's internal database
-            logger.info(f"[PEER] Pre-resolving peer for chat {target_chat}...")
+            logger.info(f"[PEER] Resolving and caching chat {target_chat}...")
             chat_obj = await tg_app.get_chat(target_chat)
-            logger.info(f"[PEER] Resolved chat: '{chat_obj.title}' (ID: {chat_obj.id})")
+            logger.info(f"[PEER] Chat resolved: '{chat_obj.title}' (ID: {chat_obj.id})")
             target_chat = chat_obj.id
 
-            # Register live channel message handler
             @tg_app.on_message(filters.chat(target_chat))
             async def handle_new_post(client, message: Message):
                 if message.media:
                     process_telegram_message(message)
                     await trigger_jellyfin_scan()
 
-            # Scan channel history (recent 50 messages)
             logger.info(f"[AUTO-SYNC] Scanning recent channel history for chat {target_chat}...")
             async for message in tg_app.get_chat_history(target_chat, limit=50):
                 if message.media:
                     process_telegram_message(message)
             await trigger_jellyfin_scan()
         except Exception as e:
-            logger.warning(f"[AUTO-SYNC] Channel peer resolution / history scan warning: {e}")
+            logger.warning(f"[AUTO-SYNC] Channel listener/history scan warning: {e}")
 
 async def stop_pyrogram():
     if tg_app and tg_app.is_connected:
@@ -254,6 +322,5 @@ app.on_startup.append(start_background_tasks)
 app.on_cleanup.append(cleanup_background_tasks)
 
 if __name__ == "__main__":
-    import socket
-    logger.info(f"Starting TG-Drive MTProto Stream Proxy on {HOST}:{PORT}")
+    logger.info(f"Starting TG-Drive Dual Engine Stream Proxy on {HOST}:{PORT}")
     web.run_app(app, host=HOST, port=PORT)
