@@ -51,6 +51,7 @@ RUN mkdir -p /projects/default
 COPY cleaner.py /cleaner.py
 COPY entrypoint.sh /entrypoint.sh
 COPY nginx.conf /nginx.conf
+COPY proxy.py /proxy.py
 COPY tg_streamer.py /tg_streamer.py
 RUN chmod +x /entrypoint.sh
 

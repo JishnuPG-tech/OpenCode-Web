@@ -1,0 +1,221 @@
+import os
+import re
+import asyncio
+from fastapi import FastAPI, Request, Response, WebSocket, WebSocketDisconnect
+from fastapi.responses import HTMLResponse, FileResponse, RedirectResponse
+import httpx
+import aiohttp
+
+app = FastAPI(title="OpenCode Space FastAPI Gateway", docs_url=None, redoc_url=None)
+
+# Target Ports
+WEBUI_PORT = 8098
+OMNIROUTE_PORT = 20128
+OPENCODE_PORT = 4097
+JELLYFIN_PORT = 8096
+TG_STREAM_PORT = 8080
+
+client = httpx.AsyncClient(timeout=120.0, follow_redirects=False)
+
+def get_headers(request: Request, extra_headers: dict = None):
+    headers = dict(request.headers)
+    headers.pop("host", None)
+    headers.pop("content-length", None)
+    headers["X-Forwarded-Host"] = "jishnupg-opencode-cli.hf.space"
+    headers["X-Forwarded-Proto"] = "https"
+    headers["X-Forwarded-Port"] = "443"
+    if extra_headers:
+        headers.update(extra_headers)
+    return headers
+
+async def proxy_http(target_url: str, request: Request, extra_headers: dict = None, sub_filters: list = None):
+    headers = get_headers(request, extra_headers)
+    method = request.method
+    params = dict(request.query_params)
+    body = await request.body()
+
+    try:
+        resp = await client.request(
+            method=method,
+            url=target_url,
+            headers=headers,
+            params=params,
+            content=body,
+        )
+    except Exception as e:
+        return Response(content=f"Gateway Error (Service Unavailable): {e}", status_code=502)
+
+    res_headers = {}
+    for k, v in resp.headers.items():
+        lk = k.lower()
+        if lk in ["content-length", "transfer-encoding", "content-encoding"]:
+            continue
+        if lk == "location":
+            v = re.sub(r"https?://[^/]+:4096/", "/", v)
+            v = re.sub(r"https?://[^/]+:20128/", "/omniroute/", v)
+            v = re.sub(r"https?://[^/]+:8098/", "/openwebui/", v)
+            v = re.sub(r"https?://[^/]+:4097/", "/server/", v)
+            v = re.sub(r"https?://[^/]+:8096/", "/jellyfin/", v)
+        res_headers[k] = v
+
+    content = resp.content
+    ctype = resp.headers.get("content-type", "")
+
+    if sub_filters and ("text/html" in ctype or "application/javascript" in ctype or "text/javascript" in ctype):
+        try:
+            text_str = content.decode("utf-8", errors="ignore")
+            for old_s, new_s in sub_filters:
+                text_str = text_str.replace(old_s, new_s)
+            content = text_str.encode("utf-8")
+        except Exception:
+            pass
+
+    return Response(
+        content=content,
+        status_code=resp.status_code,
+        headers=res_headers,
+        media_type=ctype if ctype else None
+    )
+
+async def proxy_ws(websocket: WebSocket, target_ws_url: str):
+    await websocket.accept()
+    async with aiohttp.ClientSession() as session:
+        headers = {k: v for k, v in websocket.headers.items() if k.lower() not in ["host", "sec-websocket-key", "sec-websocket-version", "sec-websocket-extensions"]}
+        try:
+            async with session.ws_connect(target_ws_url, headers=headers) as target_ws:
+                async def forward_to_client():
+                    async for msg in target_ws:
+                        if msg.type == aiohttp.WSMsgType.TEXT:
+                            await websocket.send_text(msg.data)
+                        elif msg.type == aiohttp.WSMsgType.BINARY:
+                            await websocket.send_bytes(msg.data)
+                        elif msg.type in (aiohttp.WSMsgType.CLOSE, aiohttp.WSMsgType.CLOSED):
+                            break
+
+                async def forward_to_target():
+                    while True:
+                        try:
+                            msg = await websocket.receive()
+                            if "text" in msg:
+                                await target_ws.send_str(msg["text"])
+                            elif "bytes" in msg:
+                                await target_ws.send_bytes(msg["bytes"])
+                            elif msg.get("type") == "websocket.disconnect":
+                                break
+                        except Exception:
+                            break
+
+                await asyncio.gather(forward_to_client(), forward_to_target(), return_exceptions=True)
+        except Exception as e:
+            try:
+                await websocket.close()
+            except Exception:
+                pass
+
+# ==========================================
+# 1. LANDING HUB ROUTE
+# ==========================================
+@app.get("/")
+async def root_hub():
+    if os.path.exists("/index.html"):
+        return FileResponse("/index.html", media_type="text/html")
+    return HTMLResponse("<h1>OpenCode Space Gateway Running</h1>")
+
+# ==========================================
+# 2. OPEN WEBUI ROUTES (/openwebui)
+# ==========================================
+@app.api_route("/openwebui/{path:path}", methods=["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"])
+async def openwebui_route(path: str, request: Request):
+    url = f"http://127.0.0.1:{WEBUI_PORT}/openwebui/{path}"
+    return await proxy_http(url, request, extra_headers={"X-Forwarded-Prefix": "/openwebui"})
+
+@app.api_route("/openwebui", methods=["GET"])
+async def openwebui_root_redirect():
+    return RedirectResponse("/openwebui/")
+
+# ==========================================
+# 3. OMNIROUTE GATEWAY ROUTES (/omniroute, /v1, /_next)
+# ==========================================
+OMNIROUTE_FILTERS = [
+    ('href="/', 'href="/omniroute/'),
+    ('src="/', 'src="/omniroute/'),
+    ('action="/', 'action="/omniroute/'),
+    ('="/_next/', '="/omniroute/_next/'),
+    ('"/_next/', '"/omniroute/_next/'),
+]
+
+@app.api_route("/omniroute/{path:path}", methods=["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"])
+async def omniroute_route(path: str, request: Request):
+    url = f"http://127.0.0.1:{OMNIROUTE_PORT}/{path}"
+    return await proxy_http(url, request, sub_filters=OMNIROUTE_FILTERS)
+
+@app.api_route("/omniroute", methods=["GET"])
+async def omniroute_root_redirect():
+    return RedirectResponse("/omniroute/")
+
+@app.api_route("/_next/{path:path}", methods=["GET", "POST", "OPTIONS"])
+async def omniroute_next(path: str, request: Request):
+    url = f"http://127.0.0.1:{OMNIROUTE_PORT}/_next/{path}"
+    return await proxy_http(url, request)
+
+@app.api_route("/v1/{path:path}", methods=["GET", "POST", "OPTIONS"])
+async def omniroute_v1(path: str, request: Request):
+    url = f"http://127.0.0.1:{OMNIROUTE_PORT}/v1/{path}"
+    return await proxy_http(url, request)
+
+# ==========================================
+# 4. OPENCODE CLI SERVER ROUTES (/server, /ws, APIs)
+# ==========================================
+OPENCODE_FILTERS = [
+    ('href="/', 'href="/server/'),
+    ('src="/', 'src="/server/'),
+]
+
+@app.api_route("/server/{path:path}", methods=["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"])
+async def opencode_server_route(path: str, request: Request):
+    url = f"http://127.0.0.1:{OPENCODE_PORT}/{path}"
+    return await proxy_http(url, request, sub_filters=OPENCODE_FILTERS)
+
+@app.api_route("/server", methods=["GET"])
+async def opencode_server_redirect():
+    return RedirectResponse("/server/")
+
+def make_endpoint_route(ep_name: str):
+    @app.api_route(f"/{ep_name}/{{path:path}}", methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"])
+    async def opencode_endpoint(path: str, request: Request):
+        url = f"http://127.0.0.1:{OPENCODE_PORT}/{ep_name}/{path}"
+        return await proxy_http(url, request)
+
+    @app.api_route(f"/{ep_name}", methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"])
+    async def opencode_endpoint_root(request: Request):
+        url = f"http://127.0.0.1:{OPENCODE_PORT}/{ep_name}"
+        return await proxy_http(url, request)
+
+for ep in ["session", "project", "config", "permission", "question", "file", "find", "events", "event"]:
+    make_endpoint_route(ep)
+
+# OpenCode WebSockets
+@app.websocket("/ws")
+async def opencode_ws(websocket: WebSocket):
+    target = f"ws://127.0.0.1:{OPENCODE_PORT}/ws"
+    await proxy_ws(websocket, target)
+
+# ==========================================
+# 5. JELLYFIN MEDIA SERVER ROUTES (/jellyfin)
+# ==========================================
+@app.api_route("/jellyfin/{path:path}", methods=["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"])
+async def jellyfin_route(path: str, request: Request):
+    url = f"http://127.0.0.1:{JELLYFIN_PORT}/{path}"
+    return await proxy_http(url, request, extra_headers={"X-Forwarded-Prefix": "/jellyfin"})
+
+@app.api_route("/jellyfin", methods=["GET"])
+async def jellyfin_redirect():
+    return RedirectResponse("/jellyfin/")
+
+# ==========================================
+# 6. TELEGRAM DIRECT STREAM PROXY (/tg-stream)
+# ==========================================
+@app.api_route("/tg-stream/{path:path}", methods=["GET", "HEAD", "OPTIONS"])
+async def tg_stream_route(path: str, request: Request):
+    url = f"http://127.0.0.1:{TG_STREAM_PORT}/{path}"
+    return await proxy_http(url, request)

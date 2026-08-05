@@ -83,6 +83,7 @@ if command -v open-webui >/dev/null 2>&1; then
     export PORT=8098
     export DATA_DIR="/data/open-webui"
     export CORS_ALLOW_ORIGIN="*"
+    export WEBUI_PREFIX="/openwebui"
     open-webui serve --port 8098 &
     echo "[INIT] Open WebUI started in background."
 else
@@ -168,7 +169,7 @@ if [ ! -d .git ]; then
 fi
 
 echo "============================================"
-echo "=== Launching OpenCode server & Nginx Proxy ==="
+echo "=== Launching FastAPI Gateway Proxy on Port 4096 ==="
 echo "============================================"
 
 # Remove any stale DB lock files one final time before starting opencode
@@ -188,14 +189,14 @@ _oc_start() {
             return 0
         fi
         echo "[OPENCODE] Attempt $attempt failed, waiting 2s before retry..."
-        # Clean lock files between retries
         rm -f /data/share/opencode/opencode.db-wal \
                /data/share/opencode/opencode.db-shm \
                /data/share/opencode/opencode.db.lock 2>/dev/null || true
         sleep 2
     done
-    echo "[OPENCODE] All start attempts failed - Nginx will still serve other services"
+    echo "[OPENCODE] All start attempts failed"
 }
 _oc_start
 
-exec nginx -g "daemon off;" -c /nginx.conf
+cd /
+exec python3 -m uvicorn proxy:app --host 0.0.0.0 --port 4096
