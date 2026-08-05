@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OpenCode Multi-Service Space</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-gradient: linear-gradient(135deg, #0f172a 0%, #1e1b4b 100%);
+            --card-bg: rgba(30, 41, 59, 0.7);
+            --card-border: rgba(255, 255, 255, 0.1);
+            --text-primary: #f8fafc;
+            --text-secondary: #94a3b8;
+            --accent-blue: #38bdf8;
+            --accent-purple: #c084fc;
+            --accent-green: #4ade80;
+            --accent-amber: #fbbf24;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+        }
+
+        body {
+            background: var(--bg-gradient);
+            color: var(--text-primary);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 2rem 1rem;
+        }
+
+        .container {
+            max-width: 900px;
+            width: 100%;
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 3rem;
+        }
+
+        .header h1 {
+            font-size: 2.5rem;
+            font-weight: 700;
+            background: linear-gradient(90deg, #38bdf8, #c084fc);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            margin-bottom: 0.75rem;
+        }
+
+        .header p {
+            color: var(--text-secondary);
+            font-size: 1.1rem;
+        }
+
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+            gap: 1.5rem;
+        }
+
+        .card {
+            background: var(--card-bg);
+            border: 1px solid var(--card-border);
+            border-radius: 1rem;
+            padding: 1.75rem;
+            text-decoration: none;
+            color: inherit;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            backdrop-filter: blur(12px);
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+        }
+
+        .card:hover {
+            transform: translateY(-4px);
+            border-color: rgba(255, 255, 255, 0.25);
+            box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.4), 0 8px 10px -6px rgba(0, 0, 0, 0.4);
+        }
+
+        .card-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 1rem;
+        }
+
+        .icon {
+            font-size: 2rem;
+        }
+
+        .badge {
+            font-size: 0.75rem;
+            font-weight: 600;
+            padding: 0.25rem 0.6rem;
+            border-radius: 9999px;
+            background: rgba(74, 222, 128, 0.15);
+            color: var(--accent-green);
+            border: 1px solid rgba(74, 222, 128, 0.3);
+        }
+
+        .card h2 {
+            font-size: 1.3rem;
+            font-weight: 600;
+            margin-bottom: 0.5rem;
+        }
+
+        .card p {
+            color: var(--text-secondary);
+            font-size: 0.9rem;
+            line-height: 1.5;
+            margin-bottom: 1.5rem;
+        }
+
+        .card-footer {
+            font-size: 0.85rem;
+            font-weight: 600;
+            color: var(--accent-blue);
+            display: flex;
+            align-items: center;
+            gap: 0.4rem;
+        }
+
+        .card:hover .card-footer {
+            text-decoration: underline;
+        }
+
+        footer {
+            margin-top: 4rem;
+            text-align: center;
+            color: var(--text-secondary);
+            font-size: 0.85rem;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>OpenCode Multi-Service Hub</h1>
+            <p>Select a service to open your application</p>
+        </div>
+
+        <div class="grid">
+            <!-- Open WebUI Card -->
+            <a href="/openwebui/" class="card">
+                <div>
+                    <div class="card-header">
+                        <span class="icon">🤖</span>
+                        <span class="badge">Online</span>
+                    </div>
+                    <h2>Open WebUI</h2>
+                    <p>Feature-rich AI chat interface connected to OmniRoute models.</p>
+                </div>
+                <div class="card-footer">
+                    Launch Open WebUI &rarr;
+                </div>
+            </a>
+
+            <!-- OmniRoute Card -->
+            <a href="/omniroute/" class="card">
+                <div>
+                    <div class="card-header">
+                        <span class="icon">⚡</span>
+                        <span class="badge">Online</span>
+                    </div>
+                    <h2>OmniRoute AI Gateway</h2>
+                    <p>AI model router dashboard and multi-provider management.</p>
+                </div>
+                <div class="card-footer">
+                    Launch OmniRoute &rarr;
+                </div>
+            </a>
+
+            <!-- OpenCode Server Card -->
+            <a href="/server/" class="card">
+                <div>
+                    <div class="card-header">
+                        <span class="icon">💻</span>
+                        <span class="badge">Online</span>
+                    </div>
+                    <h2>OpenCode Server</h2>
+                    <p>Backend API server for OpenCode mobile client and remote CLI.</p>
+                </div>
+                <div class="card-footer">
+                    Launch Server API &rarr;
+                </div>
+            </a>
+
+            <!-- Jellyfin Card -->
+            <a href="/jellyfin/" class="card">
+                <div>
+                    <div class="card-header">
+                        <span class="icon">🎬</span>
+                        <span class="badge">Online</span>
+                    </div>
+                    <h2>Jellyfin Media Server</h2>
+                    <p>Stream movies, TV shows, and Telegram Drive media files.</p>
+                </div>
+                <div class="card-footer">
+                    Launch Jellyfin &rarr;
+                </div>
+            </a>
+        </div>
+
+        <footer>
+            Hugging Face Space &bull; OpenCode Multi-Service Container
+        </footer>
+    </div>
+</body>
+</html>
