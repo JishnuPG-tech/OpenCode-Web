@@ -15,7 +15,14 @@ mkdir -p /data/config/opencode 2>/dev/null || echo "[WARN] Could not create /dat
 mkdir -p /data/cache/opencode 2>/dev/null || echo "[WARN] Could not create /data/cache/opencode"
 mkdir -p /data/state/opencode 2>/dev/null || echo "[WARN] Could not create /data/state/opencode"
 mkdir -p /data/open-webui 2>/dev/null || echo "[WARN] Could not create /data/open-webui"
+mkdir -p /data/omniroute 2>/dev/null || echo "[WARN] Could not create /data/omniroute"
 mkdir -p /data/jellyfin/data /data/jellyfin/config /data/jellyfin/cache /data/jellyfin/log /data/jellyfin/media/Movies /data/jellyfin/media/TVShows 2>/dev/null || true
+
+# Symlink OmniRoute data directory to /data/omniroute for 100% persistence
+if [ ! -L "/root/.omniroute" ]; then
+    rm -rf /root/.omniroute 2>/dev/null || true
+    ln -sf /data/omniroute /root/.omniroute
+fi
 
 # Start Telegram Direct Range Stream Proxy in background
 echo "[INIT] Starting Telegram Direct Stream Proxy on port 8080..."
