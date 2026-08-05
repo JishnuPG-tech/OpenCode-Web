@@ -75,6 +75,7 @@ if command -v open-webui >/dev/null 2>&1; then
     export ENABLE_OPENAI_API="true"
     export PORT=8098
     export DATA_DIR="/data/open-webui"
+    export CORS_ALLOW_ORIGIN="*"
     open-webui serve --port 8098 &
     echo "[INIT] Open WebUI started in background."
 else
@@ -101,10 +102,7 @@ if d.get('model') in [None, '', 'opencode/big-pickle', 'big-pickle', 'mimo-v2.5-
 json.dump(d, open(p, 'w'), indent=2)
 print('[CONFIG] Wrote config with model:', d.get('model'))
 " 2>/dev/null || true
-echo "[CONFIG] Current configuration:"
-cat /data/config/opencode/opencode.json 2>/dev/null || echo "{}"
 
-# Log disk space
 echo "[DISK] /data usage:"
 df -h /data 2>/dev/null || echo "[WARN] Could not check /data disk space"
 
@@ -135,8 +133,6 @@ HAS_GIT=$(test -d ".git" && echo "yes" || echo "no")
 HAS_REMOTE=$(git remote -v 2>/dev/null | grep -c origin || echo "0")
 IS_EMPTY=$(test -z "$(ls -A . 2>/dev/null | grep -v '^\.')" && echo "yes" || echo "no")
 
-echo "[GIT] State: has_git=$HAS_GIT has_remote=$HAS_REMOTE is_empty=$IS_EMPTY"
-
 if [ "$HAS_GIT" = "no" ] && [ "$IS_EMPTY" = "yes" ]; then
     echo "[GIT] Empty directory. Cloning $GITHUB_REPO ..."
     git clone "$GITHUB_REPO" . 2>&1 || echo "[GIT] Clone FAILED"
@@ -155,11 +151,6 @@ if [ ! -d .git ]; then
     git config user.name 'OpenCode'
     git commit --allow-empty -m 'Initial commit'
 fi
-
-echo "[GIT] Files: $(ls -1 . 2>/dev/null | grep -v '^\.git$' | tr '\n' ', ')"
-
-# Log key env vars
-echo "[ENV] API keys: ANTHROPIC=$(if [ -n \"$ANTHROPIC_API_KEY\" ]; then echo SET; else echo NOT_SET; fi) OPENAI=$(if [ -n \"$OPENAI_API_KEY\" ]; then echo SET; else echo NOT_SET; fi)"
 
 echo "============================================"
 echo "=== Launching OpenCode server & Nginx Proxy ==="
