@@ -123,9 +123,17 @@ else
     echo "[DB] No database found"
 fi
 
+# Remove stale SQLite WAL/lock files to prevent "database is locked" on startup
+DB_PATH="/data/share/opencode/opencode.db"
+if [ -f "${DB_PATH}-wal" ] || [ -f "${DB_PATH}-shm" ] || [ -f "${DB_PATH}.lock" ]; then
+    echo "[DB] Removing stale SQLite lock/WAL files to prevent startup crash..."
+    rm -f "${DB_PATH}-wal" "${DB_PATH}-shm" "${DB_PATH}.lock" 2>/dev/null || true
+fi
+
 # Start the SQLite self-healing daemon in the background
 echo "[INIT] Starting self-healing daemon..."
 python3 /cleaner.py &
+sleep 1
 
 # Always ensure /projects/default exists
 mkdir -p /projects/default
@@ -163,6 +171,32 @@ fi
 echo "============================================"
 echo "=== Launching OpenCode server & Nginx Proxy ==="
 echo "============================================"
-opencode serve --port 4097 --hostname 127.0.0.1 &
-sleep 2
+
+# Remove any stale DB lock files one final time before starting opencode
+rm -f /data/share/opencode/opencode.db-wal \
+       /data/share/opencode/opencode.db-shm \
+       /data/share/opencode/opencode.db.lock 2>/dev/null || true
+
+# Start OpenCode server with retry logic
+_oc_start() {
+    for attempt in 1 2 3; do
+        echo "[OPENCODE] Start attempt $attempt..."
+        opencode serve --port 4097 --hostname 127.0.0.1 &
+        OC_PID=$!
+        sleep 3
+        if kill -0 $OC_PID 2>/dev/null; then
+            echo "[OPENCODE] Server running (PID $OC_PID)"
+            return 0
+        fi
+        echo "[OPENCODE] Attempt $attempt failed, waiting 2s before retry..."
+        # Clean lock files between retries
+        rm -f /data/share/opencode/opencode.db-wal \
+               /data/share/opencode/opencode.db-shm \
+               /data/share/opencode/opencode.db.lock 2>/dev/null || true
+        sleep 2
+    done
+    echo "[OPENCODE] All start attempts failed - Nginx will still serve other services"
+}
+_oc_start
+
 exec nginx -g "daemon off;" -c /nginx.conf
