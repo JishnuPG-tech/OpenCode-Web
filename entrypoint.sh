@@ -14,6 +14,7 @@ mkdir -p /data/share/opencode 2>/dev/null || echo "[WARN] Could not create /data
 mkdir -p /data/config/opencode 2>/dev/null || echo "[WARN] Could not create /data/config/opencode"
 mkdir -p /data/cache/opencode 2>/dev/null || echo "[WARN] Could not create /data/cache/opencode"
 mkdir -p /data/state/opencode 2>/dev/null || echo "[WARN] Could not create /data/state/opencode"
+mkdir -p /data/open-webui 2>/dev/null || echo "[WARN] Could not create /data/open-webui"
 mkdir -p /data/jellyfin/data /data/jellyfin/config /data/jellyfin/cache /data/jellyfin/log /data/jellyfin/media/Movies /data/jellyfin/media/TVShows 2>/dev/null || true
 
 # Start Telegram Direct Range Stream Proxy in background
@@ -22,7 +23,6 @@ python3 /tg_streamer.py &
 
 # Start Jellyfin Media Server in background
 echo "[INIT] Starting Jellyfin Media Server on port 8096..."
-
 
 WEBDIR_OPT=""
 if [ -d "/usr/share/jellyfin/web" ]; then
@@ -39,12 +39,6 @@ else
     echo "[WARN] Could not find jellyfin binary"
 fi
 sleep 3
-
-
-
-# Ensure config exists with correct model setting
-echo "[CONFIG] Setting up default configuration..."
-
 
 # Remove stale config that may have wrong model format
 python3 -c "
@@ -71,6 +65,22 @@ else
 fi
 sleep 2
 
+# Pre-configure & Start Open WebUI on port 8098 (Connected to OmniRoute)
+echo "[INIT] Starting Open WebUI on port 8098 pre-configured with OmniRoute..."
+if command -v open-webui >/dev/null 2>&1; then
+    export OPENAI_API_BASE_URL="http://127.0.0.1:20128/v1"
+    export OPENAI_API_KEY="omniroute"
+    export WEBUI_SECRET_KEY="opencode_webui_jwt_secret_2026"
+    export ENABLE_OLLAMA_API="false"
+    export ENABLE_OPENAI_API="true"
+    export PORT=8098
+    export DATA_DIR="/data/open-webui"
+    open-webui serve --port 8098 &
+    echo "[INIT] Open WebUI started in background."
+else
+    echo "[WARN] open-webui binary not found, skipping."
+fi
+
 python3 -c "
 import json, os
 p = '/data/config/opencode/opencode.json'
@@ -94,7 +104,6 @@ print('[CONFIG] Wrote config with model:', d.get('model'))
 echo "[CONFIG] Current configuration:"
 cat /data/config/opencode/opencode.json 2>/dev/null || echo "{}"
 
-
 # Log disk space
 echo "[DISK] /data usage:"
 df -h /data 2>/dev/null || echo "[WARN] Could not check /data disk space"
@@ -104,30 +113,6 @@ echo "[DB] Checking database..."
 DB_PATH="/data/share/opencode/opencode.db"
 if [ -f "$DB_PATH" ]; then
     echo "[DB] Found database at $DB_PATH ($(du -h "$DB_PATH" | cut -f1))"
-    # Count sessions
-    python3 -c "
-import sqlite3
-try:
-    conn = sqlite3.connect('$DB_PATH', timeout=5)
-    c = conn.cursor()
-    # List all tables
-    c.execute(\"SELECT name FROM sqlite_master WHERE type='table'\")
-    tables = [r[0] for r in c.fetchall()]
-    print(f'[DB] Tables: {tables}')
-    if 'session' in tables:
-        c.execute('PRAGMA table_info(session)')
-        cols = [r[1] for r in c.fetchall()]
-        print(f'[DB] Session columns: {cols}')
-        c.execute('SELECT COUNT(*) FROM session')
-        count = c.fetchone()[0]
-        print(f'[DB] Total sessions: {count}')
-        c.execute('SELECT id, title, directory FROM session LIMIT 5')
-        for row in c.fetchall():
-            print(f'[DB]   Session: {row[0]} title={row[1]!r} dir={row[2]!r}')
-    conn.close()
-except Exception as e:
-    print(f'[DB] Error: {e}')
-" 2>/dev/null || echo "[DB] Could not read database"
 else
     echo "[DB] No database found"
 fi
@@ -175,19 +160,6 @@ echo "[GIT] Files: $(ls -1 . 2>/dev/null | grep -v '^\.git$' | tr '\n' ', ')"
 
 # Log key env vars
 echo "[ENV] API keys: ANTHROPIC=$(if [ -n \"$ANTHROPIC_API_KEY\" ]; then echo SET; else echo NOT_SET; fi) OPENAI=$(if [ -n \"$OPENAI_API_KEY\" ]; then echo SET; else echo NOT_SET; fi)"
-echo "[ENV] Auth: USER=$(if [ -n \"$OPENCODE_SERVER_USERNAME\" ]; then echo SET; else echo NOT_SET; fi) PASS=$(if [ -n \"$OPENCODE_SERVER_PASSWORD\" ]; then echo SET; else echo NOT_SET; fi)"
-
-# Test connectivity to OpenCode Zen API
-echo "[NET] Testing connectivity to opencode.ai/zen..."
-ZEN_STATUS=$(curl -s -o /dev/null -w "%{http_code}" --connect-timeout 5 "https://opencode.ai/zen/v1/models" 2>/dev/null || echo "000")
-echo "[NET] OpenCode Zen API status: $ZEN_STATUS"
-
-if [ "$ZEN_STATUS" = "200" ]; then
-    echo "[NET] OpenCode Zen API is reachable"
-else
-    echo "[NET] WARNING: OpenCode Zen API may not be reachable from this container"
-    echo "[NET] This means free models may not work - AI responses will fail silently"
-fi
 
 echo "============================================"
 echo "=== Launching OpenCode server & Nginx Proxy ==="
@@ -195,4 +167,3 @@ echo "============================================"
 opencode serve --port 4097 --hostname 127.0.0.1 &
 sleep 2
 exec nginx -g "daemon off;" -c /nginx.conf
-
