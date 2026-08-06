@@ -75,18 +75,26 @@ async def proxy_http(target_url: str, request: Request, extra_headers: dict = No
         if lk in ["content-length", "transfer-encoding", "content-encoding"]:
             continue
         if lk == "location":
-            v = re.sub(r":4096", "", v)
             v = _strip_internal_ports(v)
+            v = re.sub(r"https?://[^/]+:4096", "", v)
+            v = re.sub(r"https?://[^/]+:20128", "/omniroute", v)
+            v = re.sub(r"https?://[^/]+:8098", "/openwebui", v)
+            v = re.sub(r"https?://[^/]+:4097", "/server", v)
             if v == "/login" or v.startswith("/login?"):
                 v = "/omniroute" + v
             elif v == "/dashboard" or v.startswith("/dashboard?"):
                 v = "/omniroute" + v
-        res_headers[k] = v
+            if not v.startswith("https://"):
+                if not v.startswith("/"):
+                    v = "/" + v
+                v = f"https://{PUBLIC_HOST}{v}"
+            res_headers[k] = v
+        else:
+            res_headers[k] = v
 
     content = resp.content
     ctype = resp.headers.get("content-type", "")
 
-    # Apply text rewriting exclusively to HTML responses
     if "text/html" in ctype:
         try:
             text_str = content.decode("utf-8", errors="ignore")
@@ -141,7 +149,7 @@ async def proxy_ws(websocket: WebSocket, target_ws_url: str):
                 pass
 
 # ==========================================
-# 1. LANDING HUB ROUTE (GET & HEAD)
+# 1. LANDING HUB ROUTE
 # ==========================================
 @app.api_route("/", methods=["GET", "HEAD"])
 async def root_hub():
@@ -175,13 +183,23 @@ async def debug_status():
     return results
 
 # ==========================================
-# 2. OPEN WEBUI ROUTES (/openwebui, /api, /auth)
+# 2. OPEN WEBUI ROUTES (/openwebui, /_app, /static, /api, /auth)
 # ==========================================
 @app.api_route("/openwebui/{path:path}", methods=["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"])
 @app.api_route("/openwebui", methods=["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"])
 async def openwebui_route(request: Request, path: str = ""):
     url = f"http://127.0.0.1:{WEBUI_PORT}/openwebui/{path}" if path else f"http://127.0.0.1:{WEBUI_PORT}/openwebui/"
     return await proxy_http(url, request, extra_headers={"X-Forwarded-Prefix": "/openwebui"})
+
+@app.api_route("/_app/{path:path}", methods=["GET", "HEAD", "OPTIONS"])
+async def openwebui_app_route(path: str, request: Request):
+    url = f"http://127.0.0.1:{WEBUI_PORT}/openwebui/_app/{path}"
+    return await proxy_http(url, request)
+
+@app.api_route("/static/{path:path}", methods=["GET", "HEAD", "OPTIONS"])
+async def openwebui_static_route(path: str, request: Request):
+    url = f"http://127.0.0.1:{WEBUI_PORT}/openwebui/static/{path}"
+    return await proxy_http(url, request)
 
 @app.api_route("/api/v1/{path:path}", methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"])
 async def openwebui_api(path: str, request: Request):
@@ -257,7 +275,6 @@ def make_endpoint_route(ep_name: str):
         url = f"http://127.0.0.1:{OPENCODE_PORT}/{ep_name}"
         return await proxy_http(url, request)
 
-# Added /command, /provider, /model, /mcp required by OpenCode Web UI!
 OPENCODE_ENDPOINTS = [
     "session", "project", "config", "permission", "question",
     "file", "find", "events", "event", "command", "provider", "model", "mcp"
