@@ -6,7 +6,7 @@ Injects client-side JS fetch interceptors to seamlessly handle root-relative AJA
 """
 
 import re
-from fastapi import APIRouter, Request, WebSocket
+from fastapi import APIRouter, Request, Response, WebSocket
 from gateway.utils import WEBUI_PORT, proxy_http_request, proxy_websocket_stream
 
 router = APIRouter(tags=["OpenWebUI"])
