@@ -320,12 +320,43 @@ async def health_check():
 
 
 # ── 1. Open WebUI Route (/openwebui/) ────────────────────────────────────────
+WEBUI_JS_PATCH = """<script>
+(function() {
+  if (window.__WEBUI_PATCHED__) return;
+  window.__WEBUI_PATCHED__ = true;
+  var origFetch = window.fetch;
+  window.fetch = function(resource, init) {
+    if (typeof resource === 'string') {
+      if (resource.startsWith('/') && !resource.startsWith('/openwebui')) {
+        resource = '/openwebui' + resource;
+      }
+    } else if (resource && resource.url && typeof resource.url === 'string') {
+      if (resource.url.startsWith('/') && !resource.url.startsWith('/openwebui')) {
+        resource = new Request('/openwebui' + resource.url, resource);
+      }
+    }
+    return origFetch.call(this, resource, init);
+  };
+  var origOpen = XMLHttpRequest.prototype.open;
+  XMLHttpRequest.prototype.open = function(method, url) {
+    if (typeof url === 'string' && url.startsWith('/') && !url.startsWith('/openwebui')) {
+      url = '/openwebui' + url;
+    }
+    return origOpen.apply(this, arguments);
+  };
+})();
+</script>"""
+
 def _fixup_webui_html(html: str) -> str:
     html = html.replace('href="/', 'href="/openwebui/')
     html = html.replace("href='/", "href='/openwebui/")
     html = html.replace('src="/', 'src="/openwebui/')
     html = html.replace("src='/", "src='/openwebui/")
     html = html.replace('action="/', 'action="/openwebui/')
+    if "<head>" in html:
+        html = html.replace("<head>", f"<head>{WEBUI_JS_PATCH}", 1)
+    elif "<head " in html:
+        html = re.sub(r"(<head[^>]*>)", r"\1" + WEBUI_JS_PATCH, html, count=1)
     return html
 
 @app.api_route("/openwebui", methods=["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"])
@@ -340,8 +371,41 @@ async def route_openwebui(request: Request, path: str = ""):
 async def route_openwebui_ws(websocket: WebSocket):
     await proxy_websocket_stream(websocket, f"ws://127.0.0.1:{WEBUI_PORT}/ws")
 
+# Direct SvelteKit asset routing (Open WebUI)
+@app.api_route("/_app/{path:path}", methods=["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"])
+async def openwebui_assets(request: Request, path: str = ""):
+    target = f"http://127.0.0.1:{WEBUI_PORT}/_app/{path}"
+    return await proxy_http_request(target, request)
+
 
 # ── 2. OmniRoute AI Gateway Route (/omniroute/) ──────────────────────────────
+OMNIROUTE_JS_PATCH = """<script>
+(function() {
+  if (window.__OMNIROUTE_PATCHED__) return;
+  window.__OMNIROUTE_PATCHED__ = true;
+  var origFetch = window.fetch;
+  window.fetch = function(resource, init) {
+    if (typeof resource === 'string') {
+      if (resource.startsWith('/') && !resource.startsWith('/omniroute')) {
+        resource = '/omniroute' + resource;
+      }
+    } else if (resource && resource.url && typeof resource.url === 'string') {
+      if (resource.url.startsWith('/') && !resource.url.startsWith('/omniroute')) {
+        resource = new Request('/omniroute' + resource.url, resource);
+      }
+    }
+    return origFetch.call(this, resource, init);
+  };
+  var origOpen = XMLHttpRequest.prototype.open;
+  XMLHttpRequest.prototype.open = function(method, url) {
+    if (typeof url === 'string' && url.startsWith('/') && !url.startsWith('/omniroute')) {
+      url = '/omniroute' + url;
+    }
+    return origOpen.apply(this, arguments);
+  };
+})();
+</script>"""
+
 def _fixup_omniroute_html(html: str) -> str:
     html = html.replace('href="/', 'href="/omniroute/')
     html = html.replace("href='/", "href='/omniroute/")
@@ -352,6 +416,10 @@ def _fixup_omniroute_html(html: str) -> str:
     html = html.replace("'/_next/", "'/omniroute/_next/")
     html = html.replace('"basePath":""', '"basePath":"/omniroute"')
     html = html.replace('"basePath": ""', '"basePath": "/omniroute"')
+    if "<head>" in html:
+        html = html.replace("<head>", f"<head>{OMNIROUTE_JS_PATCH}", 1)
+    elif "<head " in html:
+        html = re.sub(r"(<head[^>]*>)", r"\1" + OMNIROUTE_JS_PATCH, html, count=1)
     return html
 
 @app.api_route("/omniroute", methods=["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"])
@@ -359,6 +427,12 @@ def _fixup_omniroute_html(html: str) -> str:
 async def route_omniroute(request: Request, path: str = ""):
     target = f"http://127.0.0.1:{OMNIROUTE_PORT}/{path}"
     return await proxy_http_request(target, request, html_fixup=_fixup_omniroute_html)
+
+# Direct Next.js asset routing (OmniRoute)
+@app.api_route("/_next/{path:path}", methods=["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"])
+async def omniroute_assets(request: Request, path: str = ""):
+    target = f"http://127.0.0.1:{OMNIROUTE_PORT}/_next/{path}"
+    return await proxy_http_request(target, request)
 
 
 # ── 3. OpenCode CLI Server Route (/server/) ──────────────────────────────────
@@ -383,8 +457,8 @@ async def route_opencode_ws(websocket: WebSocket):
     await proxy_websocket_stream(websocket, f"ws://127.0.0.1:{OPENCODE_PORT}/ws")
 
 
-# ── Direct OpenCode Endpoints (session, project, config, etc.) ───────────────
-OPENCODE_DIRECT_PATHS = ["session", "project", "config", "permission", "question", "file", "find", "events", "event", "command", "provider", "model", "mcp", "api"]
+# ── Direct OpenCode Endpoints (Unique endpoints only - no conflicts with Open WebUI/OmniRoute) ───
+OPENCODE_DIRECT_PATHS = ["session", "project", "permission", "question", "file", "find", "events", "event", "command", "provider", "mcp"]
 
 def _create_direct_route(prefix: str):
     @app.api_route(f"/{prefix}", methods=["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"])
@@ -421,14 +495,12 @@ async def route_tg_stream(request: Request, path: str = ""):
 async def route_catch_all(path: str, request: Request):
     referer = request.headers.get("referer", "").lower()
 
-    if "/openwebui" in referer:
-        return await proxy_http_request(f"http://127.0.0.1:{WEBUI_PORT}/{path}", request, html_fixup=_fixup_webui_html)
-    elif "/omniroute" in referer or "/dashboard" in referer or "/login" in referer:
+    if "/omniroute" in referer or "/dashboard" in referer or "/login" in referer:
         return await proxy_http_request(f"http://127.0.0.1:{OMNIROUTE_PORT}/{path}", request, html_fixup=_fixup_omniroute_html)
     elif "/server" in referer:
         return await proxy_http_request(f"http://127.0.0.1:{OPENCODE_PORT}/{path}", request, html_fixup=_fixup_opencode_html)
     elif "/jellyfin" in referer:
         return await proxy_http_request(f"http://127.0.0.1:{JELLYFIN_PORT}/{path}", request, extra_headers={"X-Forwarded-Prefix": "/jellyfin"})
 
-    # Fallback default: Open WebUI
+    # Fallback default: Open WebUI (Handles /api/v1/..., /static/..., etc.)
     return await proxy_http_request(f"http://127.0.0.1:{WEBUI_PORT}/{path}", request, html_fixup=_fixup_webui_html)
