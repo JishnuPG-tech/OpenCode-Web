@@ -191,6 +191,13 @@ async def proxy_http_request(
 
 async def proxy_websocket_stream(websocket: WebSocket, target_ws_url: str):
     await websocket.accept()
+    
+    # Preserve query parameters from client WebSocket request (e.g. ?EIO=4&transport=websocket)
+    query_string = websocket.scope.get("query_string", b"").decode("utf-8")
+    if query_string:
+        sep = "&" if "?" in target_ws_url else "?"
+        target_ws_url = f"{target_ws_url}{sep}{query_string}"
+
     skip_headers = {"host", "sec-websocket-key", "sec-websocket-version", "sec-websocket-extensions"}
     forward_headers = {k: v for k, v in websocket.headers.items() if k.lower() not in skip_headers}
 

@@ -58,11 +58,22 @@ async def webui_main_route(request: Request, path: str = ""):
     return await proxy_http_request(target, request, default_prefix="/openwebui", html_fixup=fixup_webui_html)
 
 @router.websocket("/openwebui/ws")
-@router.websocket("/openwebui/ws/")
+@router.websocket("/openwebui/ws/{path:path}")
 @router.websocket("/openwebui/socket.io")
+@router.websocket("/openwebui/socket.io/{path:path}")
 @router.websocket("/ws/socket.io")
-async def webui_ws_route(websocket: WebSocket):
-    await proxy_websocket_stream(websocket, f"ws://127.0.0.1:{WEBUI_PORT}/ws")
+@router.websocket("/ws/socket.io/{path:path}")
+async def webui_ws_route(websocket: WebSocket, path: str = ""):
+    req_path = websocket.scope.get("path", "")
+    if "socket.io" in req_path:
+        target = f"ws://127.0.0.1:{WEBUI_PORT}/ws/socket.io"
+        if path:
+            target = f"{target}/{path}"
+    else:
+        target = f"ws://127.0.0.1:{WEBUI_PORT}/ws"
+        if path:
+            target = f"{target}/{path}"
+    await proxy_websocket_stream(websocket, target)
 
 # SvelteKit Asset Routing
 @router.api_route("/_app/{path:path}", methods=["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"])
