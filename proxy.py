@@ -13,6 +13,35 @@ OMNIROUTE_PORT = 20128
 OPENCODE_PORT = 4097
 JELLYFIN_PORT = 8096
 TG_STREAM_PORT = 8080
+GATEWAY_PORT = 4096  # this proxy's own internal port — must NEVER appear in an outgoing URL
+
+PUBLIC_HOST = "jishnupg-opencode-cli.hf.space"
+PUBLIC_ORIGIN = f"https://{PUBLIC_HOST}"
+
+# Every internal port -> the public path prefix it should be rewritten to.
+PORT_TO_PREFIX = {
+    GATEWAY_PORT: "",  # gateway's own port -> strip entirely (root-relative)
+    OMNIROUTE_PORT: "/omniroute",
+    WEBUI_PORT: "/openwebui",
+    OPENCODE_PORT: "/server",
+    JELLYFIN_PORT: "/jellyfin",
+    TG_STREAM_PORT: "/tg-stream",
+}
+
+# Matches http(s)://<any-host>:<any-known-internal-port>
+_PORT_PATTERN = re.compile(
+    r"https?://[^/\s\"'>]+:(" + "|".join(str(p) for p in PORT_TO_PREFIX) + r")(?=/|\"|'|\s|$)"
+)
+
+def _strip_internal_ports(text: str) -> str:
+    """Rewrite any absolute URL pointing at one of our internal ports (on ANY
+    host — 127.0.0.1, localhost, or the public domain) into a root-relative,
+    correctly-prefixed path. This stops :4096 (or any internal port) from ever
+    reaching the browser."""
+    def _sub(m: "re.Match[str]") -> str:
+        port = int(m.group(1))
+        return PORT_TO_PREFIX.get(port, "")
+    return _PORT_PATTERN.sub(_sub, text)
 
 client = httpx.AsyncClient(timeout=120.0, follow_redirects=False)
 
@@ -20,7 +49,7 @@ def get_headers(request: Request, extra_headers: dict = None):
     headers = dict(request.headers)
     headers.pop("host", None)
     headers.pop("content-length", None)
-    headers["X-Forwarded-Host"] = "jishnupg-opencode-cli.hf.space"
+    headers["X-Forwarded-Host"] = PUBLIC_HOST
     headers["X-Forwarded-Proto"] = "https"
     headers["X-Forwarded-Port"] = "443"
     if extra_headers:
@@ -50,11 +79,7 @@ async def proxy_http(target_url: str, request: Request, extra_headers: dict = No
         if lk in ["content-length", "transfer-encoding", "content-encoding"]:
             continue
         if lk == "location":
-            v = re.sub(r"https?://[^/]+:4096/", "/", v)
-            v = re.sub(r"https?://[^/]+:20128/", "/omniroute/", v)
-            v = re.sub(r"https?://[^/]+:8098/", "/openwebui/", v)
-            v = re.sub(r"https?://[^/]+:4097/", "/server/", v)
-            v = re.sub(r"https?://[^/]+:8096/", "/jellyfin/", v)
+            v = _strip_internal_ports(v)
             if v == "/login" or v.startswith("/login?"):
                 v = "/omniroute" + v
             elif v == "/dashboard" or v.startswith("/dashboard?"):
@@ -64,11 +89,14 @@ async def proxy_http(target_url: str, request: Request, extra_headers: dict = No
     content = resp.content
     ctype = resp.headers.get("content-type", "")
 
-    if sub_filters and ("text/html" in ctype or "javascript" in ctype or "json" in ctype):
+    is_textlike = any(t in ctype for t in ["text/html", "javascript", "json", "text/css", "text/plain"])
+    if is_textlike:
         try:
             text_str = content.decode("utf-8", errors="ignore")
-            for old_s, new_s in sub_filters:
-                text_str = text_str.replace(old_s, new_s)
+            if sub_filters:
+                for old_s, new_s in sub_filters:
+                    text_str = text_str.replace(old_s, new_s)
+            text_str = _strip_internal_ports(text_str)
             content = text_str.encode("utf-8")
         except Exception:
             pass
@@ -127,6 +155,28 @@ async def root_hub():
 @app.api_route("/favicon.ico", methods=["GET", "HEAD"])
 async def favicon():
     return Response(content=b"", status_code=204)
+
+# ==========================================
+# 1b. DEBUG STATUS ROUTE
+# ==========================================
+@app.api_route("/debug/status", methods=["GET"])
+async def debug_status():
+    """Hits each internal service directly on 127.0.0.1 and reports status."""
+    checks = {
+        "opencode_server": f"http://127.0.0.1:{OPENCODE_PORT}/",
+        "omniroute": f"http://127.0.0.1:{OMNIROUTE_PORT}/",
+        "open_webui": f"http://127.0.0.1:{WEBUI_PORT}/",
+        "jellyfin": f"http://127.0.0.1:{JELLYFIN_PORT}/",
+        "tg_streamer": f"http://127.0.0.1:{TG_STREAM_PORT}/",
+    }
+    results = {}
+    for name, url in checks.items():
+        try:
+            r = await client.get(url, timeout=5.0)
+            results[name] = {"status": "up", "http_status": r.status_code}
+        except Exception as e:
+            results[name] = {"status": "down", "error": str(e)}
+    return results
 
 # ==========================================
 # 2. OPEN WEBUI ROUTES (/openwebui)
