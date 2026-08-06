@@ -180,14 +180,19 @@ def create_strm_file(msg_id, file_id, clean_title, is_tv=False, show_name=None, 
     return strm_filename
 
 async def trigger_jellyfin_scan():
-    """Trigger Jellyfin Library Scan automatically"""
-    try:
-        connector = aiohttp.TCPConnector(family=socket.AF_INET)
-        async with aiohttp.ClientSession(connector=connector) as session:
-            async with session.post("http://127.0.0.1:8096/Library/Refresh") as resp:
-                logger.info(f"Jellyfin library refresh triggered: {resp.status}")
-    except Exception as e:
-        logger.warning(f"Could not trigger Jellyfin library refresh: {e}")
+    """Trigger Jellyfin Library Scan automatically with retry while Jellyfin boots"""
+    for attempt in range(5):
+        try:
+            connector = aiohttp.TCPConnector(family=socket.AF_INET)
+            async with aiohttp.ClientSession(connector=connector) as session:
+                async with session.post("http://127.0.0.1:8096/Library/Refresh") as resp:
+                    logger.info(f"Jellyfin library refresh triggered: {resp.status}")
+                    return
+        except Exception as e:
+            if attempt < 4:
+                await asyncio.sleep(3)
+                continue
+            logger.warning(f"Could not trigger Jellyfin library refresh after retries: {e}")
 
 @routes.post("/")
 @routes.post("/telegram-webhook")
