@@ -136,8 +136,32 @@ async def proxy_http_request(
         except (httpx.ConnectError, httpx.TimeoutException, httpx.NetworkError) as exc:
             last_exc = exc
             if attempt < 3:
-                await asyncio.sleep(0.1 * attempt)
+                await asyncio.sleep(0.3 * attempt)
                 continue
+            if method in ("GET", "HEAD") and ("html" in request.headers.get("accept", "").lower() or request.url.path == "/"):
+                html_retry = """<!DOCTYPE html>
+<html>
+<head>
+    <meta http-equiv="refresh" content="3">
+    <title>Service Initializing...</title>
+    <style>
+        body { font-family: system-ui, -apple-system, sans-serif; background: #0d1117; color: #c9d1d9; display: flex; align-items: center; justify-content: center; height: 100vh; margin: 0; }
+        .card { text-align: center; background: #161b22; padding: 2.5rem; border-radius: 12px; border: 1px solid #30363d; max-width: 450px; }
+        .spinner { width: 40px; height: 40px; border: 4px solid #30363d; border-top-color: #58a6ff; border-radius: 50%; animation: spin 1s linear infinite; margin: 0 auto 1.5rem; }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        h2 { margin: 0 0 0.5rem; color: #f0f6fc; font-size: 1.25rem; }
+        p { color: #8b949e; font-size: 0.9rem; margin: 0; }
+    </style>
+</head>
+<body>
+    <div class="card">
+        <div class="spinner"></div>
+        <h2>Initializing Services...</h2>
+        <p>Open WebUI is completing startup database migrations. This page will refresh automatically in 3 seconds.</p>
+    </div>
+</body>
+</html>"""
+                return Response(content=html_retry, status_code=503, headers={"Retry-After": "3", "Refresh": "3"}, media_type="text/html")
             return Response(
                 content=f"<h2>502 Service Unavailable</h2><p>Upstream starting: {exc}</p>",
                 status_code=502,
