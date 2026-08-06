@@ -39,19 +39,22 @@ WEBUI_JS_PATCH = """<script>
 </script>"""
 
 def fixup_webui_html(html: str) -> str:
-    """Rewrite absolute links & inject JS fetch interceptor into <head>."""
+    """Rewrite absolute links & inject SvelteKit base path + JS fetch interceptor into <head>."""
+    html = re.sub(r'base\s*:\s*""', r'base:"/openwebui"', html)
+    html = re.sub(r'assets\s*:\s*""', r'assets:"/openwebui"', html)
     html = html.replace('href="/', 'href="/openwebui/')
     html = html.replace("href='/", "href='/openwebui/")
     html = html.replace('src="/', 'src="/openwebui/')
     html = html.replace("src='/", "src='/openwebui/")
     html = html.replace('action="/', 'action="/openwebui/')
+    html = html.replace('/openwebui/openwebui/', '/openwebui/')
     if "<head>" in html:
         html = html.replace("<head>", f"<head>{WEBUI_JS_PATCH}", 1)
     elif "<head " in html:
         html = re.sub(r"(<head[^>]*>)", r"\1" + WEBUI_JS_PATCH, html, count=1)
     return html
 
-from fastapi.responses import RedirectResponse
+from fastapi.responses import RedirectResponse, Response
 
 @router.api_route("/openwebui", methods=["GET"])
 async def webui_redirect_slash(request: Request):
@@ -89,8 +92,19 @@ async def webui_ws_route(websocket: WebSocket, path: str = ""):
             target = f"{target}/{path}"
     await proxy_websocket_stream(websocket, target)
 
-# SvelteKit Asset Routing
+# SvelteKit Asset Routing with JS base path patching
 @router.api_route("/_app/{path:path}", methods=["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"])
 async def webui_assets(request: Request, path: str = ""):
     target = f"http://127.0.0.1:{WEBUI_PORT}/_app/{path}"
-    return await proxy_http_request(target, request, default_prefix="/openwebui")
+    res = await proxy_http_request(target, request, default_prefix="/openwebui")
+    if path.endswith(".js") and getattr(res, "body", None):
+        try:
+            body_str = res.body.decode("utf-8")
+            if 'base:""' in body_str or 'base: ""' in body_str:
+                patched_body = re.sub(r'base\s*:\s*""', r'base:"/openwebui"', body_str)
+                headers = dict(res.headers)
+                headers.pop("content-length", None)
+                return Response(content=patched_body, status_code=res.status_code, headers=headers, media_type="application/javascript")
+        except Exception:
+            pass
+    return res
