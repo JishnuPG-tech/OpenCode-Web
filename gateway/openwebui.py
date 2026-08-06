@@ -1,119 +1,66 @@
 """
-Open WebUI Gateway Router
-=========================
-Routes /openwebui/ and SvelteKit static/API endpoints to Open WebUI (port 8098).
-Injects client-side JS fetch interceptors to seamlessly handle root-relative AJAX calls.
+Open WebUI Gateway Router (Clean Container Architecture)
+======================================================
+Serves Open WebUI (port 8098) via a clean full-viewport application container.
+Bypasses SvelteKit subpath routing limitations by rendering Open WebUI in an isolated viewport context.
 """
 
-import re
 from fastapi import APIRouter, Request, Response, WebSocket
+from fastapi.responses import HTMLResponse
 from gateway.utils import WEBUI_PORT, proxy_http_request, proxy_websocket_stream
 
 router = APIRouter(tags=["OpenWebUI"])
 
-WEBUI_JS_PATCH = """<script>
-(function() {
-  if (window.__WEBUI_PATCHED__) return;
-  window.__WEBUI_PATCHED__ = true;
-  var prefix = window.location.pathname.startsWith('/chat') ? '/chat' : '/openwebui';
-
-  // 1. Monkey-patch Location.prototype.pathname so SvelteKit sees '/' instead of subpath
-  try {
-    var origPathnameDesc = Object.getOwnPropertyDescriptor(Location.prototype, 'pathname');
-    if (origPathnameDesc && origPathnameDesc.get) {
-      var origPathnameGet = origPathnameDesc.get;
-      Object.defineProperty(Location.prototype, 'pathname', {
-        get: function() {
-          var p = origPathnameGet.call(this);
-          if (p === prefix || p === prefix + '/') return '/';
-          if (p.startsWith(prefix + '/')) return p.substring(prefix.length);
-          return p;
-        },
-        configurable: true
-      });
-    }
-  } catch(e) {}
-
-  // 2. Monkey-patch history.pushState & replaceState to preserve prefix in URL bar
-  var origPushState = history.pushState;
-  history.pushState = function(state, title, url) {
-    if (typeof url === 'string' && url.startsWith('/') && !url.startsWith(prefix)) {
-      url = prefix + url;
-    }
-    return origPushState.call(this, state, title, url);
-  };
-  var origReplaceState = history.replaceState;
-  history.replaceState = function(state, title, url) {
-    if (typeof url === 'string' && url.startsWith('/') && !url.startsWith(prefix)) {
-      url = prefix + url;
-    }
-    return origReplaceState.call(this, state, title, url);
-  };
-
-  // 3. Monkey-patch fetch & XHR to proxy API/static requests to prefix
-  var origFetch = window.fetch;
-  window.fetch = function(resource, init) {
-    if (typeof resource === 'string') {
-      if (resource.startsWith('/') && !resource.startsWith(prefix) && !resource.startsWith('/_app')) {
-        resource = prefix + resource;
-      }
-    } else if (resource && resource.url && typeof resource.url === 'string') {
-      if (resource.url.startsWith('/') && !resource.url.startsWith(prefix) && !resource.url.startsWith('/_app')) {
-        resource = new Request(prefix + resource.url, resource);
-      }
-    }
-    return origFetch.call(this, resource, init);
-  };
-  var origOpen = XMLHttpRequest.prototype.open;
-  XMLHttpRequest.prototype.open = function(method, url) {
-    if (typeof url === 'string' && url.startsWith('/') && !url.startsWith(prefix) && !url.startsWith('/_app')) {
-      url = prefix + url;
-    }
-    return origOpen.apply(this, arguments);
-  };
-})();
-</script>"""
-
 def fixup_webui_html(html: str) -> str:
-    """Rewrite absolute links & inject SvelteKit location monkey-patch into <head>."""
-    if "<head>" in html:
-        html = html.replace("<head>", f"<head>{WEBUI_JS_PATCH}", 1)
-    elif "<head " in html:
-        html = re.sub(r"(<head[^>]*>)", r"\1" + WEBUI_JS_PATCH, html, count=1)
     return html
 
-from fastapi.responses import RedirectResponse, Response
+WEBUI_CONTAINER_HTML = """<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Open WebUI</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        html, body { width: 100%; height: 100%; overflow: hidden; background-color: #0d1117; font-family: system-ui, -apple-system, sans-serif; }
+        iframe { width: 100%; height: 100%; border: none; display: block; }
+    </style>
+</head>
+<body>
+    <iframe id="webui-frame" src="/webui-core/" allow="clipboard-read; clipboard-write; microphone; camera;"></iframe>
+</body>
+</html>"""
 
 @router.api_route("/chat", methods=["GET"])
+@router.api_route("/chat/", methods=["GET"])
 @router.api_route("/openwebui", methods=["GET"])
-async def webui_redirect_slash(request: Request):
-    prefix = "/chat/" if request.url.path.startswith("/chat") else "/openwebui/"
-    return RedirectResponse(prefix, status_code=307)
+@router.api_route("/openwebui/", methods=["GET"])
+async def webui_container_view(request: Request):
+    return HTMLResponse(content=WEBUI_CONTAINER_HTML, status_code=200)
 
-@router.api_route("/chat/{path:path}", methods=["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"])
-@router.api_route("/openwebui/{path:path}", methods=["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"])
-async def webui_main_route(request: Request, path: str = ""):
-    prefix = "/chat" if request.url.path.startswith("/chat") else "/openwebui"
+@router.api_route("/webui-core", methods=["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"])
+@router.api_route("/webui-core/{path:path}", methods=["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"])
+async def webui_core_proxy(request: Request, path: str = ""):
     target = f"http://127.0.0.1:{WEBUI_PORT}/{path}"
-    return await proxy_http_request(target, request, default_prefix=prefix, html_fixup=fixup_webui_html)
+    return await proxy_http_request(target, request, default_prefix="/webui-core")
 
 @router.api_route("/sw.js", methods=["GET", "HEAD"])
 async def webui_sw(request: Request):
     target = f"http://127.0.0.1:{WEBUI_PORT}/sw.js"
-    res = await proxy_http_request(target, request, default_prefix="/chat")
+    res = await proxy_http_request(target, request, default_prefix="/webui-core")
     if res.status_code == 404:
         sw_code = "self.addEventListener('install', (e) => { self.skipWaiting(); }); self.addEventListener('activate', (e) => { e.waitUntil(clients.claim()); });"
         return Response(content=sw_code, status_code=200, media_type="application/javascript")
     return res
 
+@router.websocket("/webui-core/ws")
+@router.websocket("/webui-core/ws/{path:path}")
+@router.websocket("/webui-core/socket.io")
+@router.websocket("/webui-core/socket.io/{path:path}")
 @router.websocket("/chat/ws")
-@router.websocket("/chat/ws/{path:path}")
 @router.websocket("/chat/socket.io")
-@router.websocket("/chat/socket.io/{path:path}")
 @router.websocket("/openwebui/ws")
-@router.websocket("/openwebui/ws/{path:path}")
 @router.websocket("/openwebui/socket.io")
-@router.websocket("/openwebui/socket.io/{path:path}")
 @router.websocket("/ws/socket.io")
 @router.websocket("/ws/socket.io/{path:path}")
 async def webui_ws_route(websocket: WebSocket, path: str = ""):
@@ -128,19 +75,8 @@ async def webui_ws_route(websocket: WebSocket, path: str = ""):
             target = f"{target}/{path}"
     await proxy_websocket_stream(websocket, target)
 
-# SvelteKit Asset Routing with JS route resolver patching
+# SvelteKit Asset Routing
 @router.api_route("/_app/{path:path}", methods=["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"])
 async def webui_assets(request: Request, path: str = ""):
     target = f"http://127.0.0.1:{WEBUI_PORT}/_app/{path}"
-    res = await proxy_http_request(target, request, default_prefix="/chat")
-    if path.endswith(".js") and getattr(res, "body", None):
-        try:
-            body_str = res.body.decode("utf-8")
-            if "location.pathname" in body_str or "window.location.pathname" in body_str:
-                patched_body = re.sub(r'location\.pathname', r"(location.pathname.replace(/^\/(chat|openwebui)/, '') || '/')", body_str)
-                headers = dict(res.headers)
-                headers.pop("content-length", None)
-                return Response(content=patched_body, status_code=res.status_code, headers=headers, media_type="application/javascript")
-        except Exception:
-            pass
-    return res
+    return await proxy_http_request(target, request, default_prefix="/webui-core")
