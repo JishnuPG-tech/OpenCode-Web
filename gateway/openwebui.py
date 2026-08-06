@@ -125,8 +125,19 @@ async def webui_ws_route(websocket: WebSocket, path: str = ""):
             target = f"{target}/{path}"
     await proxy_websocket_stream(websocket, target)
 
-# SvelteKit Asset Routing
+# SvelteKit Asset Routing with JS route resolver patching
 @router.api_route("/_app/{path:path}", methods=["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"])
 async def webui_assets(request: Request, path: str = ""):
     target = f"http://127.0.0.1:{WEBUI_PORT}/_app/{path}"
-    return await proxy_http_request(target, request, default_prefix="/openwebui")
+    res = await proxy_http_request(target, request, default_prefix="/openwebui")
+    if path.endswith(".js") and getattr(res, "body", None):
+        try:
+            body_str = res.body.decode("utf-8")
+            if "location.pathname" in body_str or "window.location.pathname" in body_str:
+                patched_body = body_str.replace("location.pathname", "(location.pathname.replace(/^\\/openwebui/, '') || '/')")
+                headers = dict(res.headers)
+                headers.pop("content-length", None)
+                return Response(content=patched_body, status_code=res.status_code, headers=headers, media_type="application/javascript")
+        except Exception:
+            pass
+    return res
