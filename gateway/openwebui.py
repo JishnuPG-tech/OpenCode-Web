@@ -15,20 +15,6 @@ WEBUI_JS_PATCH = """<script>
 (function() {
   if (window.__WEBUI_PATCHED__) return;
   window.__WEBUI_PATCHED__ = true;
-  var origPushState = history.pushState;
-  history.pushState = function(state, title, url) {
-    if (typeof url === 'string' && url.startsWith('/') && !url.startsWith('/openwebui')) {
-      url = '/openwebui' + url;
-    }
-    return origPushState.call(this, state, title, url);
-  };
-  var origReplaceState = history.replaceState;
-  history.replaceState = function(state, title, url) {
-    if (typeof url === 'string' && url.startsWith('/') && !url.startsWith('/openwebui')) {
-      url = '/openwebui' + url;
-    }
-    return origReplaceState.call(this, state, title, url);
-  };
   var origFetch = window.fetch;
   window.fetch = function(resource, init) {
     if (typeof resource === 'string') {
