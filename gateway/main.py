@@ -84,9 +84,9 @@ async def route_catch_all(path: str, request: Request):
     referer = request.headers.get("referer", "").lower()
     req_path = request.url.path.lower()
 
-    OMNIROUTE_PREFIXES = ("/omniroute", "/v1", "/_next", "/api-keys", "/providers", "/models", "/keys", "/settings", "/dashboard", "/logs", "/stats", "/system", "/login", "/users")
+    OMNIROUTE_PREFIXES = ("/omniroute", "/v1", "/_next", "/api", "/dashboard", "/api-keys", "/providers", "/models", "/keys", "/settings", "/logs", "/stats", "/system", "/login", "/users")
 
-    if "/omniroute" in referer or any(req_path.startswith(p) for p in OMNIROUTE_PREFIXES):
+    if "/omniroute" in referer or "/dashboard" in referer or any(req_path.startswith(p) for p in OMNIROUTE_PREFIXES):
         return await proxy_http_request(f"http://127.0.0.1:{OMNIROUTE_PORT}/{path}", request, default_prefix="/omniroute", html_fixup=fixup_omniroute_html)
     elif "/server" in referer or req_path.startswith("/server") or req_path.startswith("/opencode"):
         return await proxy_http_request(f"http://127.0.0.1:{OPENCODE_PORT}/{path}", request, default_prefix="/server", html_fixup=fixup_opencode_html)
