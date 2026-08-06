@@ -5,7 +5,6 @@ Proxies root '/' and Open WebUI API/WebSocket/static endpoints directly to Open 
 """
 
 from fastapi import APIRouter, Request, Response, WebSocket
-from fastapi.responses import RedirectResponse
 from gateway.utils import WEBUI_PORT, proxy_http_request, proxy_websocket_stream
 
 router = APIRouter(tags=["OpenWebUI"])
@@ -14,13 +13,7 @@ def fixup_webui_html(html: str) -> str:
     return html
 
 @router.api_route("/", methods=["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"])
-@router.api_route("/openwebui", methods=["GET"])
-@router.api_route("/openwebui/", methods=["GET"])
-@router.api_route("/chat", methods=["GET"])
-@router.api_route("/chat/", methods=["GET"])
 async def webui_root_proxy(request: Request):
-    if request.url.path in ("/openwebui", "/openwebui/", "/chat", "/chat/"):
-        return RedirectResponse("/", status_code=307)
     return await proxy_http_request(f"http://127.0.0.1:{WEBUI_PORT}/", request)
 
 @router.api_route("/sw.js", methods=["GET", "HEAD"])
