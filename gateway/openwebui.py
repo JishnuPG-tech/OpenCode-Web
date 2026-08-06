@@ -15,6 +15,41 @@ WEBUI_JS_PATCH = """<script>
 (function() {
   if (window.__WEBUI_PATCHED__) return;
   window.__WEBUI_PATCHED__ = true;
+
+  // 1. Monkey-patch Location.prototype.pathname so SvelteKit sees '/' instead of '/openwebui/'
+  try {
+    var origPathnameDesc = Object.getOwnPropertyDescriptor(Location.prototype, 'pathname');
+    if (origPathnameDesc && origPathnameDesc.get) {
+      var origPathnameGet = origPathnameDesc.get;
+      Object.defineProperty(Location.prototype, 'pathname', {
+        get: function() {
+          var p = origPathnameGet.call(this);
+          if (p === '/openwebui' || p === '/openwebui/') return '/';
+          if (p.startsWith('/openwebui/')) return p.substring(10);
+          return p;
+        },
+        configurable: true
+      });
+    }
+  } catch(e) {}
+
+  // 2. Monkey-patch history.pushState & replaceState to preserve /openwebui prefix in URL bar
+  var origPushState = history.pushState;
+  history.pushState = function(state, title, url) {
+    if (typeof url === 'string' && url.startsWith('/') && !url.startsWith('/openwebui')) {
+      url = '/openwebui' + url;
+    }
+    return origPushState.call(this, state, title, url);
+  };
+  var origReplaceState = history.replaceState;
+  history.replaceState = function(state, title, url) {
+    if (typeof url === 'string' && url.startsWith('/') && !url.startsWith('/openwebui')) {
+      url = '/openwebui' + url;
+    }
+    return origReplaceState.call(this, state, title, url);
+  };
+
+  // 3. Monkey-patch fetch & XHR to proxy API/static requests to /openwebui
   var origFetch = window.fetch;
   window.fetch = function(resource, init) {
     if (typeof resource === 'string') {
@@ -39,9 +74,7 @@ WEBUI_JS_PATCH = """<script>
 </script>"""
 
 def fixup_webui_html(html: str) -> str:
-    """Rewrite absolute links & inject SvelteKit base path + JS fetch interceptor into <head>."""
-    html = re.sub(r'base\s*:\s*""', r'base:"/openwebui"', html)
-    html = re.sub(r'assets\s*:\s*""', r'assets:"/openwebui"', html)
+    """Rewrite absolute links & inject SvelteKit location monkey-patch into <head>."""
     html = html.replace('href="/', 'href="/openwebui/')
     html = html.replace("href='/", "href='/openwebui/")
     html = html.replace('src="/', 'src="/openwebui/')
@@ -92,19 +125,8 @@ async def webui_ws_route(websocket: WebSocket, path: str = ""):
             target = f"{target}/{path}"
     await proxy_websocket_stream(websocket, target)
 
-# SvelteKit Asset Routing with JS base path patching
+# SvelteKit Asset Routing
 @router.api_route("/_app/{path:path}", methods=["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"])
 async def webui_assets(request: Request, path: str = ""):
     target = f"http://127.0.0.1:{WEBUI_PORT}/_app/{path}"
-    res = await proxy_http_request(target, request, default_prefix="/openwebui")
-    if path.endswith(".js") and getattr(res, "body", None):
-        try:
-            body_str = res.body.decode("utf-8")
-            if 'base:""' in body_str or 'base: ""' in body_str:
-                patched_body = re.sub(r'base\s*:\s*""', r'base:"/openwebui"', body_str)
-                headers = dict(res.headers)
-                headers.pop("content-length", None)
-                return Response(content=patched_body, status_code=res.status_code, headers=headers, media_type="application/javascript")
-        except Exception:
-            pass
-    return res
+    return await proxy_http_request(target, request, default_prefix="/openwebui")
