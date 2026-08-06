@@ -53,6 +53,8 @@ COPY entrypoint.sh /entrypoint.sh
 COPY nginx.conf /nginx.conf
 COPY proxy.py /proxy.py
 COPY tg_streamer.py /tg_streamer.py
+COPY gateway /gateway
+COPY index.html /index.html
 RUN chmod +x /entrypoint.sh
 
 WORKDIR /projects/default
