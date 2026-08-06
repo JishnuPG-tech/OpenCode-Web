@@ -21,6 +21,7 @@ Public URL prefix mapping:
 import os
 import re
 import asyncio
+from typing import Callable, Optional
 from fastapi import FastAPI, Request, Response, WebSocket
 from fastapi.responses import HTMLResponse, FileResponse, StreamingResponse
 import httpx
@@ -101,7 +102,7 @@ async def proxy_http(
     target_url: str,
     request: Request,
     extra_headers: dict | None = None,
-    html_fixup: callable | None = None,
+    html_fixup: Optional[Callable] = None,
 ) -> Response:
     """
     Forward an HTTP request to target_url.
