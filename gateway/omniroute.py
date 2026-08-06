@@ -15,6 +15,20 @@ OMNIROUTE_JS_PATCH = """<script>
 (function() {
   if (window.__OMNIROUTE_PATCHED__) return;
   window.__OMNIROUTE_PATCHED__ = true;
+  var origPushState = history.pushState;
+  history.pushState = function(state, title, url) {
+    if (typeof url === 'string' && url.startsWith('/') && !url.startsWith('/omniroute')) {
+      url = '/omniroute' + url;
+    }
+    return origPushState.call(this, state, title, url);
+  };
+  var origReplaceState = history.replaceState;
+  history.replaceState = function(state, title, url) {
+    if (typeof url === 'string' && url.startsWith('/') && !url.startsWith('/omniroute')) {
+      url = '/omniroute' + url;
+    }
+    return origReplaceState.call(this, state, title, url);
+  };
   var origFetch = window.fetch;
   window.fetch = function(resource, init) {
     if (typeof resource === 'string') {
