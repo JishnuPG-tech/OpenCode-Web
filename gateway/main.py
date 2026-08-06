@@ -84,9 +84,20 @@ async def route_catch_all(path: str, request: Request):
     referer = request.headers.get("referer", "").lower()
     req_path = request.url.path.lower()
 
-    OMNIROUTE_PREFIXES = ("/omniroute", "/v1", "/_next", "/api", "/dashboard", "/api-keys", "/providers", "/models", "/keys", "/settings", "/logs", "/stats", "/system", "/login", "/users")
+    OMNIROUTE_EXPLICIT_PREFIXES = (
+        "/omniroute", "/v1", "/_next", "/dashboard", "/api-keys",
+        "/providers", "/models", "/keys", "/settings", "/logs",
+        "/stats", "/system", "/login", "/users"
+    )
 
-    if "/omniroute" in referer or "/dashboard" in referer or any(req_path.startswith(p) for p in OMNIROUTE_PREFIXES):
+    is_omniroute_req = (
+        "/omniroute" in referer or 
+        "/dashboard" in referer or 
+        req_path.startswith("/omniroute") or 
+        any(req_path.startswith(p) for p in OMNIROUTE_EXPLICIT_PREFIXES)
+    )
+
+    if is_omniroute_req:
         return await proxy_http_request(f"http://127.0.0.1:{OMNIROUTE_PORT}/{path}", request, default_prefix="/omniroute", html_fixup=fixup_omniroute_html)
     elif "/server" in referer or req_path.startswith("/server") or req_path.startswith("/opencode"):
         return await proxy_http_request(f"http://127.0.0.1:{OPENCODE_PORT}/{path}", request, default_prefix="/server", html_fixup=fixup_opencode_html)
@@ -94,8 +105,8 @@ async def route_catch_all(path: str, request: Request):
         return await proxy_http_request(f"http://127.0.0.1:{JELLYFIN_PORT}/{path}", request, default_prefix="/jellyfin", extra_headers={"X-Forwarded-Prefix": "/jellyfin"})
     elif "/tg_stream" in referer or req_path.startswith("/tg_stream"):
         return await proxy_http_request(f"http://127.0.0.1:{TG_PORT}/{path}", request, default_prefix="/tg_stream")
-    elif req_path.startswith("/_app") or req_path == "/sw.js":
+    elif req_path.startswith("/_app") or req_path == "/sw.js" or req_path.startswith("/api/") or req_path.startswith("/static/"):
         return await proxy_http_request(f"http://127.0.0.1:{WEBUI_PORT}/{path}", request)
 
-    # Strict 404 for unknown endpoints (No Open WebUI default fallback!)
+    # Strict 404 for unknown endpoints
     return Response(content="<h1>404 Not Found</h1><p>The requested endpoint does not exist on this gateway.</p>", status_code=404, media_type="text/html")
