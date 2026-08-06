@@ -169,7 +169,7 @@ async def debug_status():
     checks = {
         "opencode_server": f"http://127.0.0.1:{OPENCODE_PORT}/",
         "omniroute": f"http://127.0.0.1:{OMNIROUTE_PORT}/",
-        "open_webui": f"http://127.0.0.1:{WEBUI_PORT}/openwebui/",
+        "open_webui": f"http://127.0.0.1:{WEBUI_PORT}/",
         "jellyfin": f"http://127.0.0.1:{JELLYFIN_PORT}/",
         "tg_streamer": f"http://127.0.0.1:{TG_STREAM_PORT}/",
     }
@@ -188,17 +188,17 @@ async def debug_status():
 @app.api_route("/openwebui/{path:path}", methods=["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"])
 @app.api_route("/openwebui", methods=["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"])
 async def openwebui_route(request: Request, path: str = ""):
-    url = f"http://127.0.0.1:{WEBUI_PORT}/openwebui/{path}" if path else f"http://127.0.0.1:{WEBUI_PORT}/openwebui/"
-    return await proxy_http(url, request, extra_headers={"X-Forwarded-Prefix": "/openwebui"})
+    url = f"http://127.0.0.1:{WEBUI_PORT}/{path}" if path else f"http://127.0.0.1:{WEBUI_PORT}/"
+    return await proxy_http(url, request)
 
 @app.api_route("/_app/{path:path}", methods=["GET", "HEAD", "OPTIONS"])
 async def openwebui_app_route(path: str, request: Request):
-    url = f"http://127.0.0.1:{WEBUI_PORT}/openwebui/_app/{path}"
+    url = f"http://127.0.0.1:{WEBUI_PORT}/_app/{path}"
     return await proxy_http(url, request)
 
 @app.api_route("/static/{path:path}", methods=["GET", "HEAD", "OPTIONS"])
 async def openwebui_static_route(path: str, request: Request):
-    url = f"http://127.0.0.1:{WEBUI_PORT}/openwebui/static/{path}"
+    url = f"http://127.0.0.1:{WEBUI_PORT}/static/{path}"
     return await proxy_http(url, request)
 
 @app.api_route("/api/v1/{path:path}", methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"])
@@ -316,8 +316,8 @@ async def catch_all_fallback(path: str, request: Request):
     referer = request.headers.get("referer", "").lower()
     
     if "openwebui" in referer:
-        url = f"http://127.0.0.1:{WEBUI_PORT}/openwebui/{path}"
-        return await proxy_http(url, request, extra_headers={"X-Forwarded-Prefix": "/openwebui"})
+        url = f"http://127.0.0.1:{WEBUI_PORT}/{path}"
+        return await proxy_http(url, request)
     elif "omniroute" in referer or "dashboard" in referer or "login" in referer:
         url = f"http://127.0.0.1:{OMNIROUTE_PORT}/{path}"
         return await proxy_http(url, request, sub_filters=OMNIROUTE_FILTERS)
@@ -328,5 +328,5 @@ async def catch_all_fallback(path: str, request: Request):
         url = f"http://127.0.0.1:{JELLYFIN_PORT}/{path}"
         return await proxy_http(url, request, extra_headers={"X-Forwarded-Prefix": "/jellyfin"})
 
-    url = f"http://127.0.0.1:{WEBUI_PORT}/openwebui/{path}"
-    return await proxy_http(url, request, extra_headers={"X-Forwarded-Prefix": "/openwebui"})
+    url = f"http://127.0.0.1:{WEBUI_PORT}/{path}"
+    return await proxy_http(url, request)

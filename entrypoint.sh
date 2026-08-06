@@ -83,7 +83,7 @@ if command -v open-webui >/dev/null 2>&1; then
     export PORT=8098
     export DATA_DIR="/data/open-webui"
     export CORS_ALLOW_ORIGIN="*"
-    export WEBUI_PREFIX="/openwebui"
+    export WEBUI_URL="https://jishnupg-opencode-cli.hf.space/openwebui"
     open-webui serve --port 8098 &
     echo "[INIT] Open WebUI started in background."
 else
