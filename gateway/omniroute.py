@@ -15,6 +15,19 @@ OMNIROUTE_JS_PATCH = """<script>
 (function() {
   if (window.__OMNIROUTE_PATCHED__) return;
   window.__OMNIROUTE_PATCHED__ = true;
+
+  // 1. Intercept link clicks so href="/api-keys" becomes href="/omniroute/api-keys"
+  document.addEventListener('click', function(e) {
+    var a = e.target.closest('a');
+    if (a) {
+      var href = a.getAttribute('href');
+      if (href && href.startsWith('/') && !href.startsWith('/omniroute') && !href.startsWith('http')) {
+        a.setAttribute('href', '/omniroute' + href);
+      }
+    }
+  }, true);
+
+  // 2. Intercept history pushState & replaceState
   var origPushState = history.pushState;
   history.pushState = function(state, title, url) {
     if (typeof url === 'string' && url.startsWith('/') && !url.startsWith('/omniroute')) {
@@ -29,14 +42,16 @@ OMNIROUTE_JS_PATCH = """<script>
     }
     return origReplaceState.call(this, state, title, url);
   };
+
+  // 3. Intercept fetch & XHR
   var origFetch = window.fetch;
   window.fetch = function(resource, init) {
     if (typeof resource === 'string') {
-      if (resource.startsWith('/') && !resource.startsWith('/omniroute')) {
+      if (resource.startsWith('/') && !resource.startsWith('/omniroute') && !resource.startsWith('/_next')) {
         resource = '/omniroute' + resource;
       }
     } else if (resource && resource.url && typeof resource.url === 'string') {
-      if (resource.url.startsWith('/') && !resource.url.startsWith('/omniroute')) {
+      if (resource.url.startsWith('/') && !resource.url.startsWith('/omniroute') && !resource.url.startsWith('/_next')) {
         resource = new Request('/omniroute' + resource.url, resource);
       }
     }
@@ -44,7 +59,7 @@ OMNIROUTE_JS_PATCH = """<script>
   };
   var origOpen = XMLHttpRequest.prototype.open;
   XMLHttpRequest.prototype.open = function(method, url) {
-    if (typeof url === 'string' && url.startsWith('/') && !url.startsWith('/omniroute')) {
+    if (typeof url === 'string' && url.startsWith('/') && !url.startsWith('/omniroute') && !url.startsWith('/_next')) {
       url = '/omniroute' + url;
     }
     return origOpen.apply(this, arguments);
@@ -79,6 +94,13 @@ async def omniroute_redirect_slash(request: Request):
 async def omniroute_main_route(request: Request, path: str = ""):
     target = f"http://127.0.0.1:{OMNIROUTE_PORT}/{path}"
     return await proxy_http_request(target, request, default_prefix="/omniroute", html_fixup=fixup_omniroute_html)
+
+# OpenAI API Endpoint Routing for OmniRoute
+@router.api_route("/v1", methods=["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"])
+@router.api_route("/v1/{path:path}", methods=["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"])
+async def omniroute_v1_api(request: Request, path: str = ""):
+    target = f"http://127.0.0.1:{OMNIROUTE_PORT}/v1/{path}" if path else f"http://127.0.0.1:{OMNIROUTE_PORT}/v1"
+    return await proxy_http_request(target, request, default_prefix="/omniroute")
 
 # Next.js Static Asset Routing
 @router.api_route("/_next/{path:path}", methods=["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"])

@@ -82,12 +82,13 @@ async def health_check():
 @app.api_route("/{path:path}", methods=["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"])
 async def route_catch_all(path: str, request: Request):
     referer = request.headers.get("referer", "").lower()
+    req_path = request.url.path.lower()
 
-    if "/omniroute" in referer:
+    if "/omniroute" in referer or req_path.startswith("/omniroute") or any(req_path.startswith(p) for p in ("/api-keys", "/providers", "/models", "/keys", "/settings")):
         return await proxy_http_request(f"http://127.0.0.1:{OMNIROUTE_PORT}/{path}", request, default_prefix="/omniroute", html_fixup=fixup_omniroute_html)
-    elif "/server" in referer:
+    elif "/server" in referer or req_path.startswith("/server"):
         return await proxy_http_request(f"http://127.0.0.1:{OPENCODE_PORT}/{path}", request, default_prefix="/server", html_fixup=fixup_opencode_html)
-    elif "/jellyfin" in referer:
+    elif "/jellyfin" in referer or req_path.startswith("/jellyfin"):
         return await proxy_http_request(f"http://127.0.0.1:{JELLYFIN_PORT}/{path}", request, default_prefix="/jellyfin", extra_headers={"X-Forwarded-Prefix": "/jellyfin"})
     elif "/openwebui" in referer or "openwebui" in referer:
         return await proxy_http_request(f"http://127.0.0.1:{WEBUI_PORT}/{path}", request, default_prefix="/openwebui", html_fixup=fixup_webui_html)
