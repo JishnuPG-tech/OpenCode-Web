@@ -35,6 +35,7 @@ def _strip_internal_ports(text: str) -> str:
     def _sub(m: "re.Match[str]") -> str:
         port = int(m.group(1))
         return PORT_TO_PREFIX.get(port, "")
+    text = re.sub(r":4096", "", text)
     return _PORT_PATTERN.sub(_sub, text)
 
 client = httpx.AsyncClient(timeout=120.0, follow_redirects=False)
@@ -46,6 +47,7 @@ def get_headers(request: Request, extra_headers: dict = None):
     headers["X-Forwarded-Host"] = PUBLIC_HOST
     headers["X-Forwarded-Proto"] = "https"
     headers["X-Forwarded-Port"] = "443"
+    headers["X-Forwarded-Server"] = PUBLIC_HOST
     if extra_headers:
         headers.update(extra_headers)
     return headers
@@ -73,6 +75,7 @@ async def proxy_http(target_url: str, request: Request, extra_headers: dict = No
         if lk in ["content-length", "transfer-encoding", "content-encoding"]:
             continue
         if lk == "location":
+            v = re.sub(r":4096", "", v)
             v = _strip_internal_ports(v)
             if v == "/login" or v.startswith("/login?"):
                 v = "/omniroute" + v
@@ -83,7 +86,7 @@ async def proxy_http(target_url: str, request: Request, extra_headers: dict = No
     content = resp.content
     ctype = resp.headers.get("content-type", "")
 
-    # CRITICAL FIX: Only modify text/html responses! Never corrupt JS/CSS/JSON bundles.
+    # Apply text rewriting exclusively to HTML responses
     if "text/html" in ctype:
         try:
             text_str = content.decode("utf-8", errors="ignore")
@@ -138,7 +141,7 @@ async def proxy_ws(websocket: WebSocket, target_ws_url: str):
                 pass
 
 # ==========================================
-# 1. LANDING HUB ROUTE (GET & HEAD for HF Health Check)
+# 1. LANDING HUB ROUTE (GET & HEAD)
 # ==========================================
 @app.api_route("/", methods=["GET", "HEAD"])
 async def root_hub():
@@ -172,13 +175,23 @@ async def debug_status():
     return results
 
 # ==========================================
-# 2. OPEN WEBUI ROUTES (/openwebui)
+# 2. OPEN WEBUI ROUTES (/openwebui, /api, /auth)
 # ==========================================
 @app.api_route("/openwebui/{path:path}", methods=["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"])
 @app.api_route("/openwebui", methods=["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"])
 async def openwebui_route(request: Request, path: str = ""):
     url = f"http://127.0.0.1:{WEBUI_PORT}/openwebui/{path}" if path else f"http://127.0.0.1:{WEBUI_PORT}/openwebui/"
     return await proxy_http(url, request, extra_headers={"X-Forwarded-Prefix": "/openwebui"})
+
+@app.api_route("/api/v1/{path:path}", methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"])
+async def openwebui_api(path: str, request: Request):
+    url = f"http://127.0.0.1:{WEBUI_PORT}/api/v1/{path}"
+    return await proxy_http(url, request)
+
+@app.api_route("/auth/{path:path}", methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"])
+async def openwebui_auth(path: str, request: Request):
+    url = f"http://127.0.0.1:{WEBUI_PORT}/auth/{path}"
+    return await proxy_http(url, request)
 
 # ==========================================
 # 3. OMNIROUTE GATEWAY ROUTES (/omniroute, /v1, /_next, /dashboard, /login)
@@ -244,10 +257,16 @@ def make_endpoint_route(ep_name: str):
         url = f"http://127.0.0.1:{OPENCODE_PORT}/{ep_name}"
         return await proxy_http(url, request)
 
-for ep in ["session", "project", "config", "permission", "question", "file", "find", "events", "event"]:
+# Added /command, /provider, /model, /mcp required by OpenCode Web UI!
+OPENCODE_ENDPOINTS = [
+    "session", "project", "config", "permission", "question",
+    "file", "find", "events", "event", "command", "provider", "model", "mcp"
+]
+for ep in OPENCODE_ENDPOINTS:
     make_endpoint_route(ep)
 
 @app.websocket("/ws")
+@app.websocket("/server/ws")
 async def opencode_ws(websocket: WebSocket):
     target = f"ws://127.0.0.1:{OPENCODE_PORT}/ws"
     await proxy_ws(websocket, target)
@@ -292,6 +311,5 @@ async def catch_all_fallback(path: str, request: Request):
         url = f"http://127.0.0.1:{JELLYFIN_PORT}/{path}"
         return await proxy_http(url, request, extra_headers={"X-Forwarded-Prefix": "/jellyfin"})
 
-    # Default fallback to Open WebUI
     url = f"http://127.0.0.1:{WEBUI_PORT}/openwebui/{path}"
     return await proxy_http(url, request, extra_headers={"X-Forwarded-Prefix": "/openwebui"})
