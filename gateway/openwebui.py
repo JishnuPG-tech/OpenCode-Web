@@ -65,11 +65,25 @@ def fixup_webui_html(html: str) -> str:
         html = re.sub(r"(<head[^>]*>)", r"\1" + WEBUI_JS_PATCH, html, count=1)
     return html
 
-@router.api_route("/openwebui", methods=["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"])
+from fastapi.responses import RedirectResponse
+
+@router.api_route("/openwebui", methods=["GET"])
+async def webui_redirect_slash(request: Request):
+    return RedirectResponse("/openwebui/", status_code=307)
+
 @router.api_route("/openwebui/{path:path}", methods=["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"])
 async def webui_main_route(request: Request, path: str = ""):
     target = f"http://127.0.0.1:{WEBUI_PORT}/{path}"
     return await proxy_http_request(target, request, default_prefix="/openwebui", html_fixup=fixup_webui_html)
+
+@router.api_route("/sw.js", methods=["GET", "HEAD"])
+async def webui_sw(request: Request):
+    target = f"http://127.0.0.1:{WEBUI_PORT}/sw.js"
+    res = await proxy_http_request(target, request, default_prefix="/openwebui")
+    if res.status_code == 404:
+        sw_code = "self.addEventListener('install', (e) => { self.skipWaiting(); }); self.addEventListener('activate', (e) => { e.waitUntil(clients.claim()); });"
+        return Response(content=sw_code, status_code=200, media_type="application/javascript")
+    return res
 
 @router.websocket("/openwebui/ws")
 @router.websocket("/openwebui/ws/{path:path}")

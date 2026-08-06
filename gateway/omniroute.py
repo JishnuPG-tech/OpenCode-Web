@@ -69,7 +69,12 @@ def fixup_omniroute_html(html: str) -> str:
         html = re.sub(r"(<head[^>]*>)", r"\1" + OMNIROUTE_JS_PATCH, html, count=1)
     return html
 
-@router.api_route("/omniroute", methods=["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"])
+from fastapi.responses import RedirectResponse
+
+@router.api_route("/omniroute", methods=["GET"])
+async def omniroute_redirect_slash(request: Request):
+    return RedirectResponse("/omniroute/", status_code=307)
+
 @router.api_route("/omniroute/{path:path}", methods=["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"])
 async def omniroute_main_route(request: Request, path: str = ""):
     target = f"http://127.0.0.1:{OMNIROUTE_PORT}/{path}"
