@@ -51,7 +51,7 @@ sleep 3
 python3 -c "
 import json, os
 p = '/data/config/opencode/opencode.json'
-stale_models = ['big-pickle', 'mimo-v2.5-free', 'opencode/mimo-v2.5-free']
+stale_models = ['big-pickle', 'mimo-v2.5-free', 'opencode/mimo-v2.5-free', 'omniroute/auto-best-coding']
 try:
     d = json.load(open(p)) if os.path.exists(p) else {}
     if d.get('model') in stale_models:
@@ -72,9 +72,11 @@ else
 fi
 sleep 2
 
-# Pre-configure & Start Open WebUI on port 8098 (Mounted at WEBUI_PREFIX=/openwebui)
+# Pre-configure & Start Open WebUI on port 8098 (Mounted at /openwebui via FastAPI proxy)
 echo "[INIT] Starting Open WebUI on port 8098 pre-configured with OmniRoute..."
 if command -v open-webui >/dev/null 2>&1; then
+    # Tell Open WebUI its public-facing URL (required to avoid "Backend Required" error)
+    export WEBUI_URL="https://jishnupg-opencode-cli.hf.space"
     export OPENAI_API_BASE_URL="http://127.0.0.1:20128/v1"
     export OPENAI_API_KEY="omniroute"
     export WEBUI_SECRET_KEY="opencode_webui_jwt_secret_2026"
@@ -82,8 +84,10 @@ if command -v open-webui >/dev/null 2>&1; then
     export ENABLE_OPENAI_API="true"
     export PORT=8098
     export DATA_DIR="/data/open-webui"
-    export CORS_ALLOW_ORIGIN="*"
-    export WEBUI_URL="https://jishnupg-opencode-cli.hf.space/openwebui"
+    # Allow requests from the public HF Space origin
+    export CORS_ALLOW_ORIGIN="https://jishnupg-opencode-cli.hf.space"
+    # Disable authentication so it works out-of-the-box without sign-in
+    export WEBUI_AUTH="false"
     open-webui serve --port 8098 &
     echo "[INIT] Open WebUI started in background."
 else

@@ -1,126 +1,162 @@
+"""
+OpenCode Space — FastAPI Reverse-Proxy Gateway
+================================================
+Architecture (all on 127.0.0.1 inside the container):
+  Port 4096  — this FastAPI app  (HF-Space external port)
+  Port 4097  — opencode serve
+  Port 8096  — Jellyfin
+  Port 8098  — Open WebUI
+  Port 20128 — OmniRoute
+  Port 8080  — TG-Drive Streamer
+
+Public URL prefix mapping:
+  /          → landing hub (index.html)
+  /server/   → opencode (4097)
+  /openwebui/→ Open WebUI (8098)  — STRIP prefix before upstream
+  /omniroute/→ OmniRoute  (20128) — STRIP prefix before upstream
+  /jellyfin/ → Jellyfin   (8096)
+  /tg-stream/→ TG Streamer(8080)
+"""
+
 import os
 import re
 import asyncio
 from fastapi import FastAPI, Request, Response, WebSocket
-from fastapi.responses import HTMLResponse, FileResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, FileResponse, StreamingResponse
 import httpx
 import aiohttp
 
 app = FastAPI(title="OpenCode Space Gateway", docs_url=None, redoc_url=None)
 
-WEBUI_PORT = 8098
+# ── Port constants ──────────────────────────────────────────────────────────
+WEBUI_PORT     = 8098
 OMNIROUTE_PORT = 20128
-OPENCODE_PORT = 4097
-JELLYFIN_PORT = 8096
-TG_STREAM_PORT = 8080
-GATEWAY_PORT = 4096
+OPENCODE_PORT  = 4097
+JELLYFIN_PORT  = 8096
+TG_PORT        = 8080
 
-PUBLIC_HOST = "jishnupg-opencode-cli.hf.space"
+PUBLIC_HOST   = "jishnupg-opencode-cli.hf.space"
 PUBLIC_ORIGIN = f"https://{PUBLIC_HOST}"
 
-PORT_TO_PREFIX = {
-    GATEWAY_PORT: "",
-    OMNIROUTE_PORT: "/omniroute",
-    WEBUI_PORT: "/openwebui",
-    OPENCODE_PORT: "/server",
-    JELLYFIN_PORT: "/jellyfin",
-    TG_STREAM_PORT: "/tg-stream",
+# ── Internal-port stripper (for Location headers only) ─────────────────────
+_INTERNAL_PORTS = {4096, 20128, 8098, 4097, 8096, 8080}
+_PORT_STRIP_RE  = re.compile(
+    r"(https?://[^/:]+):(" + "|".join(str(p) for p in _INTERNAL_PORTS) + r")"
+)
+_PORT_PREFIX = {
+    4096:  "",
+    20128: "/omniroute",
+    8098:  "/openwebui",
+    4097:  "/server",
+    8096:  "/jellyfin",
+    8080:  "/tg-stream",
 }
 
-_PORT_PATTERN = re.compile(
-    r"https?://[^/\s\"'>]+:(" + "|".join(str(p) for p in PORT_TO_PREFIX) + r")(?=/|\"|'|\s|$)"
+def _fix_location(location: str) -> str:
+    """Rewrite a Location header so no internal port leaks out."""
+    def _sub(m: "re.Match[str]") -> str:
+        port = int(m.group(2))
+        prefix = _PORT_PREFIX.get(port, "")
+        return f"{PUBLIC_ORIGIN}{prefix}"
+    return _PORT_STRIP_RE.sub(_sub, location)
+
+# ── Shared async HTTP client ────────────────────────────────────────────────
+client = httpx.AsyncClient(
+    timeout=httpx.Timeout(120.0),
+    follow_redirects=False,
+    limits=httpx.Limits(max_connections=200, max_keepalive_connections=50),
 )
 
-def _strip_internal_ports(text: str) -> str:
-    def _sub(m: "re.Match[str]") -> str:
-        port = int(m.group(1))
-        return PORT_TO_PREFIX.get(port, "")
-    text = re.sub(r":4096", "", text)
-    return _PORT_PATTERN.sub(_sub, text)
+# ── Header helpers ──────────────────────────────────────────────────────────
+_HOP_BY_HOP = {"connection", "keep-alive", "proxy-authenticate", "proxy-authorization",
+                "te", "trailers", "transfer-encoding", "upgrade",
+                "content-length", "content-encoding"}
 
-client = httpx.AsyncClient(timeout=120.0, follow_redirects=False)
+def _request_headers(request: Request, extra: dict | None = None) -> dict:
+    h = {k: v for k, v in request.headers.items()
+         if k.lower() not in {"host", "content-length"}}
+    h["X-Forwarded-Host"]   = PUBLIC_HOST
+    h["X-Forwarded-Proto"]  = "https"
+    h["X-Forwarded-Port"]   = "443"
+    h["X-Real-IP"]          = request.client.host if request.client else "127.0.0.1"
+    if extra:
+        h.update(extra)
+    return h
 
-def get_headers(request: Request, extra_headers: dict = None):
-    headers = dict(request.headers)
-    headers.pop("host", None)
-    headers.pop("content-length", None)
-    headers["X-Forwarded-Host"] = PUBLIC_HOST
-    headers["X-Forwarded-Proto"] = "https"
-    headers["X-Forwarded-Port"] = "443"
-    headers["X-Forwarded-Server"] = PUBLIC_HOST
-    if extra_headers:
-        headers.update(extra_headers)
-    return headers
+def _response_headers(resp: httpx.Response, location_override: str | None = None) -> dict:
+    out = {}
+    for k, v in resp.headers.items():
+        lk = k.lower()
+        if lk in _HOP_BY_HOP:
+            continue
+        if lk == "location":
+            v = _fix_location(v)
+            if location_override:
+                v = location_override
+        out[k] = v
+    return out
 
-async def proxy_http(target_url: str, request: Request, extra_headers: dict = None, sub_filters: list = None):
-    headers = get_headers(request, extra_headers)
-    method = request.method
-    params = dict(request.query_params)
-    body = await request.body()
+# ── Core proxy helper ───────────────────────────────────────────────────────
+async def proxy_http(
+    target_url: str,
+    request: Request,
+    extra_headers: dict | None = None,
+    html_fixup: callable | None = None,
+) -> Response:
+    """
+    Forward an HTTP request to target_url.
+    html_fixup(text: str) -> str  — called only on text/html bodies.
+    JS/CSS/JSON/binary content is NEVER modified.
+    """
+    headers = _request_headers(request, extra_headers)
+    body    = await request.body()
 
     try:
         resp = await client.request(
-            method=method,
+            method=request.method,
             url=target_url,
             headers=headers,
-            params=params,
+            params=dict(request.query_params),
             content=body,
         )
-    except Exception as e:
-        return Response(content=f"Service Unavailable ({target_url}): {e}", status_code=502)
+    except Exception as exc:
+        return Response(
+            content=f"<h2>502 — upstream unavailable</h2><pre>{exc}</pre>",
+            status_code=502,
+            media_type="text/html",
+        )
 
-    res_headers = {}
-    for k, v in resp.headers.items():
-        lk = k.lower()
-        if lk in ["content-length", "transfer-encoding", "content-encoding"]:
-            continue
-        if lk == "location":
-            v = _strip_internal_ports(v)
-            v = re.sub(r"https?://[^/]+:4096", "", v)
-            v = re.sub(r"https?://[^/]+:20128", "/omniroute", v)
-            v = re.sub(r"https?://[^/]+:8098", "/openwebui", v)
-            v = re.sub(r"https?://[^/]+:4097", "/server", v)
-            if v == "/login" or v.startswith("/login?"):
-                v = "/omniroute" + v
-            elif v == "/dashboard" or v.startswith("/dashboard?"):
-                v = "/omniroute" + v
-            if not v.startswith("https://"):
-                if not v.startswith("/"):
-                    v = "/" + v
-                v = f"https://{PUBLIC_HOST}{v}"
-            res_headers[k] = v
-        else:
-            res_headers[k] = v
+    res_headers = _response_headers(resp)
+    content     = resp.content
+    ctype       = resp.headers.get("content-type", "")
+    status      = resp.status_code
 
-    content = resp.content
-    ctype = resp.headers.get("content-type", "")
-
-    if "text/html" in ctype:
+    # Only rewrite text/html — never touch JS, CSS, JSON, images, etc.
+    if "text/html" in ctype and html_fixup and content:
         try:
-            text_str = content.decode("utf-8", errors="ignore")
-            if sub_filters:
-                for old_s, new_s in sub_filters:
-                    text_str = text_str.replace(old_s, new_s)
-            text_str = _strip_internal_ports(text_str)
-            content = text_str.encode("utf-8")
+            text = content.decode("utf-8", errors="replace")
+            text = html_fixup(text)
+            content = text.encode("utf-8")
         except Exception:
             pass
 
     return Response(
         content=content,
-        status_code=resp.status_code,
+        status_code=status,
         headers=res_headers,
-        media_type=ctype if ctype else None
+        media_type=ctype or None,
     )
 
+# ── WebSocket proxy helper ──────────────────────────────────────────────────
 async def proxy_ws(websocket: WebSocket, target_ws_url: str):
     await websocket.accept()
-    async with aiohttp.ClientSession() as session:
-        headers = {k: v for k, v in websocket.headers.items() if k.lower() not in ["host", "sec-websocket-key", "sec-websocket-version", "sec-websocket-extensions"]}
-        try:
-            async with session.ws_connect(target_ws_url, headers=headers) as target_ws:
-                async def forward_to_client():
-                    async for msg in target_ws:
+    skip = {"host", "sec-websocket-key", "sec-websocket-version", "sec-websocket-extensions"}
+    headers = {k: v for k, v in websocket.headers.items() if k.lower() not in skip}
+    try:
+        async with aiohttp.ClientSession() as sess:
+            async with sess.ws_connect(target_ws_url, headers=headers) as ws_up:
+                async def fwd_down():
+                    async for msg in ws_up:
                         if msg.type == aiohttp.WSMsgType.TEXT:
                             await websocket.send_text(msg.data)
                         elif msg.type == aiohttp.WSMsgType.BINARY:
@@ -128,205 +164,216 @@ async def proxy_ws(websocket: WebSocket, target_ws_url: str):
                         elif msg.type in (aiohttp.WSMsgType.CLOSE, aiohttp.WSMsgType.CLOSED):
                             break
 
-                async def forward_to_target():
+                async def fwd_up():
                     while True:
                         try:
                             msg = await websocket.receive()
                             if "text" in msg:
-                                await target_ws.send_str(msg["text"])
+                                await ws_up.send_str(msg["text"])
                             elif "bytes" in msg:
-                                await target_ws.send_bytes(msg["bytes"])
+                                await ws_up.send_bytes(msg["bytes"])
                             elif msg.get("type") == "websocket.disconnect":
                                 break
                         except Exception:
                             break
 
-                await asyncio.gather(forward_to_client(), forward_to_target(), return_exceptions=True)
-        except Exception as e:
-            try:
-                await websocket.close()
-            except Exception:
-                pass
+                await asyncio.gather(fwd_down(), fwd_up(), return_exceptions=True)
+    except Exception:
+        pass
+    finally:
+        try:
+            await websocket.close()
+        except Exception:
+            pass
 
-# ==========================================
-# 1. LANDING HUB ROUTE
-# ==========================================
+
+# ══════════════════════════════════════════════════════════════════════════════
+# ROUTES
+# ══════════════════════════════════════════════════════════════════════════════
+
+# ── 0. Health / Landing ────────────────────────────────────────────────────
 @app.api_route("/", methods=["GET", "HEAD"])
-async def root_hub():
-    if os.path.exists("/index.html"):
-        return FileResponse("/index.html", media_type="text/html")
-    return HTMLResponse("<h1>OpenCode Space Gateway Active</h1>")
+async def root_hub(request: Request):
+    if request.method == "HEAD":
+        return Response(status_code=200)
+    for path in ("/index.html", "/app/index.html"):
+        if os.path.exists(path):
+            return FileResponse(path, media_type="text/html")
+    return HTMLResponse("<h1>OpenCode Space Gateway</h1><p>Services: "
+                        "<a href='/server/'>OpenCode</a> | "
+                        "<a href='/openwebui/'>Open WebUI</a> | "
+                        "<a href='/omniroute/'>OmniRoute</a> | "
+                        "<a href='/jellyfin/'>Jellyfin</a></p>")
 
 @app.api_route("/favicon.ico", methods=["GET", "HEAD"])
 async def favicon():
     return Response(content=b"", status_code=204)
 
-# ==========================================
-# 1b. DEBUG STATUS ROUTE
-# ==========================================
-@app.api_route("/debug/status", methods=["GET"])
+# ── 1. Debug status ────────────────────────────────────────────────────────
+@app.get("/debug/status")
 async def debug_status():
-    checks = {
-        "opencode_server": f"http://127.0.0.1:{OPENCODE_PORT}/",
+    services = {
+        "opencode":  f"http://127.0.0.1:{OPENCODE_PORT}/",
+        "openwebui": f"http://127.0.0.1:{WEBUI_PORT}/",
         "omniroute": f"http://127.0.0.1:{OMNIROUTE_PORT}/",
-        "open_webui": f"http://127.0.0.1:{WEBUI_PORT}/",
-        "jellyfin": f"http://127.0.0.1:{JELLYFIN_PORT}/",
-        "tg_streamer": f"http://127.0.0.1:{TG_STREAM_PORT}/",
+        "jellyfin":  f"http://127.0.0.1:{JELLYFIN_PORT}/",
+        "tg_stream": f"http://127.0.0.1:{TG_PORT}/",
     }
     results = {}
-    for name, url in checks.items():
+    for name, url in services.items():
         try:
-            r = await client.get(url, timeout=5.0)
-            results[name] = {"status": "up", "http_status": r.status_code}
-        except Exception as e:
-            results[name] = {"status": "down", "error": str(e)}
+            r = await client.get(url, timeout=4.0)
+            results[name] = {"up": True, "status": r.status_code}
+        except Exception as exc:
+            results[name] = {"up": False, "error": str(exc)}
     return results
 
-# ==========================================
-# 2. OPEN WEBUI ROUTES (/openwebui, /_app, /static, /api, /auth)
-# ==========================================
-@app.api_route("/openwebui/{path:path}", methods=["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"])
+
+# ══════════════════════════════════════════════════════════════════════════════
+# 2. OPEN WEBUI  — mounted at /openwebui/
+#    Key insight: Open WebUI is built to run at /, so we STRIP /openwebui
+#    from the path before proxying. All its asset URLs (/_app/, /static/ etc.)
+#    will come in via the catch-all with a Referer: .../openwebui/...
+# ══════════════════════════════════════════════════════════════════════════════
+def _webui_fixup(html: str) -> str:
+    """Rewrite absolute-root asset paths to include /openwebui prefix."""
+    # Don't blindly rewrite every /; be surgical about href/src/action attrs
+    html = html.replace('href="/', 'href="/openwebui/')
+    html = html.replace("href='/", "href='/openwebui/")
+    html = html.replace('src="/', 'src="/openwebui/')
+    html = html.replace("src='/", "src='/openwebui/")
+    html = html.replace('action="/', 'action="/openwebui/')
+    return html
+
 @app.api_route("/openwebui", methods=["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"])
+@app.api_route("/openwebui/{path:path}", methods=["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"])
 async def openwebui_route(request: Request, path: str = ""):
-    url = f"http://127.0.0.1:{WEBUI_PORT}/{path}" if path else f"http://127.0.0.1:{WEBUI_PORT}/"
-    return await proxy_http(url, request)
+    upstream = f"http://127.0.0.1:{WEBUI_PORT}/{path}"
+    return await proxy_http(upstream, request, html_fixup=_webui_fixup)
 
-@app.api_route("/_app/{path:path}", methods=["GET", "HEAD", "OPTIONS"])
-async def openwebui_app_route(path: str, request: Request):
-    url = f"http://127.0.0.1:{WEBUI_PORT}/_app/{path}"
-    return await proxy_http(url, request)
+# Open WebUI WebSocket (socket.io)
+@app.websocket("/openwebui/ws")
+@app.websocket("/openwebui/ws/")
+async def openwebui_ws(websocket: WebSocket):
+    await proxy_ws(websocket, f"ws://127.0.0.1:{WEBUI_PORT}/ws")
 
-@app.api_route("/static/{path:path}", methods=["GET", "HEAD", "OPTIONS"])
-async def openwebui_static_route(path: str, request: Request):
-    url = f"http://127.0.0.1:{WEBUI_PORT}/static/{path}"
-    return await proxy_http(url, request)
+@app.websocket("/openwebui/socket.io")
+async def openwebui_socketio(websocket: WebSocket):
+    await proxy_ws(websocket, f"ws://127.0.0.1:{WEBUI_PORT}/socket.io")
 
-@app.api_route("/api/v1/{path:path}", methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"])
-async def openwebui_api(path: str, request: Request):
-    url = f"http://127.0.0.1:{WEBUI_PORT}/api/v1/{path}"
-    return await proxy_http(url, request)
 
-@app.api_route("/auth/{path:path}", methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"])
-async def openwebui_auth(path: str, request: Request):
-    url = f"http://127.0.0.1:{WEBUI_PORT}/auth/{path}"
-    return await proxy_http(url, request)
+# ══════════════════════════════════════════════════════════════════════════════
+# 3. OMNIROUTE  — mounted at /omniroute/
+#    OmniRoute (Next.js) is built to run at /. We STRIP /omniroute prefix.
+# ══════════════════════════════════════════════════════════════════════════════
+def _omniroute_fixup(html: str) -> str:
+    """Rewrite Next.js root-relative paths to include /omniroute prefix."""
+    html = html.replace('href="/', 'href="/omniroute/')
+    html = html.replace("href='/", "href='/omniroute/")
+    html = html.replace('src="/', 'src="/omniroute/')
+    html = html.replace("src='/", "src='/omniroute/")
+    html = html.replace('action="/', 'action="/omniroute/')
+    html = html.replace('"/_next/', '"/omniroute/_next/')
+    html = html.replace("'/_next/", "'/omniroute/_next/")
+    # Fix Next.js router base path in __NEXT_DATA__
+    html = html.replace('"basePath":""', '"basePath":"/omniroute"')
+    html = html.replace('"basePath": ""', '"basePath": "/omniroute"')
+    return html
 
-# ==========================================
-# 3. OMNIROUTE GATEWAY ROUTES (/omniroute, /v1, /_next, /dashboard, /login)
-# ==========================================
-OMNIROUTE_FILTERS = [
-    ('href="/', 'href="/omniroute/'),
-    ('src="/', 'src="/omniroute/'),
-    ('action="/', 'action="/omniroute/'),
-    ('="/_next/', '="/omniroute/_next/'),
-    ('"/_next/', '"/omniroute/_next/'),
-]
-
-@app.api_route("/omniroute/{path:path}", methods=["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"])
 @app.api_route("/omniroute", methods=["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"])
+@app.api_route("/omniroute/{path:path}", methods=["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"])
 async def omniroute_route(request: Request, path: str = ""):
-    url = f"http://127.0.0.1:{OMNIROUTE_PORT}/{path}" if path else f"http://127.0.0.1:{OMNIROUTE_PORT}/"
-    return await proxy_http(url, request, sub_filters=OMNIROUTE_FILTERS)
+    upstream = f"http://127.0.0.1:{OMNIROUTE_PORT}/{path}"
+    return await proxy_http(upstream, request, html_fixup=_omniroute_fixup)
 
-@app.api_route("/dashboard/{path:path}", methods=["GET", "POST", "HEAD", "OPTIONS"])
-@app.api_route("/dashboard", methods=["GET", "POST", "HEAD", "OPTIONS"])
-async def omniroute_dashboard(request: Request, path: str = ""):
-    url = f"http://127.0.0.1:{OMNIROUTE_PORT}/dashboard/{path}" if path else f"http://127.0.0.1:{OMNIROUTE_PORT}/dashboard"
-    return await proxy_http(url, request, sub_filters=OMNIROUTE_FILTERS)
 
-@app.api_route("/login/{path:path}", methods=["GET", "POST", "HEAD", "OPTIONS"])
-@app.api_route("/login", methods=["GET", "POST", "HEAD", "OPTIONS"])
-async def omniroute_login(request: Request, path: str = ""):
-    url = f"http://127.0.0.1:{OMNIROUTE_PORT}/login/{path}" if path else f"http://127.0.0.1:{OMNIROUTE_PORT}/login"
-    return await proxy_http(url, request, sub_filters=OMNIROUTE_FILTERS)
+# ══════════════════════════════════════════════════════════════════════════════
+# 4. OPENCODE CLI SERVER  — mounted at /server/
+#    OpenCode's Vite frontend connects to its own backend via WebSocket at /ws.
+#    We proxy /server/ → 127.0.0.1:4097/ and /server/ws → ws://127.0.0.1:4097/ws
+#    We do NOT rewrite JS files — only HTML gets the prefix fixup.
+# ══════════════════════════════════════════════════════════════════════════════
+def _opencode_fixup(html: str) -> str:
+    """Rewrite root-relative asset URLs in opencode HTML to /server prefix."""
+    html = html.replace('href="/', 'href="/server/')
+    html = html.replace("href='/", "href='/server/")
+    html = html.replace('src="/', 'src="/server/')
+    html = html.replace("src='/", "src='/server/")
+    # Fix the websocket URL embedded in HTML (not in JS - JS is never touched)
+    html = html.replace('ws://"+location.host+"/ws', 'ws://"+location.host+"/server/ws')
+    html = html.replace("ws://'+location.host+'/ws", "ws://'+location.host+'/server/ws")
+    return html
 
-@app.api_route("/_next/{path:path}", methods=["GET", "POST", "OPTIONS"])
-async def omniroute_next(path: str, request: Request):
-    url = f"http://127.0.0.1:{OMNIROUTE_PORT}/_next/{path}"
-    return await proxy_http(url, request)
-
-@app.api_route("/v1/{path:path}", methods=["GET", "POST", "OPTIONS"])
-async def omniroute_v1(path: str, request: Request):
-    url = f"http://127.0.0.1:{OMNIROUTE_PORT}/v1/{path}"
-    return await proxy_http(url, request)
-
-# ==========================================
-# 4. OPENCODE CLI SERVER ROUTES (/server, /ws, APIs)
-# ==========================================
-OPENCODE_FILTERS = [
-    ('href="/', 'href="/server/'),
-    ('src="/', 'src="/server/'),
-]
-
-@app.api_route("/server/{path:path}", methods=["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"])
 @app.api_route("/server", methods=["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"])
-async def opencode_server_route(request: Request, path: str = ""):
-    url = f"http://127.0.0.1:{OPENCODE_PORT}/{path}" if path else f"http://127.0.0.1:{OPENCODE_PORT}/"
-    return await proxy_http(url, request, sub_filters=OPENCODE_FILTERS)
+@app.api_route("/server/{path:path}", methods=["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"])
+async def opencode_route(request: Request, path: str = ""):
+    upstream = f"http://127.0.0.1:{OPENCODE_PORT}/{path}"
+    return await proxy_http(upstream, request, html_fixup=_opencode_fixup)
 
-def make_endpoint_route(ep_name: str):
-    @app.api_route(f"/{ep_name}/{{path:path}}", methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"])
-    async def opencode_endpoint(path: str, request: Request):
-        url = f"http://127.0.0.1:{OPENCODE_PORT}/{ep_name}/{path}"
-        return await proxy_http(url, request)
-
-    @app.api_route(f"/{ep_name}", methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"])
-    async def opencode_endpoint_root(request: Request):
-        url = f"http://127.0.0.1:{OPENCODE_PORT}/{ep_name}"
-        return await proxy_http(url, request)
-
-OPENCODE_ENDPOINTS = [
-    "session", "project", "config", "permission", "question",
-    "file", "find", "events", "event", "command", "provider", "model", "mcp"
-]
-for ep in OPENCODE_ENDPOINTS:
-    make_endpoint_route(ep)
-
-@app.websocket("/ws")
+# OpenCode WebSocket — the JS bundle sends to /ws (root), our route catches /server/ws
 @app.websocket("/server/ws")
+@app.websocket("/ws")
 async def opencode_ws(websocket: WebSocket):
-    target = f"ws://127.0.0.1:{OPENCODE_PORT}/ws"
-    await proxy_ws(websocket, target)
+    await proxy_ws(websocket, f"ws://127.0.0.1:{OPENCODE_PORT}/ws")
 
-# ==========================================
-# 5. JELLYFIN MEDIA SERVER ROUTES (/jellyfin and /Jellyfin)
-# ==========================================
-@app.api_route("/jellyfin/{path:path}", methods=["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"])
+
+# ══════════════════════════════════════════════════════════════════════════════
+# 5. JELLYFIN  — mounted at /jellyfin/
+# ══════════════════════════════════════════════════════════════════════════════
 @app.api_route("/jellyfin", methods=["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"])
-@app.api_route("/Jellyfin/{path:path}", methods=["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"])
+@app.api_route("/jellyfin/{path:path}", methods=["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"])
 @app.api_route("/Jellyfin", methods=["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"])
+@app.api_route("/Jellyfin/{path:path}", methods=["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"])
 async def jellyfin_route(request: Request, path: str = ""):
-    url = f"http://127.0.0.1:{JELLYFIN_PORT}/{path}" if path else f"http://127.0.0.1:{JELLYFIN_PORT}/"
-    return await proxy_http(url, request, extra_headers={"X-Forwarded-Prefix": "/jellyfin"})
+    upstream = f"http://127.0.0.1:{JELLYFIN_PORT}/{path}"
+    return await proxy_http(
+        upstream, request,
+        extra_headers={"X-Forwarded-Prefix": "/jellyfin"},
+    )
 
-# ==========================================
-# 6. TELEGRAM DIRECT STREAM PROXY (/tg-stream)
-# ==========================================
-@app.api_route("/tg-stream/{path:path}", methods=["GET", "HEAD", "OPTIONS"])
+
+# ══════════════════════════════════════════════════════════════════════════════
+# 6. TG-DRIVE STREAMER  — mounted at /tg-stream/
+# ══════════════════════════════════════════════════════════════════════════════
 @app.api_route("/tg-stream", methods=["GET", "HEAD", "OPTIONS"])
+@app.api_route("/tg-stream/{path:path}", methods=["GET", "HEAD", "OPTIONS"])
 async def tg_stream_route(request: Request, path: str = ""):
-    url = f"http://127.0.0.1:{TG_STREAM_PORT}/{path}" if path else f"http://127.0.0.1:{TG_STREAM_PORT}/"
-    return await proxy_http(url, request)
+    upstream = f"http://127.0.0.1:{TG_PORT}/{path}"
+    return await proxy_http(upstream, request)
 
-# ==========================================
-# 7. SMART REFERER FALLBACK
-# ==========================================
+
+# ══════════════════════════════════════════════════════════════════════════════
+# 7. CATCH-ALL — smart Referer-based fallback for sub-resource requests
+#    When JS/CSS/API assets from a sub-app arrive at the root (e.g. /_app/...)
+#    we use the Referer header to route them to the correct upstream.
+# ══════════════════════════════════════════════════════════════════════════════
 @app.api_route("/{path:path}", methods=["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"])
-async def catch_all_fallback(path: str, request: Request):
+async def catch_all(path: str, request: Request):
     referer = request.headers.get("referer", "").lower()
-    
-    if "openwebui" in referer:
-        url = f"http://127.0.0.1:{WEBUI_PORT}/{path}"
-        return await proxy_http(url, request)
-    elif "omniroute" in referer or "dashboard" in referer or "login" in referer:
-        url = f"http://127.0.0.1:{OMNIROUTE_PORT}/{path}"
-        return await proxy_http(url, request, sub_filters=OMNIROUTE_FILTERS)
-    elif "server" in referer:
-        url = f"http://127.0.0.1:{OPENCODE_PORT}/{path}"
-        return await proxy_http(url, request)
-    elif "jellyfin" in referer:
-        url = f"http://127.0.0.1:{JELLYFIN_PORT}/{path}"
-        return await proxy_http(url, request, extra_headers={"X-Forwarded-Prefix": "/jellyfin"})
 
-    url = f"http://127.0.0.1:{WEBUI_PORT}/{path}"
-    return await proxy_http(url, request)
+    if "/openwebui" in referer:
+        return await proxy_http(
+            f"http://127.0.0.1:{WEBUI_PORT}/{path}", request,
+            html_fixup=_webui_fixup,
+        )
+    elif "/omniroute" in referer or "/dashboard" in referer or "/login" in referer:
+        return await proxy_http(
+            f"http://127.0.0.1:{OMNIROUTE_PORT}/{path}", request,
+            html_fixup=_omniroute_fixup,
+        )
+    elif "/server" in referer:
+        return await proxy_http(
+            f"http://127.0.0.1:{OPENCODE_PORT}/{path}", request,
+            html_fixup=_opencode_fixup,
+        )
+    elif "/jellyfin" in referer:
+        return await proxy_http(
+            f"http://127.0.0.1:{JELLYFIN_PORT}/{path}", request,
+            extra_headers={"X-Forwarded-Prefix": "/jellyfin"},
+        )
+
+    # Default: try Open WebUI
+    return await proxy_http(
+        f"http://127.0.0.1:{WEBUI_PORT}/{path}", request,
+        html_fixup=_webui_fixup,
+    )
