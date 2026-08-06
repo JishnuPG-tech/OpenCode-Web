@@ -1,0 +1,229 @@
+"""
+Gateway Proxy Core Utilities
+============================
+High-Performance Async HTTP client, Header Sanitization, Location Header Rewriting,
+and Core HTTP & WebSocket proxying logic.
+"""
+
+import os
+import re
+import asyncio
+import logging
+from typing import Callable, Optional, Dict, Any
+
+import httpx
+import aiohttp
+from fastapi import Request, Response, WebSocket
+from fastapi.responses import StreamingResponse
+
+logger = logging.getLogger("GatewayUtils")
+
+# Port definitions
+WEBUI_PORT     = int(os.environ.get("WEBUI_PORT", 8098))
+OMNIROUTE_PORT = int(os.environ.get("OMNIROUTE_PORT", 20128))
+OPENCODE_PORT  = int(os.environ.get("OPENCODE_PORT", 4097))
+JELLYFIN_PORT  = int(os.environ.get("JELLYFIN_PORT", 8096))
+TG_PORT        = int(os.environ.get("TG_PORT", 8080))
+GATEWAY_PORT   = int(os.environ.get("PORT", 4096))
+
+PUBLIC_HOST   = os.environ.get("PUBLIC_HOST", "jishnupg-opencode-cli.hf.space")
+PUBLIC_ORIGIN = f"https://{PUBLIC_HOST}"
+
+_INTERNAL_PORTS = {GATEWAY_PORT, WEBUI_PORT, OMNIROUTE_PORT, OPENCODE_PORT, JELLYFIN_PORT, TG_PORT}
+_PORT_STRIP_RE  = re.compile(r"(https?://[^/:]+):(" + "|".join(str(p) for p in _INTERNAL_PORTS) + r")")
+
+_PORT_PREFIX_MAP = {
+    GATEWAY_PORT:   "",
+    OMNIROUTE_PORT: "/omniroute",
+    WEBUI_PORT:     "/openwebui",
+    OPENCODE_PORT:  "/server",
+    JELLYFIN_PORT:  "/jellyfin",
+    TG_PORT:        "/tg-stream",
+}
+
+# Shared Async HTTPX Client Instance
+http_client: Optional[httpx.AsyncClient] = None
+
+def get_http_client() -> httpx.AsyncClient:
+    global http_client
+    if http_client is None or http_client.is_closed:
+        http_client = httpx.AsyncClient(
+            timeout=httpx.Timeout(120.0, connect=10.0),
+            follow_redirects=False,
+            limits=httpx.Limits(max_connections=1000, max_keepalive_connections=200, keepalive_expiry=30.0),
+        )
+    return http_client
+
+def fix_location_header(location: str, default_prefix: str = "") -> str:
+    """Rewrite Location header so internal ports or root paths stay prefixed correctly."""
+    if not location:
+        return location
+
+    # If full URL containing internal port:
+    def _replace_port(match: re.Match[str]) -> str:
+        port = int(match.group(2))
+        prefix = _PORT_PREFIX_MAP.get(port, default_prefix)
+        return f"{PUBLIC_ORIGIN}{prefix}"
+
+    rewritten = _PORT_STRIP_RE.sub(_replace_port, location)
+
+    # Handle relative redirects (e.g., Location: /dashboard or Location: /auth)
+    if default_prefix and rewritten.startswith("/") and not rewritten.startswith(default_prefix) and not rewritten.startswith("http"):
+        rewritten = f"{default_prefix}{rewritten}"
+
+    return rewritten
+
+
+_HOP_BY_HOP_HEADERS = {
+    "connection", "keep-alive", "proxy-authenticate", "proxy-authorization",
+    "te", "trailers", "transfer-encoding", "upgrade",
+    "content-length", "content-encoding"
+}
+
+def build_upstream_headers(request: Request, extra_headers: Optional[Dict[str, str]] = None) -> Dict[str, str]:
+    headers = {k: v for k, v in request.headers.items() if k.lower() not in {"host", "content-length"}}
+    headers["X-Forwarded-Host"]  = PUBLIC_HOST
+    headers["X-Forwarded-Proto"] = "https"
+    headers["X-Forwarded-Port"]  = "443"
+    headers["X-Real-IP"]         = request.client.host if request.client else "127.0.0.1"
+    if extra_headers:
+        headers.update(extra_headers)
+    return headers
+
+def build_downstream_headers(resp_headers: httpx.Headers, default_prefix: str = "") -> Dict[str, str]:
+    headers = {}
+    for key, value in resp_headers.items():
+        lk = key.lower()
+        if lk in _HOP_BY_HOP_HEADERS:
+            continue
+        if lk == "location":
+            value = fix_location_header(value, default_prefix=default_prefix)
+        headers[key] = value
+    return headers
+
+
+async def proxy_http_request(
+    target_url: str,
+    request: Request,
+    default_prefix: str = "",
+    extra_headers: Optional[Dict[str, str]] = None,
+    html_fixup: Optional[Callable[[str], str]] = None,
+) -> Response:
+    client = get_http_client()
+    headers = build_upstream_headers(request, extra_headers)
+    body    = await request.body()
+    method  = request.method
+    params  = dict(request.query_params)
+
+    resp: Optional[httpx.Response] = None
+    last_exc: Optional[Exception] = None
+
+    for attempt in range(1, 4):
+        try:
+            req = client.build_request(
+                method=method,
+                url=target_url,
+                headers=headers,
+                params=params,
+                content=body,
+            )
+            resp = await client.send(req, stream=True)
+            if resp.status_code in (502, 503) and attempt < 3:
+                await resp.aclose()
+                await asyncio.sleep(0.1 * attempt)
+                continue
+            break
+        except (httpx.ConnectError, httpx.TimeoutException, httpx.NetworkError) as exc:
+            last_exc = exc
+            if attempt < 3:
+                await asyncio.sleep(0.1 * attempt)
+                continue
+            return Response(
+                content=f"<h2>502 Service Unavailable</h2><p>Upstream starting: {exc}</p>",
+                status_code=502,
+                media_type="text/html",
+            )
+
+    if resp is None:
+        return Response(content=f"<h2>502 Bad Gateway</h2><p>{last_exc}</p>", status_code=502, media_type="text/html")
+
+    res_headers = build_downstream_headers(resp.headers, default_prefix=default_prefix)
+    content_type = resp.headers.get("content-type", "")
+    status_code  = resp.status_code
+
+    is_stream = "text/event-stream" in content_type or "video/" in content_type or "audio/" in content_type or resp.headers.get("transfer-encoding") == "chunked"
+
+    if is_stream:
+        async def stream_generator():
+            try:
+                async for chunk in resp.aiter_bytes():
+                    yield chunk
+            finally:
+                await resp.aclose()
+
+        return StreamingResponse(
+            stream_generator(),
+            status_code=status_code,
+            headers=res_headers,
+            media_type=content_type or None,
+        )
+
+    try:
+        content = await resp.aread()
+    finally:
+        await resp.aclose()
+
+    if "text/html" in content_type and html_fixup and content:
+        try:
+            text = content.decode("utf-8", errors="replace")
+            text = html_fixup(text)
+            content = text.encode("utf-8")
+        except Exception:
+            pass
+
+    return Response(
+        content=content,
+        status_code=status_code,
+        headers=res_headers,
+        media_type=content_type or None,
+    )
+
+
+async def proxy_websocket_stream(websocket: WebSocket, target_ws_url: str):
+    await websocket.accept()
+    skip_headers = {"host", "sec-websocket-key", "sec-websocket-version", "sec-websocket-extensions"}
+    forward_headers = {k: v for k, v in websocket.headers.items() if k.lower() not in skip_headers}
+
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.ws_connect(target_ws_url, headers=forward_headers) as upstream_ws:
+                async def downstream_to_upstream():
+                    async for msg in upstream_ws:
+                        if msg.type == aiohttp.WSMsgType.TEXT:
+                            await websocket.send_text(msg.data)
+                        elif msg.type == aiohttp.WSMsgType.BINARY:
+                            await websocket.send_bytes(msg.data)
+                        elif msg.type in (aiohttp.WSMsgType.CLOSE, aiohttp.WSMsgType.CLOSED):
+                            break
+
+                async def upstream_to_downstream():
+                    while True:
+                        try:
+                            msg = await websocket.receive()
+                            if "text" in msg:
+                                await upstream_ws.send_str(msg["text"])
+                            elif "bytes" in msg:
+                                await upstream_ws.send_bytes(msg["bytes"])
+                            elif msg.get("type") == "websocket.disconnect":
+                                break
+                        except Exception:
+                            break
+
+                await asyncio.gather(downstream_to_upstream(), upstream_to_downstream(), return_exceptions=True)
+    except Exception as exc:
+        logger.warning(f"WebSocket Proxy Exception for {target_ws_url}: {exc}")
+    finally:
+        try:
+            await websocket.close()
+        except Exception:
+            pass

@@ -84,8 +84,8 @@ if command -v open-webui >/dev/null 2>&1; then
     export ENABLE_OPENAI_API="true"
     export PORT=8098
     export DATA_DIR="/data/open-webui"
-    # Allow requests from the public HF Space origin
-    export CORS_ALLOW_ORIGIN="https://jishnupg-opencode-cli.hf.space"
+    # Allow requests from all origins (including public HF Space origin & websockets)
+    export CORS_ALLOW_ORIGIN="*"
     # Disable authentication so it works out-of-the-box without sign-in
     export WEBUI_AUTH="false"
     open-webui serve --port 8098 &
