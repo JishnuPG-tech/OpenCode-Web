@@ -15,8 +15,9 @@ WEBUI_JS_PATCH = """<script>
 (function() {
   if (window.__WEBUI_PATCHED__) return;
   window.__WEBUI_PATCHED__ = true;
+  var prefix = window.location.pathname.startsWith('/chat') ? '/chat' : '/openwebui';
 
-  // 1. Monkey-patch Location.prototype.pathname so SvelteKit sees '/' instead of '/openwebui/'
+  // 1. Monkey-patch Location.prototype.pathname so SvelteKit sees '/' instead of subpath
   try {
     var origPathnameDesc = Object.getOwnPropertyDescriptor(Location.prototype, 'pathname');
     if (origPathnameDesc && origPathnameDesc.get) {
@@ -24,8 +25,8 @@ WEBUI_JS_PATCH = """<script>
       Object.defineProperty(Location.prototype, 'pathname', {
         get: function() {
           var p = origPathnameGet.call(this);
-          if (p === '/openwebui' || p === '/openwebui/') return '/';
-          if (p.startsWith('/openwebui/')) return p.substring(10);
+          if (p === prefix || p === prefix + '/') return '/';
+          if (p.startsWith(prefix + '/')) return p.substring(prefix.length);
           return p;
         },
         configurable: true
@@ -33,40 +34,40 @@ WEBUI_JS_PATCH = """<script>
     }
   } catch(e) {}
 
-  // 2. Monkey-patch history.pushState & replaceState to preserve /openwebui prefix in URL bar
+  // 2. Monkey-patch history.pushState & replaceState to preserve prefix in URL bar
   var origPushState = history.pushState;
   history.pushState = function(state, title, url) {
-    if (typeof url === 'string' && url.startsWith('/') && !url.startsWith('/openwebui')) {
-      url = '/openwebui' + url;
+    if (typeof url === 'string' && url.startsWith('/') && !url.startsWith(prefix)) {
+      url = prefix + url;
     }
     return origPushState.call(this, state, title, url);
   };
   var origReplaceState = history.replaceState;
   history.replaceState = function(state, title, url) {
-    if (typeof url === 'string' && url.startsWith('/') && !url.startsWith('/openwebui')) {
-      url = '/openwebui' + url;
+    if (typeof url === 'string' && url.startsWith('/') && !url.startsWith(prefix)) {
+      url = prefix + url;
     }
     return origReplaceState.call(this, state, title, url);
   };
 
-  // 3. Monkey-patch fetch & XHR to proxy API/static requests to /openwebui
+  // 3. Monkey-patch fetch & XHR to proxy API/static requests to prefix
   var origFetch = window.fetch;
   window.fetch = function(resource, init) {
     if (typeof resource === 'string') {
-      if (resource.startsWith('/') && !resource.startsWith('/openwebui')) {
-        resource = '/openwebui' + resource;
+      if (resource.startsWith('/') && !resource.startsWith(prefix) && !resource.startsWith('/_app')) {
+        resource = prefix + resource;
       }
     } else if (resource && resource.url && typeof resource.url === 'string') {
-      if (resource.url.startsWith('/') && !resource.url.startsWith('/openwebui')) {
-        resource = new Request('/openwebui' + resource.url, resource);
+      if (resource.url.startsWith('/') && !resource.url.startsWith(prefix) && !resource.url.startsWith('/_app')) {
+        resource = new Request(prefix + resource.url, resource);
       }
     }
     return origFetch.call(this, resource, init);
   };
   var origOpen = XMLHttpRequest.prototype.open;
   XMLHttpRequest.prototype.open = function(method, url) {
-    if (typeof url === 'string' && url.startsWith('/') && !url.startsWith('/openwebui')) {
-      url = '/openwebui' + url;
+    if (typeof url === 'string' && url.startsWith('/') && !url.startsWith(prefix) && !url.startsWith('/_app')) {
+      url = prefix + url;
     }
     return origOpen.apply(this, arguments);
   };
@@ -75,12 +76,6 @@ WEBUI_JS_PATCH = """<script>
 
 def fixup_webui_html(html: str) -> str:
     """Rewrite absolute links & inject SvelteKit location monkey-patch into <head>."""
-    html = html.replace('href="/', 'href="/openwebui/')
-    html = html.replace("href='/", "href='/openwebui/")
-    html = html.replace('src="/', 'src="/openwebui/')
-    html = html.replace("src='/", "src='/openwebui/")
-    html = html.replace('action="/', 'action="/openwebui/')
-    html = html.replace('/openwebui/openwebui/', '/openwebui/')
     if "<head>" in html:
         html = html.replace("<head>", f"<head>{WEBUI_JS_PATCH}", 1)
     elif "<head " in html:
@@ -89,24 +84,32 @@ def fixup_webui_html(html: str) -> str:
 
 from fastapi.responses import RedirectResponse, Response
 
+@router.api_route("/chat", methods=["GET"])
 @router.api_route("/openwebui", methods=["GET"])
 async def webui_redirect_slash(request: Request):
-    return RedirectResponse("/openwebui/", status_code=307)
+    prefix = "/chat/" if request.url.path.startswith("/chat") else "/openwebui/"
+    return RedirectResponse(prefix, status_code=307)
 
+@router.api_route("/chat/{path:path}", methods=["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"])
 @router.api_route("/openwebui/{path:path}", methods=["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"])
 async def webui_main_route(request: Request, path: str = ""):
+    prefix = "/chat" if request.url.path.startswith("/chat") else "/openwebui"
     target = f"http://127.0.0.1:{WEBUI_PORT}/{path}"
-    return await proxy_http_request(target, request, default_prefix="/openwebui", html_fixup=fixup_webui_html)
+    return await proxy_http_request(target, request, default_prefix=prefix, html_fixup=fixup_webui_html)
 
 @router.api_route("/sw.js", methods=["GET", "HEAD"])
 async def webui_sw(request: Request):
     target = f"http://127.0.0.1:{WEBUI_PORT}/sw.js"
-    res = await proxy_http_request(target, request, default_prefix="/openwebui")
+    res = await proxy_http_request(target, request, default_prefix="/chat")
     if res.status_code == 404:
         sw_code = "self.addEventListener('install', (e) => { self.skipWaiting(); }); self.addEventListener('activate', (e) => { e.waitUntil(clients.claim()); });"
         return Response(content=sw_code, status_code=200, media_type="application/javascript")
     return res
 
+@router.websocket("/chat/ws")
+@router.websocket("/chat/ws/{path:path}")
+@router.websocket("/chat/socket.io")
+@router.websocket("/chat/socket.io/{path:path}")
 @router.websocket("/openwebui/ws")
 @router.websocket("/openwebui/ws/{path:path}")
 @router.websocket("/openwebui/socket.io")
@@ -129,12 +132,12 @@ async def webui_ws_route(websocket: WebSocket, path: str = ""):
 @router.api_route("/_app/{path:path}", methods=["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"])
 async def webui_assets(request: Request, path: str = ""):
     target = f"http://127.0.0.1:{WEBUI_PORT}/_app/{path}"
-    res = await proxy_http_request(target, request, default_prefix="/openwebui")
+    res = await proxy_http_request(target, request, default_prefix="/chat")
     if path.endswith(".js") and getattr(res, "body", None):
         try:
             body_str = res.body.decode("utf-8")
             if "location.pathname" in body_str or "window.location.pathname" in body_str:
-                patched_body = body_str.replace("location.pathname", "(location.pathname.replace(/^\\/openwebui/, '') || '/')")
+                patched_body = re.sub(r'location\.pathname', r"(location.pathname.replace(/^\/(chat|openwebui)/, '') || '/')", body_str)
                 headers = dict(res.headers)
                 headers.pop("content-length", None)
                 return Response(content=patched_body, status_code=res.status_code, headers=headers, media_type="application/javascript")
