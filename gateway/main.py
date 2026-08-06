@@ -53,23 +53,6 @@ app.include_router(tg_stream_router)
 
 
 # ── Root Landing & Diagnostic Routes ─────────────────────────────────────────
-@app.api_route("/", methods=["GET", "HEAD"])
-async def gateway_root(request: Request):
-    if request.method == "HEAD":
-        return Response(status_code=200)
-    for index_path in ("/index.html", "/app/index.html"):
-        if os.path.exists(index_path):
-            return FileResponse(index_path, media_type="text/html")
-    return HTMLResponse(
-        "<h1>OpenCode Space Gateway</h1>"
-        "<p>Services: "
-        "<a href='/server/'>OpenCode Server</a> | "
-        "<a href='/openwebui/'>Open WebUI</a> | "
-        "<a href='/omniroute/'>OmniRoute AI Gateway</a> | "
-        "<a href='/jellyfin/'>Jellyfin Media</a>"
-        "</p>"
-    )
-
 @app.api_route("/favicon.ico", methods=["GET", "HEAD"])
 async def favicon():
     return Response(content=b"", status_code=204)
