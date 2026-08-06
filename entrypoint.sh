@@ -72,7 +72,7 @@ else
 fi
 sleep 2
 
-# Pre-configure & Start Open WebUI on port 8098 (Mounted at /openwebui via FastAPI proxy)
+# Pre-configure & Start Open WebUI on port 8098 (Mounted at / via FastAPI proxy)
 echo "[INIT] Starting Open WebUI on port 8098 pre-configured with OmniRoute..."
 if command -v open-webui >/dev/null 2>&1; then
     # Tell Open WebUI its public-facing URL (required to avoid "Backend Required" error)
@@ -83,12 +83,17 @@ if command -v open-webui >/dev/null 2>&1; then
     export ENABLE_OLLAMA_API="false"
     export ENABLE_OPENAI_API="true"
     export PORT=8098
-    export DATA_DIR="/root/.open-webui"
-    mkdir -p /root/.open-webui 2>/dev/null || true
+    export DATA_DIR="/data/open-webui"
+    mkdir -p /data/open-webui 2>/dev/null || true
+    if [ ! -L "/root/.open-webui" ]; then
+        rm -rf /root/.open-webui 2>/dev/null || true
+        ln -sf /data/open-webui /root/.open-webui
+    fi
     # Allow requests from all origins (including public HF Space origin & websockets)
     export CORS_ALLOW_ORIGIN="*"
-    # Disable authentication so it works out-of-the-box without sign-in
-    export WEBUI_AUTH="false"
+    # Enable authentication so user can log in / log out cleanly with saved credentials
+    export WEBUI_AUTH="true"
+    export ENABLE_SIGNUP="true"
     open-webui serve --port 8098 &
     echo "[INIT] Open WebUI started in background."
 else
