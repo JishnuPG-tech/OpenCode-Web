@@ -102,33 +102,6 @@ async def omniroute_v1_api(request: Request, path: str = ""):
     target = f"http://127.0.0.1:{OMNIROUTE_PORT}/v1/{path}" if path else f"http://127.0.0.1:{OMNIROUTE_PORT}/v1"
     return await proxy_http_request(target, request, default_prefix="/omniroute")
 
-# Explicit OmniRoute UI Page Routes
-OMNIROUTE_PAGE_PATHS = [
-    "/api-keys", "/api-keys/{path:path}",
-    "/providers", "/providers/{path:path}",
-    "/models", "/models/{path:path}",
-    "/keys", "/keys/{path:path}",
-    "/settings", "/settings/{path:path}",
-    "/dashboard", "/dashboard/{path:path}",
-    "/logs", "/logs/{path:path}",
-    "/stats", "/stats/{path:path}",
-    "/system", "/system/{path:path}",
-    "/login", "/login/{path:path}",
-    "/auth", "/auth/{path:path}",
-    "/users", "/users/{path:path}",
-    "/api/keys", "/api/keys/{path:path}",
-    "/api/providers", "/api/providers/{path:path}",
-    "/api/models", "/api/models/{path:path}",
-    "/api/omniroute", "/api/omniroute/{path:path}",
-]
-
-for path_pattern in OMNIROUTE_PAGE_PATHS:
-    @router.api_route(path_pattern, methods=["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"])
-    async def omniroute_pages(request: Request, path: str = ""):
-        rel_path = request.url.path.lstrip("/")
-        target = f"http://127.0.0.1:{OMNIROUTE_PORT}/{rel_path}"
-        return await proxy_http_request(target, request, default_prefix="/omniroute", html_fixup=fixup_omniroute_html)
-
 # Next.js Static Asset Routing
 @router.api_route("/_next/{path:path}", methods=["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"])
 async def omniroute_assets(request: Request, path: str = ""):

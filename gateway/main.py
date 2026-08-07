@@ -84,17 +84,12 @@ async def route_catch_all(path: str, request: Request):
     referer = request.headers.get("referer", "").lower()
     req_path = request.url.path.lower()
 
-    OMNIROUTE_EXPLICIT_PREFIXES = (
-        "/omniroute", "/v1", "/_next", "/dashboard", "/api-keys",
-        "/providers", "/models", "/keys", "/settings", "/logs",
-        "/stats", "/system", "/login", "/users"
-    )
-
+    # OmniRoute explicit prefix OR referer contains /omniroute or /dashboard
     is_omniroute_req = (
         "/omniroute" in referer or 
         "/dashboard" in referer or 
         req_path.startswith("/omniroute") or 
-        any(req_path.startswith(p) for p in OMNIROUTE_EXPLICIT_PREFIXES)
+        req_path.startswith("/v1")
     )
 
     if is_omniroute_req:
@@ -105,8 +100,6 @@ async def route_catch_all(path: str, request: Request):
         return await proxy_http_request(f"http://127.0.0.1:{JELLYFIN_PORT}/{path}", request, default_prefix="/jellyfin", extra_headers={"X-Forwarded-Prefix": "/jellyfin"})
     elif "/tg_stream" in referer or req_path.startswith("/tg_stream"):
         return await proxy_http_request(f"http://127.0.0.1:{TG_PORT}/{path}", request, default_prefix="/tg_stream")
-    elif req_path.startswith("/_app") or req_path == "/sw.js" or req_path.startswith("/api/") or req_path.startswith("/static/"):
-        return await proxy_http_request(f"http://127.0.0.1:{WEBUI_PORT}/{path}", request)
 
-    # Strict 404 for unknown endpoints
-    return Response(content="<h1>404 Not Found</h1><p>The requested endpoint does not exist on this gateway.</p>", status_code=404, media_type="text/html")
+    # Default all root traffic (/openai/config, /ollama/config, /api/*, /static/*, /assets/*, etc.) to Open WebUI!
+    return await proxy_http_request(f"http://127.0.0.1:{WEBUI_PORT}/{path}", request, html_fixup=fixup_webui_html)
