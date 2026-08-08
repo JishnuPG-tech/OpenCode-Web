@@ -114,36 +114,44 @@ def find_ffmpeg_path() -> Optional[str]:
     ffmpeg_bin = shutil.which("ffmpeg")
     return ffmpeg_bin if ffmpeg_bin else None
 
-def get_ig_headers() -> List[str]:
-    args = [
-        "--add-header", "X-IG-App-ID:936619743392459",
-        "--add-header", "User-Agent:Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
-        "--add-header", "Referer:https://www.instagram.com/",
-        "--allow-unplayable-formats",
-        "--ignore-no-formats-error"
-    ]
-    if os.path.exists(COOKIES_FILE) and os.path.getsize(COOKIES_FILE) > 0:
-        args.extend(["--cookies", COOKIES_FILE])
-    return args
-
 def fetch_metadata(url: str) -> Dict[str, Any]:
     norm_url = InstagramUrlNormalizer.normalize(url)
-    cmd = [
-        sys.executable, "-m", "yt_dlp",
-        "--dump-single-json",
-        "-4"
-    ] + get_ig_headers() + [norm_url]
-    
     logger.info(f"[Extractor] Extracting metadata for: {norm_url}")
-    res = subprocess.run(cmd, capture_output=True, text=True)
-    if res.returncode != 0:
-        err = res.stderr
-        logger.error(f"[Extractor] Metadata fetch failed: {err}")
-        if "No video formats found" in err or "Login required" in err:
-            raise Exception("LOGIN_REQUIRED_OR_PRIVATE")
-        raise Exception(f"yt-dlp extraction failed: {err[:300]}")
     
-    return json.loads(res.stdout)
+    # Step 1: Anonymous Mode FIRST (No cookies sent)
+    anon_opts: Dict[str, Any] = {
+        "quiet": True,
+        "no_warnings": True,
+        "skip_download": True,
+        "cachedir": False,
+        "force_ipv4": True,
+        "http_headers": {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+            "Referer": "https://www.instagram.com/",
+            "X-IG-App-ID": "936619743392459",
+        }
+    }
+    try:
+        with yt_dlp.YoutubeDL(anon_opts) as ydl_anon:
+            info = ydl_anon.extract_info(norm_url, download=False)
+            if info:
+                return ydl_anon.sanitize_info(info)
+    except Exception as anon_err:
+        logger.warning(f"[Extractor] Anonymous Mode failed: {str(anon_err)[:150]}. Trying cookie fallback...")
+
+    # Step 2: Cookie Mode Fallback
+    if os.path.exists(COOKIES_FILE) and os.path.getsize(COOKIES_FILE) > 0:
+        cookie_opts = dict(anon_opts)
+        cookie_opts["cookiefile"] = COOKIES_FILE
+        try:
+            with yt_dlp.YoutubeDL(cookie_opts) as ydl_cookie:
+                info = ydl_cookie.extract_info(norm_url, download=False)
+                if info:
+                    return ydl_cookie.sanitize_info(info)
+        except Exception as cookie_err:
+            logger.error(f"[Extractor] Cookie Mode failed: {cookie_err}")
+
+    raise Exception("LOGIN_REQUIRED_OR_PRIVATE")
 
 def download_media_item(
     url: str,
@@ -226,61 +234,56 @@ def download_media_item(
                 if os.path.exists(photo_path): os.remove(photo_path)
                 if os.path.exists(audio_path): os.remove(audio_path)
 
-    # Strategy 2: Video Reel Download via yt-dlp + FFmpeg Audio Merge
+    # Strategy 2: Video Reel Download via native yt-dlp Python API (Anonymous Mode Primary)
     out_tmpl = os.path.join(DOWNLOADS_DIR, "InstaFlow_%(title).100s.%(ext)s")
-    cmd = [sys.executable, "-m", "yt_dlp", "-4", "-o", out_tmpl]
     
-    ffmpeg_path = find_ffmpeg_path()
-    if ffmpeg_path:
-        cmd.extend(["--ffmpeg-location", os.path.dirname(ffmpeg_path)])
-    
-    cmd.extend(["--merge-output-format", "mp4"])
-
+    fmt_str = "b[ext=mp4]/best[ext=mp4]/bestvideo+bestaudio/b/best"
     if audio_only:
-        cmd.extend(["-f", "bestaudio/best"])
-        cmd.append("-x")
-    else:
-        # Quality mapping
+        fmt_str = "bestaudio/best"
+    elif quality:
         res_map = {1: 2160, 2: 1440, 3: 1080, 4: 720, 5: 480, 6: 360}
         limit = res_map.get(quality)
-
         if limit:
-            # Try to get best video up to the limit, then merge with best audio
             fmt_str = f"bestvideo[height<={limit}]+bestaudio/best[height<={limit}]/best"
-            cmd.extend(["-f", fmt_str])
-        elif quality == 7: # Lowest
-            cmd.extend(["-f", "worstvideo+worstaudio/worst"])
-        else: # Best (0) or None
-            cmd.extend(["-f", "bestvideo+bestaudio/best"])
-    
+        elif quality == 7:
+            fmt_str = "worstvideo+worstaudio/worst"
+
+    ydl_opts: Dict[str, Any] = {
+        "outtmpl": out_tmpl,
+        "quiet": True,
+        "no_warnings": True,
+        "cachedir": False,
+        "force_ipv4": True,
+        "format": fmt_str,
+        "merge_output_format": "mp4",
+        "http_headers": {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+            "Referer": "https://www.instagram.com/",
+            "X-IG-App-ID": "936619743392459",
+        }
+    }
+    if ffmpeg_path:
+        ydl_opts["ffmpeg_location"] = os.path.dirname(ffmpeg_path)
     if playlist_index and playlist_index > 0:
-        cmd.extend(["--playlist-items", str(playlist_index)])
+        ydl_opts["playlist_items"] = str(playlist_index)
     else:
-        cmd.append("--no-playlist")
-    
-    cmd.extend(get_ig_headers())
-    cmd.append(norm_url)
-    
-    logger.info(f"[Extractor] Executing yt-dlp Video Download: {' '.join(cmd)}")
-    res = subprocess.run(cmd, capture_output=True, text=True)
-    
-    # Fallback to auto format if explicit quality selector failed
-    if res.returncode != 0:
-        logger.warning(f"[Extractor] Explicit quality selector failed. Retrying with default selector.")
-        cmd_fallback = [sys.executable, "-m", "yt_dlp", "-4", "-o", out_tmpl]
-        if ffmpeg_path:
-            cmd_fallback.extend(["--ffmpeg-location", os.path.dirname(ffmpeg_path)])
-        if audio_only:
-            cmd_fallback.extend(["-f", "bestaudio/best", "-x"])
-        if playlist_index and playlist_index > 0:
-            cmd_fallback.extend(["--playlist-items", str(playlist_index)])
+        ydl_opts["noplaylist"] = True
+
+    try:
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            ydl.download([norm_url])
+    except Exception as anon_err:
+        logger.warning(f"[Extractor] Primary anonymous download failed: {anon_err}. Retrying with cookies if available...")
+        if os.path.exists(COOKIES_FILE) and os.path.getsize(COOKIES_FILE) > 0:
+            cookie_opts = dict(ydl_opts)
+            cookie_opts["cookiefile"] = COOKIES_FILE
+            try:
+                with yt_dlp.YoutubeDL(cookie_opts) as ydl_fb:
+                    ydl_fb.download([norm_url])
+            except Exception as fb_err:
+                raise Exception(f"Download failed: {fb_err}")
         else:
-            cmd_fallback.append("--no-playlist")
-        cmd_fallback.extend(get_ig_headers())
-        cmd_fallback.append(norm_url)
-        res = subprocess.run(cmd_fallback, capture_output=True, text=True)
-        if res.returncode != 0:
-            raise Exception(f"Download failed: {res.stderr[:300]}")
+            raise Exception(f"Download failed: {anon_err}")
     
     # Locate output file
     files = [
