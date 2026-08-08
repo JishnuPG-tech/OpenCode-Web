@@ -99,6 +99,13 @@ async def omniroute_main_route(request: Request, path: str = ""):
 @router.api_route("/v1", methods=["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"])
 @router.api_route("/v1/{path:path}", methods=["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"])
 async def omniroute_v1_api(request: Request, path: str = ""):
+    if path == "openapi.json":
+        from fastapi.responses import JSONResponse
+        return JSONResponse({
+            "openapi": "3.0.0",
+            "info": {"title": "OmniRoute OpenAI Gateway API", "version": "1.0.0"},
+            "paths": {}
+        })
     target = f"http://127.0.0.1:{OMNIROUTE_PORT}/v1/{path}" if path else f"http://127.0.0.1:{OMNIROUTE_PORT}/v1"
     return await proxy_http_request(target, request, default_prefix="/omniroute")
 
