@@ -1,6 +1,6 @@
 import logging
 from fastapi import APIRouter, Request, Response
-from gateway.utils import proxy_request
+from gateway.utils import proxy_http_request
 
 logger = logging.getLogger("gateway.instaflow")
 
@@ -15,4 +15,4 @@ async def instaflow_proxy(request: Request, path: str = ""):
     Strips the '/instaflow' prefix so InstaFlow receives standard endpoints like /, /api/v1/analyze, etc.
     """
     subpath = f"/{path}" if path else "/"
-    return await proxy_request(request, INSTAFLOW_TARGET, subpath)
+    return await proxy_http_request(f"{INSTAFLOW_TARGET}{subpath}", request, default_prefix="/instaflow")

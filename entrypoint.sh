@@ -34,7 +34,7 @@ fi
 echo "[INIT] Starting InstaFlow Backend API on port 8090..."
 export TEMP_DIR="/data/instaflow/downloads"
 export COOKIES_FILE="/data/instaflow/cookies.txt"
-PYTHONPATH=/instaflow python3 -m uvicorn instaflow.backend.app.main:app --host 127.0.0.1 --port 8090 &
+PYTHONPATH=/instaflow:/instaflow/backend python3 -m uvicorn backend.app.main:app --host 127.0.0.1 --port 8090 &
 echo "[INIT] InstaFlow server started in background."
 
 # Start Telegram Direct Range Stream Proxy in background
