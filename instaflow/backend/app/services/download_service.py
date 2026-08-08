@@ -109,11 +109,11 @@ class DownloadService:
         out_tmpl = os.path.join(task_dir, "InstaFlow_%(title).100s.%(ext)s")
         
         ffmpeg_bin = FFmpegService.get_ffmpeg_binary()
-        is_audio = audio_only or (requested_format and ("audio" in requested_format.lower() or "m4a" in requested_format.lower()))
+        req_lower = (requested_format or "").lower().strip()
+        is_audio = audio_only or req_lower in ["audio", "m4a", "mp3", "audio_only", "bestaudio"] or (req_lower.startswith("audio") and not ("video" in req_lower or "dash" in req_lower))
 
         fmt_str = "b[ext=mp4]/best[ext=mp4]/bestvideo[vcodec^=avc1]+bestaudio/b/best"
-        if requested_format:
-            req_lower = requested_format.lower().strip()
+        if requested_format and not is_audio:
             if "2160" in req_lower or "4k" in req_lower:
                 fmt_str = "bestvideo[height<=3840][width<=2160]+bestaudio/bestvideo[height<=2160]+bestaudio/bestvideo+bestaudio/b[ext=mp4]/b/best"
             elif "1440" in req_lower or "2k" in req_lower:
