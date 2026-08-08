@@ -16,6 +16,7 @@ mkdir -p /data/cache/opencode 2>/dev/null || echo "[WARN] Could not create /data
 mkdir -p /data/state/opencode 2>/dev/null || echo "[WARN] Could not create /data/state/opencode"
 mkdir -p /data/open-webui 2>/dev/null || echo "[WARN] Could not create /data/open-webui"
 mkdir -p /data/omniroute 2>/dev/null || echo "[WARN] Could not create /data/omniroute"
+mkdir -p /data/instaflow/downloads 2>/dev/null || echo "[WARN] Could not create /data/instaflow/downloads"
 mkdir -p /data/jellyfin/data /data/jellyfin/config /data/jellyfin/cache /data/jellyfin/log /data/jellyfin/media/Movies /data/jellyfin/media/TVShows 2>/dev/null || true
 
 # Symlink OmniRoute data directory to /data/omniroute for 100% persistence
@@ -23,6 +24,18 @@ if [ ! -L "/root/.omniroute" ]; then
     rm -rf /root/.omniroute 2>/dev/null || true
     ln -sf /data/omniroute /root/.omniroute
 fi
+
+# Prepare InstaFlow Cookies file in persistent storage
+if [ -f "/instaflow/cookies.txt" ] && [ ! -f "/data/instaflow/cookies.txt" ]; then
+    cp /instaflow/cookies.txt /data/instaflow/cookies.txt
+fi
+
+# Start InstaFlow High-Performance Downloader API on port 8090
+echo "[INIT] Starting InstaFlow Backend API on port 8090..."
+export TEMP_DIR="/data/instaflow/downloads"
+export COOKIES_FILE="/data/instaflow/cookies.txt"
+PYTHONPATH=/instaflow python3 -m uvicorn instaflow.backend.app.main:app --host 127.0.0.1 --port 8090 &
+echo "[INIT] InstaFlow server started in background."
 
 # Start Telegram Direct Range Stream Proxy in background
 echo "[INIT] Starting Telegram Direct Stream Proxy on port 8080..."

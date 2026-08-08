@@ -24,12 +24,13 @@ OMNIROUTE_PORT = int(os.environ.get("OMNIROUTE_PORT", 20128))
 OPENCODE_PORT  = int(os.environ.get("OPENCODE_PORT", 4097))
 JELLYFIN_PORT  = int(os.environ.get("JELLYFIN_PORT", 8096))
 TG_PORT        = int(os.environ.get("TG_PORT", 8080))
+INSTAFLOW_PORT = int(os.environ.get("INSTAFLOW_PORT", 8090))
 GATEWAY_PORT   = int(os.environ.get("PORT", 4096))
 
 PUBLIC_HOST   = os.environ.get("PUBLIC_HOST", "jishnupg-opencode-cli.hf.space")
 PUBLIC_ORIGIN = f"https://{PUBLIC_HOST}"
 
-_INTERNAL_PORTS = {GATEWAY_PORT, WEBUI_PORT, OMNIROUTE_PORT, OPENCODE_PORT, JELLYFIN_PORT, TG_PORT}
+_INTERNAL_PORTS = {GATEWAY_PORT, WEBUI_PORT, OMNIROUTE_PORT, OPENCODE_PORT, JELLYFIN_PORT, TG_PORT, INSTAFLOW_PORT}
 _PORT_STRIP_RE  = re.compile(r"(https?://[^/:]+):(" + "|".join(str(p) for p in _INTERNAL_PORTS) + r")")
 
 _PORT_PREFIX_MAP = {
@@ -39,6 +40,7 @@ _PORT_PREFIX_MAP = {
     OPENCODE_PORT:  "/server",
     JELLYFIN_PORT:  "/jellyfin",
     TG_PORT:        "/tg-stream",
+    INSTAFLOW_PORT: "/instaflow",
 }
 
 # Shared Async HTTPX Client Instance

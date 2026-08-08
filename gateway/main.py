@@ -23,12 +23,14 @@ from gateway.utils import (
     OMNIROUTE_PORT,
     JELLYFIN_PORT,
     TG_PORT,
+    INSTAFLOW_PORT,
 )
 from gateway.opencode import router as opencode_router, fixup_opencode_html
 from gateway.openwebui import router as openwebui_router, fixup_webui_html
 from gateway.omniroute import router as omniroute_router, fixup_omniroute_html
 from gateway.jellyfin import router as jellyfin_router
 from gateway.tg_stream import router as tg_stream_router
+from gateway.instaflow import router as instaflow_router
 
 logger = logging.getLogger("GatewayMain")
 
@@ -50,6 +52,7 @@ app.include_router(openwebui_router)
 app.include_router(omniroute_router)
 app.include_router(jellyfin_router)
 app.include_router(tg_stream_router)
+app.include_router(instaflow_router)
 
 
 # ── Root Landing & Diagnostic Routes ─────────────────────────────────────────
@@ -62,11 +65,12 @@ async def favicon():
 async def health_check():
     client = get_http_client()
     services = {
-        "opencode":  f"http://127.0.0.1:{OPENCODE_PORT}/",
-        "openwebui": f"http://127.0.0.1:{WEBUI_PORT}/",
-        "omniroute": f"http://127.0.0.1:{OMNIROUTE_PORT}/",
-        "jellyfin":  f"http://127.0.0.1:{JELLYFIN_PORT}/",
-        "tg_stream": f"http://127.0.0.1:{TG_PORT}/",
+        "opencode":   f"http://127.0.0.1:{OPENCODE_PORT}/",
+        "openwebui":  f"http://127.0.0.1:{WEBUI_PORT}/",
+        "omniroute":  f"http://127.0.0.1:{OMNIROUTE_PORT}/",
+        "jellyfin":   f"http://127.0.0.1:{JELLYFIN_PORT}/",
+        "tg_stream":  f"http://127.0.0.1:{TG_PORT}/",
+        "instaflow":  f"http://127.0.0.1:{INSTAFLOW_PORT}/health",
     }
     results = {}
     for name, url in services.items():
@@ -100,6 +104,8 @@ async def route_catch_all(path: str, request: Request):
         return await proxy_http_request(f"http://127.0.0.1:{JELLYFIN_PORT}/{path}", request, default_prefix="/jellyfin", extra_headers={"X-Forwarded-Prefix": "/jellyfin"})
     elif "/tg_stream" in referer or req_path.startswith("/tg_stream"):
         return await proxy_http_request(f"http://127.0.0.1:{TG_PORT}/{path}", request, default_prefix="/tg_stream")
+    elif "/instaflow" in referer or req_path.startswith("/instaflow"):
+        return await proxy_http_request(f"http://127.0.0.1:{INSTAFLOW_PORT}/{path}", request, default_prefix="/instaflow")
 
     # Default all root traffic (/openai/config, /ollama/config, /api/*, /static/*, /assets/*, etc.) to Open WebUI!
     return await proxy_http_request(f"http://127.0.0.1:{WEBUI_PORT}/{path}", request, html_fixup=fixup_webui_html)
