@@ -93,6 +93,14 @@ async def route_catch_all(path: str, request: Request):
         "/omniroute" in referer or 
         "/dashboard" in referer or 
         req_path.startswith("/omniroute") or 
+        req_path.startswith("/dashboard") or
+        req_path.startswith("/settings") or
+        req_path.startswith("/providers") or
+        req_path.startswith("/models") or
+        req_path.startswith("/api-keys") or
+        req_path.startswith("/logs") or
+        req_path.startswith("/stats") or
+        req_path.startswith("/users") or
         req_path.startswith("/v1")
     )
 
