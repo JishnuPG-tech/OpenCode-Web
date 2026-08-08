@@ -148,12 +148,16 @@ def fetch_metadata(url: str) -> Dict[str, Any]:
 def download_media_item(
     url: str,
     playlist_index: Optional[int] = None,
-    item_entry: Optional[Dict[str, Any]] = None
+    item_entry: Optional[Dict[str, Any]] = None,
+    quality: Optional[int] = None,
+    audio_only: bool = False,
+    merge_photo_audio: bool = False
 ) -> str:
     norm_url = InstagramUrlNormalizer.normalize(url)
-    
+    ffmpeg_path = find_ffmpeg_path()
+
     # Strategy 1: Photo / Direct CDN Image Download
-    if item_entry:
+    if item_entry and not audio_only and not merge_photo_audio:
         img_url = item_entry.get("thumbnail") or item_entry.get("url")
         if not img_url and item_entry.get("thumbnails"):
             img_url = item_entry["thumbnails"][-1].get("url")
@@ -182,6 +186,46 @@ def download_media_item(
             if os.path.exists(filepath) and os.path.getsize(filepath) > 0:
                 return filepath
 
+    # Strategy 1.5: Photo + Music Merge (Single-Frame MP4)
+    if merge_photo_audio and item_entry and ffmpeg_path:
+        img_url = item_entry.get("thumbnail") or item_entry.get("url")
+        if not img_url and item_entry.get("thumbnails"):
+            img_url = item_entry["thumbnails"][-1].get("url")
+
+        if img_url:
+            logger.info(f"[Extractor] Merging photo and music into MP4...")
+            photo_path = os.path.join(DOWNLOADS_DIR, f"temp_photo_{item_entry.get('id')}.jpg")
+            audio_path = os.path.join(DOWNLOADS_DIR, f"temp_audio_{item_entry.get('id')}.m4a")
+            output_path = os.path.join(DOWNLOADS_DIR, f"InstaFlow_{item_entry.get('id')}_music.mp4")
+
+            try:
+                # 1. Download Photo
+                req = urllib.request.Request(img_url, headers={"User-Agent": "Mozilla/5.0", "Referer": "https://www.instagram.com/"})
+                with urllib.request.urlopen(req) as resp, open(photo_path, "wb") as f:
+                    f.write(resp.read())
+
+                # 2. Download Audio via yt-dlp
+                audio_cmd = [sys.executable, "-m", "yt_dlp", "-4", "-f", "bestaudio", "-o", audio_path]
+                if playlist_index: audio_cmd.extend(["--playlist-items", str(playlist_index)])
+                audio_cmd.extend(get_ig_headers())
+                audio_cmd.append(norm_url)
+                subprocess.run(audio_cmd, capture_output=True)
+
+                # 3. Merge via FFmpeg
+                # cmd: ffmpeg -loop 1 -i photo.jpg -i music.m4a -c:v libx264 -tune stillimage -c:a aac -b:a 192k -pix_fmt yuv420p -shortest output.mp4
+                merge_cmd = [
+                    ffmpeg_path, "-y", "-loop", "1", "-i", photo_path, "-i", audio_path,
+                    "-c:v", "libx264", "-tune", "stillimage", "-c:a", "aac", "-b:a", "192k",
+                    "-pix_fmt", "yuv420p", "-shortest", output_path
+                ]
+                subprocess.run(merge_cmd, capture_output=True)
+
+                if os.path.exists(output_path) and os.path.getsize(output_path) > 0:
+                    return output_path
+            finally:
+                if os.path.exists(photo_path): os.remove(photo_path)
+                if os.path.exists(audio_path): os.remove(audio_path)
+
     # Strategy 2: Video Reel Download via yt-dlp + FFmpeg Audio Merge
     out_tmpl = os.path.join(DOWNLOADS_DIR, "InstaFlow_%(title).100s.%(ext)s")
     cmd = [sys.executable, "-m", "yt_dlp", "-4", "-o", out_tmpl]
@@ -191,7 +235,23 @@ def download_media_item(
         cmd.extend(["--ffmpeg-location", os.path.dirname(ffmpeg_path)])
     
     cmd.extend(["--merge-output-format", "mp4"])
-    cmd.extend(["-f", "bestvideo+bestaudio/best"])
+
+    if audio_only:
+        cmd.extend(["-f", "bestaudio/best"])
+        cmd.append("-x")
+    else:
+        # Quality mapping
+        res_map = {1: 2160, 2: 1440, 3: 1080, 4: 720, 5: 480, 6: 360}
+        limit = res_map.get(quality)
+
+        if limit:
+            # Try to get best video up to the limit, then merge with best audio
+            fmt_str = f"bestvideo[height<={limit}]+bestaudio/best[height<={limit}]/best"
+            cmd.extend(["-f", fmt_str])
+        elif quality == 7: # Lowest
+            cmd.extend(["-f", "worstvideo+worstaudio/worst"])
+        else: # Best (0) or None
+            cmd.extend(["-f", "bestvideo+bestaudio/best"])
     
     if playlist_index and playlist_index > 0:
         cmd.extend(["--playlist-items", str(playlist_index)])
@@ -204,12 +264,14 @@ def download_media_item(
     logger.info(f"[Extractor] Executing yt-dlp Video Download: {' '.join(cmd)}")
     res = subprocess.run(cmd, capture_output=True, text=True)
     
-    # Fallback to auto format if explicit -f bestvideo+bestaudio/best failed
+    # Fallback to auto format if explicit quality selector failed
     if res.returncode != 0:
-        logger.warning(f"[Extractor] Explicit video selector failed. Retrying without -f selector.")
+        logger.warning(f"[Extractor] Explicit quality selector failed. Retrying with default selector.")
         cmd_fallback = [sys.executable, "-m", "yt_dlp", "-4", "-o", out_tmpl]
         if ffmpeg_path:
             cmd_fallback.extend(["--ffmpeg-location", os.path.dirname(ffmpeg_path)])
+        if audio_only:
+            cmd_fallback.extend(["-f", "bestaudio/best", "-x"])
         if playlist_index and playlist_index > 0:
             cmd_fallback.extend(["--playlist-items", str(playlist_index)])
         else:

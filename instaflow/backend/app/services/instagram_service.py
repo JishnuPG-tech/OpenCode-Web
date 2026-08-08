@@ -5,7 +5,16 @@ class InstagramService:
     @staticmethod
     def parse_metadata(url: str, meta: Dict[str, Any]) -> AnalyzeResponse:
         uploader = meta.get("uploader") or meta.get("channel") or "Instagram User"
-        title = meta.get("title") or meta.get("description") or f"Post by {uploader}"
+        raw_title = (meta.get("title") or meta.get("description") or "").strip()
+        
+        vcodec = meta.get("vcodec")
+        duration = float(meta.get("duration") or 0.0)
+        is_vid = bool((vcodec and vcodec != "none") or duration > 0.0)
+        
+        if not raw_title or raw_title.startswith("Video by ") or raw_title.startswith("Post by "):
+            title = f"Video by {uploader}" if is_vid else f"Post by {uploader}"
+        else:
+            title = raw_title
         thumbnails = [t.get("url") for t in meta.get("thumbnails", []) if t.get("url")]
         
         entries = meta.get("entries") or []

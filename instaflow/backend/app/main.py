@@ -39,9 +39,13 @@ app.include_router(health_router, tags=["Health"])
 app.include_router(analyze_router, prefix=settings.API_V1_PREFIX, tags=["Analyze"])
 app.include_router(download_router, prefix=settings.API_V1_PREFIX, tags=["Download"])
 
+import asyncio
+from backend.app.services.cleanup_service import CleanupService
+
 @app.on_event("startup")
-def startup_event():
+async def startup_event():
     logger.info(f"InstaFlow Remote Processing Engine started on {settings.HOST}:{settings.PORT}")
+    asyncio.create_task(CleanupService.periodic_cleanup_loop())
 
 if __name__ == "__main__":
     import uvicorn
