@@ -26,7 +26,6 @@ class MetadataService:
             "quiet": True,
             "no_warnings": True,
             "skip_download": True,
-            "allow_unplayable_formats": False,
             "extract_flat": extract_flat,
             "cachedir": False,
             "force_ipv4": True,
