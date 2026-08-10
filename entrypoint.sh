@@ -76,6 +76,10 @@ if command -v omniroute >/dev/null 2>&1; then
         echo "[INIT] OmniRoute package at: $OMNIROUTE_PKG (.next/cache ready)"
     fi
     
+    unset HOSTNAME 2>/dev/null || true
+    export HOST="0.0.0.0"
+    export OMNIROUTE_SERVER_HOST="0.0.0.0"
+    export BASE_URL="http://127.0.0.1:20128"
     export DATA_DIR="/data/omniroute"
     export DASHBOARD_PORT=20128
     export PORT=20128
@@ -89,7 +93,7 @@ if command -v omniroute >/dev/null 2>&1; then
     export DISABLE_SQLITE_AUTO_BACKUP="true"
     export NODE_ENV="production"
     omniroute serve --port 20128 --no-open &
-    echo "[INIT] OmniRoute started in background with required secrets and subpath configuration."
+    echo "[INIT] OmniRoute started in background with required secrets, HOSTNAME un-set, and subpath configuration."
 else
     echo "[WARN] omniroute binary not found, skipping background service."
 fi
