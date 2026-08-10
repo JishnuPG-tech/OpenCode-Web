@@ -147,11 +147,11 @@ async def omniroute_main_route(request: Request, path: str = ""):
         return RedirectResponse("/omniroute/", status_code=307)
     
     extra = {"Host": f"127.0.0.1:{OMNIROUTE_PORT}", "X-Forwarded-Host": f"127.0.0.1:{OMNIROUTE_PORT}", "X-Forwarded-Proto": "http"}
-    target = f"http://127.0.0.1:{OMNIROUTE_PORT}{req_path}"
+    target = f"http://127.0.0.1:{OMNIROUTE_PORT}/{path}" if path else f"http://127.0.0.1:{OMNIROUTE_PORT}/"
     res = await proxy_http_request(target, request, default_prefix="/omniroute", extra_headers=extra, html_fixup=fixup_omniroute_html)
     
     if res.status_code in (404, 500):
-        alt_target = f"http://127.0.0.1:{OMNIROUTE_PORT}/{path}" if path else f"http://127.0.0.1:{OMNIROUTE_PORT}/"
+        alt_target = f"http://127.0.0.1:{OMNIROUTE_PORT}{req_path}"
         try:
             alt_res = await proxy_http_request(alt_target, request, default_prefix="/omniroute", extra_headers=extra, html_fixup=fixup_omniroute_html)
             if alt_res.status_code not in (404, 500):
@@ -159,7 +159,7 @@ async def omniroute_main_route(request: Request, path: str = ""):
         except Exception:
             pass
             
-        if request.method == "GET" and ("html" in request.headers.get("accept", "").lower() or path in ("", "dashboard")):
+        if request.method == "GET":
             from fastapi.responses import HTMLResponse
             return HTMLResponse(content=OMNIROUTE_FALLBACK_HTML, status_code=200)
 
