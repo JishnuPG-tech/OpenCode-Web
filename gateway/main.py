@@ -26,7 +26,7 @@ from gateway.utils import (
 )
 from gateway.opencode import router as opencode_router, fixup_opencode_html
 from gateway.openwebui import router as openwebui_router, fixup_webui_html
-from gateway.omniroute import router as omniroute_router, fixup_omniroute_html
+from gateway.omniroute import router as omniroute_router, fixup_omniroute_html, omniroute_main_route
 from gateway.jellyfin import router as jellyfin_router
 from gateway.tg_stream import router as tg_stream_router
 
@@ -93,12 +93,9 @@ async def route_catch_all(path: str, request: Request):
 
     if is_omniroute_req:
         subpath = req_path[len("/omniroute"):] if req_path.startswith("/omniroute") else req_path
-        if not subpath or subpath == "/":
-            target = f"http://127.0.0.1:{OMNIROUTE_PORT}/"
-        else:
-            target = f"http://127.0.0.1:{OMNIROUTE_PORT}{subpath}"
-        extra = {"Host": f"127.0.0.1:{OMNIROUTE_PORT}", "X-Forwarded-Host": f"127.0.0.1:{OMNIROUTE_PORT}", "X-Forwarded-Proto": "http"}
-        return await proxy_http_request(target, request, default_prefix="/omniroute", extra_headers=extra, html_fixup=fixup_omniroute_html)
+        if subpath and subpath.startswith("/"):
+            subpath = subpath[1:]
+        return await omniroute_main_route(request, path=subpath)
     elif "/server" in referer or req_path.startswith("/server") or req_path.startswith("/opencode"):
         return await proxy_http_request(f"http://127.0.0.1:{OPENCODE_PORT}/{path}", request, default_prefix="/server", html_fixup=fixup_opencode_html)
     elif "/jellyfin" in referer or req_path.startswith("/jellyfin"):

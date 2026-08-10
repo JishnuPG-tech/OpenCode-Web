@@ -165,6 +165,8 @@ if [ -f "${DB_PATH}-wal" ] || [ -f "${DB_PATH}-shm" ] || [ -f "${DB_PATH}.lock" 
     echo "[DB] Removing stale SQLite lock/WAL files to prevent startup crash..."
     rm -f "${DB_PATH}-wal" "${DB_PATH}-shm" "${DB_PATH}.lock" 2>/dev/null || true
 fi
+rm -f /data/omniroute/*.sqlite-wal /data/omniroute/*.sqlite-shm /data/omniroute/*.lock 2>/dev/null || true
+rm -f /root/.omniroute/*.sqlite-wal /root/.omniroute/*.sqlite-shm /root/.omniroute/*.lock 2>/dev/null || true
 
 # Start the SQLite self-healing daemon in the background
 echo "[INIT] Starting self-healing daemon..."
