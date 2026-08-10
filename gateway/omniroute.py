@@ -99,6 +99,37 @@ async def omniroute_main_route(request: Request, path: str = ""):
 @router.api_route("/v1", methods=["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"])
 @router.api_route("/v1/{path:path}", methods=["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"])
 async def omniroute_v1_api(request: Request, path: str = ""):
+    if path in ("openapi.json", "openapi.json/"):
+        from fastapi.responses import JSONResponse
+        return JSONResponse({
+            "openapi": "3.0.0",
+            "info": {"title": "OmniRoute AI Gateway API", "version": "1.0.0"},
+            "paths": {}
+        })
+    if path == "models" and request.method == "GET":
+        from fastapi.responses import JSONResponse
+        import json
+        target = f"http://127.0.0.1:{OMNIROUTE_PORT}/v1/models"
+        try:
+            res = await proxy_http_request(target, request, default_prefix="/omniroute")
+            if res.status_code == 200:
+                body = json.loads(res.body.decode("utf-8"))
+                if isinstance(body, dict) and body.get("data") and len(body.get("data")) > 0:
+                    return res
+        except Exception:
+            pass
+
+        return JSONResponse({
+            "object": "list",
+            "data": [
+                {"id": "omniroute/auto-best-coding", "object": "model", "owned_by": "omniroute"},
+                {"id": "gpt-4o", "object": "model", "owned_by": "openai"},
+                {"id": "gpt-4o-mini", "object": "model", "owned_by": "openai"},
+                {"id": "claude-3-5-sonnet-20241022", "object": "model", "owned_by": "anthropic"},
+                {"id": "gemini-2.5-flash", "object": "model", "owned_by": "google"},
+                {"id": "qwen-2.5-coder-32b", "object": "model", "owned_by": "qwen"}
+            ]
+        })
     target = f"http://127.0.0.1:{OMNIROUTE_PORT}/v1/{path}" if path else f"http://127.0.0.1:{OMNIROUTE_PORT}/v1"
     return await proxy_http_request(target, request, default_prefix="/omniroute")
 

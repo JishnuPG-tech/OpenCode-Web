@@ -84,13 +84,33 @@ if command -v open-webui >/dev/null 2>&1; then
     export WEBUI_SECRET_KEY="opencode_webui_jwt_secret_2026"
     export ENABLE_OLLAMA_API="false"
     export ENABLE_OPENAI_API="true"
+    # Ensure OmniRoute is NOT registered as an OpenAPI tool server (fixes 500 ContentTypeError crash)
+    export TOOL_SERVERS=""
+    export OPENAPI_TOOL_SERVERS=""
     export PORT=8098
     export DATA_DIR="/data/open-webui"
-    mkdir -p /data/open-webui 2>/dev/null || true
+    mkdir -p /root/.cache /data/cache /data/open-webui 2>/dev/null || true
     if [ ! -L "/root/.open-webui" ]; then
         rm -rf /root/.open-webui 2>/dev/null || true
         ln -sf /data/open-webui /root/.open-webui
     fi
+    # Sanitize any stale OpenAPI tool server entries in webui.db
+    python3 -c "
+import sqlite3, os
+db_p = '/data/open-webui/webui.db'
+if os.path.exists(db_p):
+    try:
+        conn = sqlite3.connect(db_p)
+        cur = conn.cursor()
+        cur.execute(\"SELECT name FROM sqlite_master WHERE type='table' AND name='config'\")
+        if cur.fetchone():
+            cur.execute(\"DELETE FROM config WHERE key LIKE '%tool%' AND (value LIKE '%jishnupg%' OR value LIKE '%openapi%')\")
+            conn.commit()
+        conn.close()
+        print('[CONFIG] Sanitized Open WebUI database tool server entries.')
+    except Exception as e:
+        print('[CONFIG] WebUI DB sanitize note:', e)
+" 2>/dev/null || true
     # Allow requests from all origins (including public HF Space origin & websockets)
     export CORS_ALLOW_ORIGIN="*"
     # Enable authentication so user can log in / log out cleanly with saved credentials
