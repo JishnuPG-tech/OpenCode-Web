@@ -84,16 +84,20 @@ async def route_catch_all(path: str, request: Request):
     referer = request.headers.get("referer", "").lower()
     req_path = request.url.path.lower()
 
-    # OmniRoute explicit prefix OR referer contains /omniroute or /dashboard
+    # OmniRoute explicit prefix OR referer contains /omniroute
     is_omniroute_req = (
         "/omniroute" in referer or 
-        "/dashboard" in referer or 
         req_path.startswith("/omniroute") or 
         req_path.startswith("/v1")
     )
 
     if is_omniroute_req:
-        return await proxy_http_request(f"http://127.0.0.1:{OMNIROUTE_PORT}/{path}", request, default_prefix="/omniroute", html_fixup=fixup_omniroute_html)
+        subpath = req_path[len("/omniroute"):] if req_path.startswith("/omniroute") else req_path
+        if not subpath or subpath == "/":
+            target = f"http://127.0.0.1:{OMNIROUTE_PORT}/"
+        else:
+            target = f"http://127.0.0.1:{OMNIROUTE_PORT}{subpath}"
+        return await proxy_http_request(target, request, default_prefix="/omniroute", html_fixup=fixup_omniroute_html)
     elif "/server" in referer or req_path.startswith("/server") or req_path.startswith("/opencode"):
         return await proxy_http_request(f"http://127.0.0.1:{OPENCODE_PORT}/{path}", request, default_prefix="/server", html_fixup=fixup_opencode_html)
     elif "/jellyfin" in referer or req_path.startswith("/jellyfin"):
@@ -101,5 +105,5 @@ async def route_catch_all(path: str, request: Request):
     elif "/tg_stream" in referer or req_path.startswith("/tg_stream"):
         return await proxy_http_request(f"http://127.0.0.1:{TG_PORT}/{path}", request, default_prefix="/tg_stream")
 
-    # Default all root traffic (/openai/config, /ollama/config, /api/*, /static/*, /assets/*, etc.) to Open WebUI!
+    # Default all root traffic to Open WebUI!
     return await proxy_http_request(f"http://127.0.0.1:{WEBUI_PORT}/{path}", request, html_fixup=fixup_webui_html)
