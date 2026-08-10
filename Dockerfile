@@ -38,8 +38,12 @@ RUN pip3 install --no-cache-dir aiohttp pyrogram tgcrypto open-webui --break-sys
 RUN curl -fsSL https://nodejs.org/dist/v24.0.0/node-v24.0.0-linux-x64.tar.gz \
     | tar -xz -C /usr/local --strip-components=1
 
-# Install OmniRoute globally
-RUN npm install -g omniroute
+# Install OmniRoute globally and ensure Next.js cache dirs are writable
+RUN npm install -g omniroute \
+ && OMNIROUTE_PKG="$(npm root -g)/omniroute" \
+ && mkdir -p "${OMNIROUTE_PKG}/.next/cache" \
+ && chmod -R 777 "${OMNIROUTE_PKG}/.next" \
+ && mkdir -p /root/.cache
 
 # Download opencode binary
 RUN curl -fsSL "https://github.com/anomalyco/opencode/releases/download/v${OPENCODE_VERSION}/opencode-linux-x64.tar.gz" \
