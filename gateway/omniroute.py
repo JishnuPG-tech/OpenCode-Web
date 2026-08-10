@@ -114,7 +114,15 @@ async def omniroute_main_route(request: Request, path: str = ""):
             if location.rstrip("/") in ("/omniroute", f"https://{OMNIROUTE_PORT}", "http://127.0.0.1:20128", "/"):
                 return RedirectResponse("/omniroute/dashboard", status_code=302)
     
-    # Let upstream errors pass through — no fake dashboard
+    # If status is 404 or 500, try with /omniroute/ subpath prefix on upstream
+    if res.status_code in (404, 500):
+        alt_target = f"http://127.0.0.1:{OMNIROUTE_PORT}/omniroute/{path}"
+        try:
+            alt_res = await proxy_http_request(alt_target, request, default_prefix="/omniroute", extra_headers=extra, html_fixup=fixup_omniroute_html)
+            if alt_res.status_code not in (404, 500):
+                return alt_res
+        except Exception:
+            pass
 
     return res
 
