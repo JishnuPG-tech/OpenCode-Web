@@ -90,8 +90,9 @@ if command -v omniroute >/dev/null 2>&1; then
     export INITIAL_PASSWORD="admin"
     export DISABLE_SQLITE_AUTO_BACKUP="true"
     export NODE_ENV="production"
+    omniroute runtime repair 2>&1 || true
     omniroute serve --port 20128 --no-open &
-    echo "[INIT] OmniRoute started in background with required secrets, HOSTNAME un-set, and subpath configuration."
+    echo "[INIT] OmniRoute started in background with required secrets, HOSTNAME un-set, and runtime repair."
 else
     echo "[WARN] omniroute binary not found, skipping background service."
 fi
