@@ -76,6 +76,8 @@ def fixup_omniroute_html(html: str) -> str:
     html = html.replace('action="/', 'action="/omniroute/')
     html = html.replace('"/_next/', '"/omniroute/_next/')
     html = html.replace("'/_next/", "'/omniroute/_next/")
+    # Deduplicate double prefixes if present
+    html = html.replace('/omniroute/omniroute', '/omniroute')
     if "<head>" in html:
         html = html.replace("<head>", f"<head>{OMNIROUTE_JS_PATCH}", 1)
     elif "<head " in html:
