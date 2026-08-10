@@ -93,7 +93,8 @@ async def omniroute_redirect_slash(request: Request):
 @router.api_route("/omniroute/{path:path}", methods=["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"])
 async def omniroute_main_route(request: Request, path: str = ""):
     target = f"http://127.0.0.1:{OMNIROUTE_PORT}/{path}"
-    return await proxy_http_request(target, request, default_prefix="/omniroute", html_fixup=fixup_omniroute_html)
+    extra = {"Host": f"127.0.0.1:{OMNIROUTE_PORT}", "X-Forwarded-Host": f"127.0.0.1:{OMNIROUTE_PORT}", "X-Forwarded-Proto": "http"}
+    return await proxy_http_request(target, request, default_prefix="/omniroute", extra_headers=extra, html_fixup=fixup_omniroute_html)
 
 # OpenAI API Endpoint Routing for OmniRoute
 @router.api_route("/v1", methods=["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"])

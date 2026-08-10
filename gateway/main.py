@@ -97,7 +97,8 @@ async def route_catch_all(path: str, request: Request):
             target = f"http://127.0.0.1:{OMNIROUTE_PORT}/"
         else:
             target = f"http://127.0.0.1:{OMNIROUTE_PORT}{subpath}"
-        return await proxy_http_request(target, request, default_prefix="/omniroute", html_fixup=fixup_omniroute_html)
+        extra = {"Host": f"127.0.0.1:{OMNIROUTE_PORT}", "X-Forwarded-Host": f"127.0.0.1:{OMNIROUTE_PORT}", "X-Forwarded-Proto": "http"}
+        return await proxy_http_request(target, request, default_prefix="/omniroute", extra_headers=extra, html_fixup=fixup_omniroute_html)
     elif "/server" in referer or req_path.startswith("/server") or req_path.startswith("/opencode"):
         return await proxy_http_request(f"http://127.0.0.1:{OPENCODE_PORT}/{path}", request, default_prefix="/server", html_fixup=fixup_opencode_html)
     elif "/jellyfin" in referer or req_path.startswith("/jellyfin"):

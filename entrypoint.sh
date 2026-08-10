@@ -65,8 +65,9 @@ except Exception as e:
 # Start OmniRoute AI Gateway in background
 echo "[INIT] Starting OmniRoute AI Gateway on port 20128..."
 if command -v omniroute >/dev/null 2>&1; then
-    export OMNIROUTE_PUBLIC_BASE_URL="https://jishnupg-opencode-cli.hf.space/omniroute"
-    export PUBLIC_BASE_URL="https://jishnupg-opencode-cli.hf.space/omniroute"
+    mkdir -p /root/.cache /data/cache 2>/dev/null || true
+    export OMNIROUTE_PUBLIC_BASE_URL="http://127.0.0.1:20128"
+    export PUBLIC_BASE_URL="http://127.0.0.1:20128"
     omniroute serve --port 20128 --no-open &
     echo "[INIT] OmniRoute started in background."
 else
