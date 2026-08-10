@@ -86,15 +86,24 @@ def fixup_omniroute_html(html: str) -> str:
 
 from fastapi.responses import RedirectResponse
 
-@router.api_route("/omniroute", methods=["GET"])
-async def omniroute_redirect_slash(request: Request):
-    return RedirectResponse("/omniroute/", status_code=307)
-
+@router.api_route("/omniroute", methods=["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"])
 @router.api_route("/omniroute/{path:path}", methods=["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"])
 async def omniroute_main_route(request: Request, path: str = ""):
-    target = f"http://127.0.0.1:{OMNIROUTE_PORT}/{path}"
+    req_path = request.url.path
+    if not req_path.endswith("/") and req_path == "/omniroute":
+        from fastapi.responses import RedirectResponse
+        return RedirectResponse("/omniroute/", status_code=307)
+    
     extra = {"Host": f"127.0.0.1:{OMNIROUTE_PORT}", "X-Forwarded-Host": f"127.0.0.1:{OMNIROUTE_PORT}", "X-Forwarded-Proto": "http"}
-    return await proxy_http_request(target, request, default_prefix="/omniroute", extra_headers=extra, html_fixup=fixup_omniroute_html)
+    target = f"http://127.0.0.1:{OMNIROUTE_PORT}{req_path}"
+    res = await proxy_http_request(target, request, default_prefix="/omniroute", extra_headers=extra, html_fixup=fixup_omniroute_html)
+    
+    if res.status_code == 404:
+        alt_target = f"http://127.0.0.1:{OMNIROUTE_PORT}/{path}" if path else f"http://127.0.0.1:{OMNIROUTE_PORT}/"
+        alt_res = await proxy_http_request(alt_target, request, default_prefix="/omniroute", extra_headers=extra, html_fixup=fixup_omniroute_html)
+        if alt_res.status_code != 404:
+            return alt_res
+    return res
 
 # OpenAI API Endpoint Routing for OmniRoute
 @router.api_route("/v1", methods=["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"])
@@ -136,6 +145,14 @@ async def omniroute_v1_api(request: Request, path: str = ""):
 
 # Next.js Static Asset Routing
 @router.api_route("/_next/{path:path}", methods=["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"])
+@router.api_route("/omniroute/_next/{path:path}", methods=["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"])
 async def omniroute_assets(request: Request, path: str = ""):
-    target = f"http://127.0.0.1:{OMNIROUTE_PORT}/_next/{path}"
-    return await proxy_http_request(target, request, default_prefix="/omniroute")
+    extra = {"Host": f"127.0.0.1:{OMNIROUTE_PORT}", "X-Forwarded-Host": f"127.0.0.1:{OMNIROUTE_PORT}", "X-Forwarded-Proto": "http"}
+    target = f"http://127.0.0.1:{OMNIROUTE_PORT}/omniroute/_next/{path}"
+    res = await proxy_http_request(target, request, default_prefix="/omniroute", extra_headers=extra)
+    if res.status_code == 404:
+        alt_target = f"http://127.0.0.1:{OMNIROUTE_PORT}/_next/{path}"
+        alt_res = await proxy_http_request(alt_target, request, default_prefix="/omniroute", extra_headers=extra)
+        if alt_res.status_code != 404:
+            return alt_res
+    return res
