@@ -141,27 +141,32 @@ OMNIROUTE_FALLBACK_HTML = """<!DOCTYPE html>
 @router.api_route("/omniroute", methods=["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"])
 @router.api_route("/omniroute/{path:path}", methods=["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"])
 async def omniroute_main_route(request: Request, path: str = ""):
-    req_path = request.url.path
-    if not req_path.endswith("/") and req_path == "/omniroute":
-        from fastapi.responses import RedirectResponse
-        return RedirectResponse("/omniroute/", status_code=307)
+    from fastapi.responses import RedirectResponse, HTMLResponse
+
+    # Root /omniroute or /omniroute/ → redirect straight to dashboard
+    # This avoids the 307→308 infinite redirect loop caused by OmniRoute's
+    # internal 308 redirect from / → /dashboard being forwarded back through HF proxy
+    if not path or path in ("", "/"):
+        if request.method == "GET":
+            return RedirectResponse("/omniroute/dashboard", status_code=302)
+        # Non-GET to root: proxy to upstream root
+        path = ""
     
     extra = {"Host": f"127.0.0.1:{OMNIROUTE_PORT}", "X-Forwarded-Host": f"127.0.0.1:{OMNIROUTE_PORT}", "X-Forwarded-Proto": "http"}
-    target = f"http://127.0.0.1:{OMNIROUTE_PORT}/{path}" if path else f"http://127.0.0.1:{OMNIROUTE_PORT}/"
+    target = f"http://127.0.0.1:{OMNIROUTE_PORT}/{path}"
     res = await proxy_http_request(target, request, default_prefix="/omniroute", extra_headers=extra, html_fixup=fixup_omniroute_html)
     
-    if res.status_code in (404, 500):
-        alt_target = f"http://127.0.0.1:{OMNIROUTE_PORT}{req_path}"
-        try:
-            alt_res = await proxy_http_request(alt_target, request, default_prefix="/omniroute", extra_headers=extra, html_fixup=fixup_omniroute_html)
-            if alt_res.status_code not in (404, 500):
-                return alt_res
-        except Exception:
-            pass
-            
-        if request.method == "GET":
-            from fastapi.responses import HTMLResponse
-            return HTMLResponse(content=OMNIROUTE_FALLBACK_HTML, status_code=200)
+    # If upstream returns a redirect, rewrite it to avoid loops
+    if res.status_code in (301, 302, 307, 308):
+        location = res.headers.get("location", "")
+        if location:
+            # If Location points back to /omniroute/ or /omniroute root, send to dashboard
+            if location.rstrip("/") in ("/omniroute", f"https://{OMNIROUTE_PORT}", "http://127.0.0.1:20128", "/"):
+                return RedirectResponse("/omniroute/dashboard", status_code=302)
+    
+    # If upstream fails, serve fallback dashboard HTML
+    if res.status_code in (404, 500) and request.method == "GET":
+        return HTMLResponse(content=OMNIROUTE_FALLBACK_HTML, status_code=200)
 
     return res
 
