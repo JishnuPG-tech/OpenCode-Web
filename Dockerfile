@@ -34,13 +34,15 @@ RUN mkdir -p /etc/apt/keyrings \
 # Install aiohttp, pyrogram, tgcrypto, and Open WebUI
 RUN pip3 install --no-cache-dir aiohttp pyrogram tgcrypto open-webui --break-system-packages || true
 
-# Install Node.js 24 (recommended for OmniRoute secure runtime)
-RUN curl -fsSL https://nodejs.org/dist/v24.0.0/node-v24.0.0-linux-x64.tar.gz \
+# Install Node.js 22 LTS (recommended for OmniRoute runtime)
+RUN curl -fsSL https://nodejs.org/dist/v22.14.0/node-v22.14.0-linux-x64.tar.gz \
     | tar -xz -C /usr/local --strip-components=1
 
-# Install OmniRoute globally and ensure Next.js cache dirs are writable
+# Install OmniRoute globally, rebuild better-sqlite3 native bindings, and ensure Next.js cache dirs are writable
 RUN npm install -g omniroute \
  && OMNIROUTE_PKG="$(npm root -g)/omniroute" \
+ && cd "${OMNIROUTE_PKG}" \
+ && npm rebuild better-sqlite3 || true \
  && mkdir -p "${OMNIROUTE_PKG}/.next/cache" \
  && chmod -R 777 "${OMNIROUTE_PKG}/.next" \
  && mkdir -p /root/.cache
