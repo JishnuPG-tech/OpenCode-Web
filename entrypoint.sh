@@ -79,6 +79,9 @@ if command -v omniroute >/dev/null 2>&1; then
     export DATA_DIR="/data/omniroute"
     export DASHBOARD_PORT=20128
     export PORT=20128
+    export OMNIROUTE_BASE_PATH="/omniroute"
+    export NEXT_PUBLIC_OMNIROUTE_BASE_PATH="/omniroute"
+    export AUTH_COOKIE_SECURE="true"
     export JWT_SECRET="opencode_omniroute_jwt_secret_key_2026_secure_random_token"
     export API_KEY_SECRET="e9f8a7b6c5d4e3f2a1b0c9d8e7f6a5b4c3d2e1f0a9b8c7d6e5f4a3b2c1d0e9f8"
     export STORAGE_ENCRYPTION_KEY="1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d3e4f5a6b7c8d9e0f1a2b"
@@ -86,7 +89,7 @@ if command -v omniroute >/dev/null 2>&1; then
     export DISABLE_SQLITE_AUTO_BACKUP="true"
     export NODE_ENV="production"
     omniroute serve --port 20128 --no-open &
-    echo "[INIT] OmniRoute started in background with required secrets."
+    echo "[INIT] OmniRoute started in background with required secrets and subpath configuration."
 else
     echo "[WARN] omniroute binary not found, skipping background service."
 fi
