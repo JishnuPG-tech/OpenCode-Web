@@ -52,14 +52,23 @@ export HOSTNAME="127.0.0.1"
 export DATA_DIR="/root/.omniroute"
 if [ -d "/omniroute" ]; then
     cd /omniroute
+    # Fix any upstream migration version collisions (e.g. version 143 collisions)
+    python3 /fix_omniroute.py /omniroute 2>/dev/null || true
+    python3 /fix_omniroute.py /root/.omniroute 2>/dev/null || true
+
     if [ -f "server.js" ]; then
         node server.js &
     elif [ -d ".build/next" ] || [ -d ".next" ]; then
         echo "[INIT] Found OmniRoute production build, starting server..."
         npm run start -- --port 20128 &
     else
-        echo "[INIT] OmniRoute production build missing, launching Next dev server on port 20128..."
-        npx next dev --port 20128 -H 127.0.0.1 &
+        echo "[INIT] Building OmniRoute production assets to resolve WASM modules..."
+        NEXT_TELEMETRY_DISABLED=1 OMNIROUTE_USE_TURBOPACK=0 NODE_OPTIONS="--max-old-space-size=2560" npm run build 2>/dev/null || true
+        if [ -d ".build/next" ] || [ -d ".next" ]; then
+            npm run start -- --port 20128 &
+        else
+            npx next dev --port 20128 -H 127.0.0.1 &
+        fi
     fi
     echo "[INIT] OmniRoute AI Gateway started in background."
 else

@@ -51,9 +51,13 @@ ENV OMNIROUTE_USE_TURBOPACK=0
 ENV NODE_OPTIONS="--max-old-space-size=2048"
 ENV DISABLE_ESLINT_PLUGIN=true
 
+COPY fix_omniroute.py /fix_omniroute.py
+
 RUN git clone --depth 1 https://github.com/diegosouzapw/OmniRoute.git /omniroute \
+ && python3 /fix_omniroute.py /omniroute \
  && npm install --legacy-peer-deps --no-audit --no-fund --prefer-offline \
- && npm rebuild better-sqlite3 --build-from-source
+ && npm rebuild better-sqlite3 --build-from-source \
+ && NEXT_TELEMETRY_DISABLED=1 OMNIROUTE_USE_TURBOPACK=0 NODE_OPTIONS="--max-old-space-size=2560" npm run build || true
 
 RUN mkdir -p /root/.cache /data/cache /data/omniroute /data/open-webui
 RUN chmod -R 777 /root/.cache /data/cache /omniroute
