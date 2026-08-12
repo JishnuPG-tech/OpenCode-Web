@@ -92,15 +92,15 @@ def build_upstream_headers(request: Request, extra_headers: Optional[Dict[str, s
         headers.update(extra_headers)
     return headers
 
-def build_downstream_headers(resp_headers: httpx.Headers, default_prefix: str = "") -> Dict[str, str]:
-    headers = {}
-    for key, value in resp_headers.items():
+def build_downstream_headers(resp_headers: httpx.Headers, default_prefix: str = "") -> list:
+    headers = []
+    for key, value in resp_headers.multi_items():
         lk = key.lower()
         if lk in _HOP_BY_HOP_HEADERS:
             continue
         if lk == "location":
             value = fix_location_header(value, default_prefix=default_prefix)
-        headers[key] = value
+        headers.append((key, value))
     return headers
 
 
@@ -200,14 +200,10 @@ async def proxy_http_request(
     finally:
         await resp.aclose()
 
-    if ("text/" in content_type or "application/json" in content_type or "application/javascript" in content_type) and content:
+    if "text/html" in content_type and html_fixup and content:
         try:
             text = content.decode("utf-8", errors="replace")
-            text = text.replace("http://127.0.0.1:20128", PUBLIC_ORIGIN)
-            text = text.replace("http://localhost:20128", PUBLIC_ORIGIN)
-            text = text.replace("http://127.0.0.1:443", PUBLIC_ORIGIN)
-            if "text/html" in content_type and html_fixup:
-                text = html_fixup(text)
+            text = html_fixup(text)
             content = text.encode("utf-8")
         except Exception:
             pass
