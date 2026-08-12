@@ -6,6 +6,7 @@ Open WebUI is cleanly namespace-isolated under /openwebui/.
 """
 
 import os
+import json
 import logging
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request, Response, WebSocket
@@ -147,23 +148,41 @@ async def omniroute_diagnostics(request: Request):
         else:
             db_info[p] = {"exists": False}
 
-    cli_results = {}
+    cli_summary = {}
     try:
         res = subprocess.run(["omniroute", "providers", "list", "--json"], capture_output=True, text=True, timeout=5)
-        cli_results["providers_list"] = res.stdout if res.returncode == 0 else res.stderr
+        if res.returncode == 0:
+            try:
+                data = json.loads(res.stdout)
+                providers_summary = []
+                if isinstance(data, list):
+                    for item in data:
+                        providers_summary.append({
+                            "id": item.get("id"),
+                            "name": item.get("name"),
+                            "status": item.get("status"),
+                            "connected": item.get("connected", False),
+                            "healthy": item.get("healthy", False)
+                        })
+                cli_summary["providers"] = providers_summary
+            except Exception:
+                cli_summary["providers_raw_length"] = len(res.stdout)
+        else:
+            cli_summary["providers_error"] = "Failed to list providers"
     except Exception as e:
-        cli_results["providers_list"] = f"Error: {e}"
+        cli_summary["providers_error"] = f"Error: {e}"
 
     try:
         res = subprocess.run(["omniroute", "providers", "validate"], capture_output=True, text=True, timeout=5)
-        cli_results["providers_validate"] = res.stdout if res.returncode == 0 else res.stderr
+        cli_summary["validation_status"] = "ok" if res.returncode == 0 else "degraded"
     except Exception as e:
-        cli_results["providers_validate"] = f"Error: {e}"
+        cli_summary["validation_status"] = f"Error: {e}"
 
     return {
+        "status": "healthy",
         "environment": env_info,
         "database": db_info,
-        "omniroute_cli": cli_results
+        "providers_summary": cli_summary
     }
 
 

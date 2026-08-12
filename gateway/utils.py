@@ -35,10 +35,10 @@ _PORT_STRIP_RE  = re.compile(r"(https?://[^/:]+):(" + "|".join(str(p) for p in _
 
 _PORT_PREFIX_MAP = {
     GATEWAY_PORT:       "",
-    OMNIROUTE_PORT:     "/omniroute",
+    OMNIROUTE_PORT:     "",
     OMNIROUTE_API_PORT: "",
     OMNIROUTE_WS_PORT:  "/live-ws",
-    WEBUI_PORT:         "/openwebui",
+    WEBUI_PORT:         "",
     JELLYFIN_PORT:      "/jellyfin",
     TG_PORT:            "/tg-stream",
 }

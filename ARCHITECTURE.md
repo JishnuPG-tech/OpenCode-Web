@@ -27,10 +27,10 @@ flowchart TD
     User([🌐 Public Web Client]) -->|HTTPS Port 443| Ingress[FastAPI Gateway Proxy - Port 4096]
 
     subgraph Container ["🐳 Docker Container (Debian Bookworm Slim)"]
-        Ingress -->|Path: / | OWUI[Open WebUI - Port 8098]
-        Ingress -->|Path: /omniroute/* | OmniDash[OmniRoute Dashboard - Port 20128]
-        Ingress -->|Path: /v1 , /v1beta | OmniAPI[OmniRoute Dedicated API - Port 20129]
-        Ingress -->|Path: /omniroute/live-ws/* | OmniWS[OmniRoute Live WS - Port 20132]
+        Ingress -->|Path: / , /api/config, /ws/socket.io | OWUI[Open WebUI - Port 8098]
+        Ingress -->|Path: /dashboard/* , /login, /callback | OmniDash[OmniRoute Dashboard - Port 20128]
+        Ingress -->|Path: /v1/* , /v1beta/* | OmniAPI[OmniRoute Dedicated API - Port 20129]
+        Ingress -->|Path: /live-ws/* | OmniWS[OmniRoute Live WS - Port 20132]
         Ingress -->|Path: /jellyfin/* | JF[Jellyfin Media Server - Port 8096]
         Ingress -->|Path: /tg-stream/* | TG[Telegram 5G Streamer - Port 8080]
 
@@ -41,7 +41,7 @@ flowchart TD
     end
 
     subgraph Persistence ["💾 Persistence & Storage Model"]
-        Ext4["Local Container Ext4 (/root/.omniroute)"] <-->|SQLite .backup API (Every 5 mins)| HFData["HF FUSE Persistent Mount (/data)"]
+        Ext4["Local Container Ext4 (/root/.omniroute/storage.sqlite)"] <-->|SQLite .backup API (Every 120s)| HFData["HF FUSE Persistent Mount (/data/omniroute/storage.sqlite)"]
         OmniDash -->|Fast POSIX SQLite Locks| Ext4
         OWUI -->|User Accounts & DB| HFData
         JF -->|Media & Metadata| HFData
@@ -55,29 +55,30 @@ flowchart TD
 ### 3.1 FastAPI Ingress Gateway (`proxy.py`, `gateway/`)
 - **Port**: `4096` (Exposed as container entrypoint)
 - **Role**:
-  - Handles single-port ingress on Hugging Face Spaces.
-  - Namespace path-routing with strict boundary enforcement.
-  - Proxies HTTP requests and bidirectional WebSockets (`/ws/socket.io` & `/omniroute/live-ws`).
+  - Single-port ingress on Hugging Face Spaces.
+  - Option A route classification with exact prefix boundaries.
+  - Proxies HTTP requests and bidirectional WebSockets (`/ws/socket.io` & `/live-ws`).
 
 ### 3.2 Open WebUI (`open-webui`)
 - **Port**: `8098`
-- **Path**: `/`
+- **Path**: `/` (Root Native Application)
 - **Environment**:
   - `OPENAI_API_BASE_URL="http://127.0.0.1:20129/v1"`
   - `ENABLE_OPENAI_API="true"`
   - `RAG_AUTO_UPDATE_INDEX="false"`
-- **Optimization**: SentenceTransformer embeddings (`all-MiniLM-L6-v2`) pre-cached in Docker image for 1-second startup.
+- **Optimization**: SentenceTransformer embeddings (`all-MiniLM-L6-v2`) pre-cached in Docker image.
 
 ### 3.3 OmniRoute AI Gateway v3.8.50
 - **Ports**:
-  - **Dashboard**: `20128` (Path `/omniroute`)
+  - **Dashboard**: `20128` (Path `/dashboard`, `/login`, `/callback`, `/api/providers`)
   - **Dedicated API**: `20129` (Endpoints `/v1`, `/v1beta`)
-  - **Live WebSocket**: `20132` (Path `/omniroute/live-ws`)
+  - **Live WebSocket**: `20132` (Path `/live-ws`)
 - **Environment**:
-  - `OMNIROUTE_BASE_PATH="/omniroute"`
+  - `NEXT_PUBLIC_BASE_URL="https://jishnupg-opencode-cli.hf.space"`
+  - `AUTH_COOKIE_SECURE="true"`
   - `REDIS_URL="redis://127.0.0.1:6379"`
   - `DATA_DIR="/root/.omniroute"`
-- **Auto-Fix**: `fix_omniroute.py` auto-resolves numeric migration version collisions (e.g. version 143 collisions) at build time and container boot.
+- **Auto-Fix**: `fix_omniroute.py` auto-resolves migration version collisions at build time and container boot.
 
 ### 3.4 Redis Server (`redis-server`)
 - **Port**: `6379`
@@ -99,11 +100,14 @@ flowchart TD
 
 | Public Request Path | Target Upstream Port | Target Service | Function |
 | :--- | :--- | :--- | :--- |
-| `/` | `8098` | Open WebUI | Main Web UI |
-| `/omniroute/*` | `20128` | OmniRoute Dashboard | Management Panel |
+| `/` | `8098` | Open WebUI | Main Root Web UI |
+| `/dashboard/*` | `20128` | OmniRoute Dashboard | Management Panel |
 | `/v1/*` | `20129` | OmniRoute API Server | Dedicated OpenAI API |
 | `/v1beta/*` | `20129` | OmniRoute API Server | Dedicated Gemini API |
-| `/omniroute/live-ws/*` | `20132` | OmniRoute WebSocket | Live Monitoring WS |
+| `/api/providers/*` | `20128` | OmniRoute Dashboard | Provider API |
+| `/api/oauth/*` | `20128` | OmniRoute Dashboard | OAuth API |
+| `/callback` | `20128` | OmniRoute Dashboard | OAuth Callback Handler |
+| `/live-ws/*` | `20132` | OmniRoute WebSocket | Live Monitoring WS |
 | `/jellyfin/*` | `8096` | Jellyfin Media Server | Media Streaming |
 | `/tg-stream/*` | `8080` | TG Stream Proxy | Telegram Direct Streamer |
 
