@@ -48,84 +48,9 @@ fi
 sleep 3
 
 
-# Start OmniRoute AI Gateway in background
-echo "[INIT] Starting OmniRoute AI Gateway on port 20128..."
-if command -v omniroute >/dev/null 2>&1; then
-    echo "[INIT] OmniRoute version: $(omniroute --version 2>/dev/null || echo unknown)"
-
-    # Optional data reset flag (set RESET_OMNIROUTE_DATA=true in Space Secrets if schema reset is required)
-    if [ "$RESET_OMNIROUTE_DATA" = "true" ]; then
-        echo "[INIT] RESET_OMNIROUTE_DATA=true: clearing /data/omniroute data directory..."
-        rm -rf /data/omniroute/* /root/.omniroute/* 2>/dev/null || true
-    fi
-
-    # Ensure all cache directories exist and are writable for Next.js getCacheDirectory() probe
-    mkdir -p /root/.cache /data/cache /root/.omniroute /data/omniroute 2>/dev/null || true
-    chmod -R 777 /root/.cache /data/cache 2>/dev/null || true
-    export HOME="/root"
-    export XDG_CACHE_HOME="/root/.cache"
-    
-    # Critical: ensure Next.js cache directories exist inside OmniRoute's package dir
-    OMNIROUTE_PKG="$(npm root -g)/omniroute"
-    if [ -d "$OMNIROUTE_PKG" ]; then
-        mkdir -p "${OMNIROUTE_PKG}/.next/cache" "${OMNIROUTE_PKG}/.build/next/cache" 2>/dev/null || true
-        chmod -R 777 "$OMNIROUTE_PKG" 2>/dev/null || true
-        echo "[INIT] OmniRoute package at: $OMNIROUTE_PKG (.next/cache & .build/next/cache ready)"
-    fi
-    
-    unset HOSTNAME 2>/dev/null || true
-    export HOST="0.0.0.0"
-    export OMNIROUTE_SERVER_HOST="0.0.0.0"
-    export BASE_URL="http://127.0.0.1:20128"
-    export DATA_DIR="/data/omniroute"
-    export DASHBOARD_PORT=20128
-    export PORT=20128
-    export AUTH_COOKIE_SECURE="true"
-    export JWT_SECRET="${OMNIROUTE_JWT_SECRET:-opencode_omniroute_jwt_secret_key_2026_secure_random_token}"
-    export API_KEY_SECRET="${OMNIROUTE_API_KEY_SECRET:-e9f8a7b6c5d4e3f2a1b0c9d8e7f6a5b4c3d2e1f0a9b8c7d6e5f4a3b2c1d0e9f8}"
-    export STORAGE_ENCRYPTION_KEY="${OMNIROUTE_STORAGE_KEY:-1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d3e4f5a6b7c8d9e0f1a2b}"
-    export INITIAL_PASSWORD="${OMNIROUTE_INITIAL_PASSWORD:-admin}"
-    export DISABLE_SQLITE_AUTO_BACKUP="true"
-    export NODE_ENV="production"
-
-    # Write fresh .env to data dir to pass process secrets to OmniRoute server
-    python3 -c "
-import os
-jwt = os.environ.get('JWT_SECRET', 'opencode_omniroute_jwt_secret_key_2026_secure_random_token')
-api_sec = os.environ.get('API_KEY_SECRET', 'e9f8a7b6c5d4e3f2a1b0c9d8e7f6a5b4c3d2e1f0a9b8c7d6e5f4a3b2c1d0e9f8')
-store_key = os.environ.get('STORAGE_ENCRYPTION_KEY', '1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d3e4f5a6b7c8d9e0f1a2b')
-init_pass = os.environ.get('INITIAL_PASSWORD', 'admin')
-
-for path in ['/data/omniroute/.env', '/root/.omniroute/.env']:
-    os.makedirs(os.path.dirname(path), exist_ok=True)
-    with open(path, 'w') as f:
-        f.write(f'''DATA_DIR=/data/omniroute
-PORT=20128
-DASHBOARD_PORT=20128
-JWT_SECRET={jwt}
-API_KEY_SECRET={api_sec}
-STORAGE_ENCRYPTION_KEY={store_key}
-INITIAL_PASSWORD={init_pass}
-DISABLE_SQLITE_AUTO_BACKUP=true
-NODE_ENV=production
-AUTH_COOKIE_SECURE=true
-OMNIROUTE_SERVER_HOST=0.0.0.0
-''')
-print('[INIT] Wrote pristine OmniRoute .env config files.')
-" 2>/dev/null || true
-
-    echo "[DIAG] Scanning for all better-sqlite3 copies in $OMNIROUTE_PKG..."
-    find "$OMNIROUTE_PKG" -type f -name "package.json" -path "*/better-sqlite3/*" 2>/dev/null | while read -r pkg_json; do
-        dir="$(dirname "$pkg_json")"
-        echo "[DIAG] Found better-sqlite3 in $dir"
-        (cd "$dir" && npm rebuild && (npx --no-install node-gyp rebuild 2>/dev/null || true)) 2>&1 || true
-    done
-    omniroute runtime repair 2>&1 || true
-    omniroute serve --port 20128 --no-open > /data/omniroute/omniroute.log 2>&1 &
-    echo "[INIT] OmniRoute started in background with secrets and logging to /data/omniroute/omniroute.log."
-else
-    echo "[WARN] omniroute binary not found, skipping background service."
-fi
+# Ensure cache directories exist
+mkdir -p /root/.cache /data/cache 2>/dev/null || true
+chmod -R 777 /root/.cache /data/cache 2>/dev/null || true
 sleep 2
 
 # Pre-configure & Start Open WebUI on port 8098 (Mounted at / via FastAPI proxy)

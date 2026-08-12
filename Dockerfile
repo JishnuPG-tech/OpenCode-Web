@@ -38,19 +38,8 @@ RUN pip3 install --no-cache-dir aiohttp pyrogram tgcrypto open-webui --break-sys
 RUN curl -fsSL https://nodejs.org/dist/v22.22.2/node-v22.22.2-linux-x64.tar.gz \
     | tar -xz -C /usr/local --strip-components=1
 
-ARG OMNIROUTE_VERSION=3.8.49
-
-# Install OmniRoute globally, locate and rebuild ALL nested copies of better-sqlite3 from source, and set permissions
-RUN npm install -g omniroute@${OMNIROUTE_VERSION} \
- && OMNIROUTE_PKG="$(npm root -g)/omniroute" \
- && find "${OMNIROUTE_PKG}" -type f -name "package.json" -path "*/better-sqlite3/*" | while read -r pkg_json; do \
-      dir="$(dirname "$pkg_json")"; \
-      echo "[BUILD] Rebuilding better-sqlite3 natively in $dir ..."; \
-      (cd "$dir" && npm rebuild && (npx --no-install node-gyp rebuild 2>/dev/null || true)) || true; \
-    done \
- && omniroute runtime repair || true \
- && mkdir -p "${OMNIROUTE_PKG}/.next/cache" "${OMNIROUTE_PKG}/.build/next/cache" /root/.cache /data/cache /data/omniroute \
- && chmod -R 777 "${OMNIROUTE_PKG}" /root/.cache /data/cache /data/omniroute
+RUN mkdir -p /root/.cache /data/cache
+RUN chmod -R 777 /root/.cache /data/cache
 
 # Working directory for projects
 RUN mkdir -p /projects/default
