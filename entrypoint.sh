@@ -31,11 +31,22 @@ for _ENV_FILE in \
 done
 unset _ENV_FILE
 
-# Ensure deterministic, permanent secrets if not explicitly set
+# Ensure deterministic, permanent secrets and persist to /data/omniroute/server.env
 export JWT_SECRET="${JWT_SECRET:-$(echo "opencode_jwt_secret_hf_space_key_2026" | sha256sum | cut -c1-48)}"
 export API_KEY_SECRET="${API_KEY_SECRET:-$(echo "opencode_api_key_secret_hf_space_key_2026" | sha256sum | cut -c1-64)}"
 export OMNIROUTE_WS_BRIDGE_SECRET="${OMNIROUTE_WS_BRIDGE_SECRET:-$(echo "ws_bridge_${JWT_SECRET}" | sha256sum | cut -c1-48)}"
 export WEBUI_SECRET_KEY="${WEBUI_SECRET_KEY:-$(echo "owui_${JWT_SECRET}" | sha256sum | cut -c1-56)}"
+
+mkdir -p /data/omniroute 2>/dev/null || true
+if [ ! -f "/data/omniroute/server.env" ]; then
+    echo "[INIT] Persisting permanent encryption secrets to /data/omniroute/server.env..."
+    cat <<EOF > /data/omniroute/server.env
+JWT_SECRET="${JWT_SECRET}"
+API_KEY_SECRET="${API_KEY_SECRET}"
+OMNIROUTE_WS_BRIDGE_SECRET="${OMNIROUTE_WS_BRIDGE_SECRET}"
+WEBUI_SECRET_KEY="${WEBUI_SECRET_KEY}"
+EOF
+fi
 
 # Debug: show secret statuses
 for _VAR in JWT_SECRET API_KEY_SECRET OMNIROUTE_WS_BRIDGE_SECRET WEBUI_SECRET_KEY; do
@@ -46,56 +57,26 @@ unset _VAR _VAL
 
 # /data is the persistent HF dataset bucket mount
 echo "[INIT] Setting up /data directories..."
-mkdir -p /data/open-webui 2>/dev/null || echo "[WARN] Could not create /data/open-webui"
-mkdir -p /data/omniroute 2>/dev/null || echo "[WARN] Could not create /data/omniroute"
+mkdir -p /data/open-webui /data/omniroute 2>/dev/null || echo "[WARN] Could not create /data directories"
 mkdir -p /data/jellyfin/data /data/jellyfin/config /data/jellyfin/cache /data/jellyfin/log \
           /data/jellyfin/media/Movies /data/jellyfin/media/TVShows 2>/dev/null || true
 
-# ── OmniRoute Database Restoration & Persistent Synchronization ────────────────
-mkdir -p /root/.omniroute /data/omniroute 2>/dev/null || true
-
-_RESTORED=0
-if [ -d "/data/omniroute" ] && [ -f "/data/omniroute/storage.sqlite" ] && [ -s "/data/omniroute/storage.sqlite" ]; then
-    echo "[INIT] Restoring persistent OmniRoute database snapshot from /data/omniroute..."
-    cp -af /data/omniroute/storage.sqlite* /root/.omniroute/ 2>/dev/null || cp -f /data/omniroute/storage.sqlite /root/.omniroute/storage.sqlite 2>/dev/null || true
-    _RESTORED=1
-else
-    for _DB_CANDIDATE in "/data/omniroute.sqlite" "/data/storage.sqlite" "/data/db.sqlite"; do
-        if [ -f "$_DB_CANDIDATE" ] && [ -s "$_DB_CANDIDATE" ]; then
-            echo "[INIT] Restoring OmniRoute database from ${_DB_CANDIDATE}..."
-            cp -f "$_DB_CANDIDATE" /root/.omniroute/storage.sqlite 2>/dev/null || true
-            _RESTORED=1
-            break
-        fi
-    done
-fi
-
-if [ "$_RESTORED" -eq 0 ]; then
-    echo "[INIT] No pre-existing database snapshot found in /data. Starting with fresh DB."
-fi
-unset _DB_CANDIDATE _RESTORED
-
-# Continuous synchronization function (copies sqlite DB + WAL + SHM files)
-sync_omniroute_db() {
-    if [ -f "/root/.omniroute/storage.sqlite" ]; then
-        mkdir -p /data/omniroute 2>/dev/null || true
-        cp -af /root/.omniroute/storage.sqlite* /data/omniroute/ 2>/dev/null || true
+# ── OmniRoute Database Direct Persistent Storage ────────────────────────────────
+echo "[INIT] Mounting persistent OmniRoute directory at /data/omniroute..."
+if [ ! -L "/root/.omniroute" ]; then
+    if [ -d "/root/.omniroute" ]; then
+        cp -af /root/.omniroute/* /data/omniroute/ 2>/dev/null || true
+        rm -rf /root/.omniroute
     fi
-}
+    ln -sf /data/omniroute /root/.omniroute
+fi
+chmod -R 777 /data/omniroute /root/.omniroute 2>/dev/null || true
 
-# Sync immediately at startup
-sync_omniroute_db
-
-# Flush to persistent storage on container shutdown
-trap sync_omniroute_db EXIT INT TERM
-
-# High-frequency background sync every 15 seconds
-(
-    while true; do
-        sleep 15
-        sync_omniroute_db
-    done
-) &
+if [ -f "/data/omniroute/storage.sqlite" ]; then
+    echo "[INIT] Persistent OmniRoute SQLite database verified: /data/omniroute/storage.sqlite"
+else
+    echo "[INIT] No pre-existing database found in /data/omniroute. OmniRoute will initialize a fresh persistent DB."
+fi
 
 # ── Start Redis ────────────────────────────────────────────────────────────────
 echo "[INIT] Starting Redis server on port 6379..."
