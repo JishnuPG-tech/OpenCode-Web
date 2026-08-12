@@ -83,7 +83,8 @@ _HOP_BY_HOP_HEADERS = {
 }
 
 def build_upstream_headers(request: Request, extra_headers: Optional[Dict[str, str]] = None) -> Dict[str, str]:
-    headers = {k: v for k, v in request.headers.items() if k.lower() not in {"host", "content-length"}}
+    headers = {k: v for k, v in request.headers.items() if k.lower() not in _HOP_BY_HOP_HEADERS and k.lower() != "host"}
+    headers["Host"]              = PUBLIC_HOST
     headers["X-Forwarded-Host"]  = PUBLIC_HOST
     headers["X-Forwarded-Proto"] = "https"
     headers["X-Forwarded-Port"]  = "443"
