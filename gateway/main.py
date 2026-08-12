@@ -17,10 +17,12 @@ from gateway.utils import (
     get_http_client,
     proxy_http_request,
     WEBUI_PORT,
+    OMNIROUTE_PORT,
     JELLYFIN_PORT,
     TG_PORT,
 )
 from gateway.openwebui import router as openwebui_router, fixup_webui_html
+from gateway.omniroute import router as omniroute_router
 from gateway.jellyfin import router as jellyfin_router
 from gateway.tg_stream import router as tg_stream_router
 
@@ -39,6 +41,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(title="OpenCode Space Gateway", lifespan=lifespan, docs_url=None, redoc_url=None)
 
 # Include Service Routers
+app.include_router(omniroute_router)
 app.include_router(openwebui_router)
 app.include_router(jellyfin_router)
 app.include_router(tg_stream_router)
@@ -54,6 +57,7 @@ async def favicon():
 async def health_check():
     client = get_http_client()
     services = {
+        "omniroute": f"http://127.0.0.1:{OMNIROUTE_PORT}/healthz",
         "openwebui": f"http://127.0.0.1:{WEBUI_PORT}/",
         "jellyfin":  f"http://127.0.0.1:{JELLYFIN_PORT}/",
         "tg_stream": f"http://127.0.0.1:{TG_PORT}/",

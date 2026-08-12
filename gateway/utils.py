@@ -20,6 +20,7 @@ logger = logging.getLogger("GatewayUtils")
 
 # Port definitions
 WEBUI_PORT     = int(os.environ.get("WEBUI_PORT", 8098))
+OMNIROUTE_PORT = int(os.environ.get("OMNIROUTE_PORT", 20128))
 JELLYFIN_PORT  = int(os.environ.get("JELLYFIN_PORT", 8096))
 TG_PORT        = int(os.environ.get("TG_PORT", 8080))
 GATEWAY_PORT   = int(os.environ.get("PORT", 4096))
@@ -27,14 +28,15 @@ GATEWAY_PORT   = int(os.environ.get("PORT", 4096))
 PUBLIC_HOST   = os.environ.get("PUBLIC_HOST", "jishnupg-opencode-cli.hf.space")
 PUBLIC_ORIGIN = f"https://{PUBLIC_HOST}"
 
-_INTERNAL_PORTS = {GATEWAY_PORT, WEBUI_PORT, JELLYFIN_PORT, TG_PORT}
+_INTERNAL_PORTS = {GATEWAY_PORT, WEBUI_PORT, OMNIROUTE_PORT, JELLYFIN_PORT, TG_PORT}
 _PORT_STRIP_RE  = re.compile(r"(https?://[^/:]+):(" + "|".join(str(p) for p in _INTERNAL_PORTS) + r")")
 
 _PORT_PREFIX_MAP = {
-    GATEWAY_PORT:  "",
-    WEBUI_PORT:    "/openwebui",
-    JELLYFIN_PORT: "/jellyfin",
-    TG_PORT:       "/tg-stream",
+    GATEWAY_PORT:   "",
+    OMNIROUTE_PORT: "/omniroute",
+    WEBUI_PORT:     "/openwebui",
+    JELLYFIN_PORT:  "/jellyfin",
+    TG_PORT:        "/tg-stream",
 }
 
 # Shared Async HTTPX Client Instance
