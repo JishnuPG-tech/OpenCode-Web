@@ -16,8 +16,15 @@ def fixup_webui_html(html: str) -> str:
     html = html.replace('src="/_app/', 'src="/openwebui/_app/')
     html = html.replace('href="/static/', 'href="/openwebui/static/')
     html = html.replace('src="/static/', 'src="/openwebui/static/')
+    html = html.replace('href="/assets/', 'href="/openwebui/assets/')
+    html = html.replace('src="/assets/', 'src="/openwebui/assets/')
     html = html.replace('href="/favicon', 'href="/openwebui/favicon')
     html = html.replace('src="/favicon', 'src="/openwebui/favicon')
+    html = html.replace('href="/manifest.json', 'href="/openwebui/manifest.json')
+    html = html.replace('"/api/', '"/openwebui/api/')
+    html = html.replace("'/api/", "'/openwebui/api/")
+    html = html.replace('"/ws/socket.io', '"/openwebui/ws/socket.io')
+    html = html.replace("'/ws/socket.io", "'/openwebui/ws/socket.io")
     return html
 
 @router.api_route("/openwebui", methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"])
