@@ -61,60 +61,55 @@ mkdir -p /data/open-webui /data/omniroute 2>/dev/null || echo "[WARN] Could not 
 mkdir -p /data/jellyfin/data /data/jellyfin/config /data/jellyfin/cache /data/jellyfin/log \
           /data/jellyfin/media/Movies /data/jellyfin/media/TVShows 2>/dev/null || true
 
-# ── OmniRoute Database Storage & Persistent Sync ───────────────────────────────
+# ── OmniRoute Database Storage & Dynamic Snapshot Resolution ──────────────────
 if [ -L "/root/.omniroute" ]; then
     rm -f /root/.omniroute
 fi
 mkdir -p /root/.omniroute /data/omniroute 2>/dev/null || true
 
-# Restore DB snapshot from persistent volume if it exists
-if [ -f "/data/omniroute/storage.sqlite" ] && [ -s "/data/omniroute/storage.sqlite" ]; then
-    _SIZE=$(wc -c < /data/omniroute/storage.sqlite 2>/dev/null | tr -d ' ' || echo "0")
-    if [ "$_SIZE" -gt 0 ]; then
-        echo "[PERSISTENCE] Found persistent snapshot: /data/omniroute/storage.sqlite (${_SIZE} bytes)"
-        if command -v sqlite3 >/dev/null 2>&1; then
-            _CHK=$(sqlite3 /data/omniroute/storage.sqlite "PRAGMA quick_check;" 2>/dev/null || echo "failed")
-            echo "[PERSISTENCE] Snapshot integrity: ${_CHK}"
-        fi
-        cp -f /data/omniroute/storage.sqlite /root/.omniroute/storage.sqlite 2>/dev/null || true
-        if [ -f "/data/omniroute/storage.sqlite-wal" ]; then
-            cp -f /data/omniroute/storage.sqlite-wal /root/.omniroute/storage.sqlite-wal 2>/dev/null || true
-        fi
-        echo "[PERSISTENCE] Restored persistent OmniRoute database successfully."
-    else
-        echo "[PERSISTENCE] Snapshot in /data/omniroute/storage.sqlite is 0 bytes. Starting with fresh DB."
+echo "[STORAGE] Filesystem mount inspection:"
+mount | grep -E 'hf|bucket|data|fuse|nfs' || echo "[STORAGE] /data info: $(df -h /data 2>&1 || true)"
+
+# Search for pre-existing non-empty database snapshot anywhere inside /data
+FOUND_DB_PATH=$(find /data -name "storage.sqlite" -type f -size +0c 2>/dev/null | head -n 1 || true)
+
+if [ -n "$FOUND_DB_PATH" ] && [ -f "$FOUND_DB_PATH" ]; then
+    _SIZE=$(wc -c < "$FOUND_DB_PATH" 2>/dev/null | tr -d ' \t\n\r' || echo "0")
+    echo "[PERSISTENCE] Found persistent snapshot at: ${FOUND_DB_PATH} (${_SIZE} bytes)"
+    if command -v sqlite3 >/dev/null 2>&1; then
+        _CHK=$(sqlite3 "$FOUND_DB_PATH" "PRAGMA quick_check;" 2>/dev/null || echo "failed")
+        echo "[PERSISTENCE] Snapshot integrity: ${_CHK}"
     fi
+    cp -f "$FOUND_DB_PATH" /root/.omniroute/storage.sqlite
+    echo "[PERSISTENCE] Restored persistent OmniRoute database successfully into /root/.omniroute/storage.sqlite"
 else
-    echo "[PERSISTENCE] No pre-existing database found in /data/omniroute. OmniRoute will start with fresh DB."
+    echo "[PERSISTENCE] No pre-existing non-empty database found in /data. OmniRoute will start with fresh DB."
 fi
 
-# Continuous sync function (flushes local ext4 DB -> persistent /data)
+# Continuous sync function (consolidates live ext4 DB -> persistent bucket snapshot)
 sync_omniroute_db() {
-    if [ -d "/root/.omniroute" ]; then
+    if [ -f "/root/.omniroute/storage.sqlite" ] && [ -s "/root/.omniroute/storage.sqlite" ]; then
         mkdir -p /data/omniroute 2>/dev/null || true
-        if [ -f "/root/.omniroute/storage.sqlite" ]; then
-            cp -f /root/.omniroute/storage.sqlite /data/omniroute/storage.sqlite 2>/dev/null || true
-        fi
-        if [ -f "/root/.omniroute/storage.sqlite-wal" ]; then
-            cp -f /root/.omniroute/storage.sqlite-wal /data/omniroute/storage.sqlite-wal 2>/dev/null || true
-        fi
-        if [ -f "/root/.omniroute/storage.sqlite-shm" ]; then
-            cp -f /root/.omniroute/storage.sqlite-shm /data/omniroute/storage.sqlite-shm 2>/dev/null || true
+        TARGET_SNAP="/data/omniroute/storage.sqlite"
+        if command -v sqlite3 >/dev/null 2>&1; then
+            sqlite3 /root/.omniroute/storage.sqlite ".backup ${TARGET_SNAP}" 2>/dev/null || cp -f /root/.omniroute/storage.sqlite "${TARGET_SNAP}" 2>/dev/null || true
+        else
+            cp -f /root/.omniroute/storage.sqlite "${TARGET_SNAP}" 2>/dev/null || true
         fi
 
         _ACTIVE_SIZE=$(wc -c < /root/.omniroute/storage.sqlite 2>/dev/null | tr -d ' \t\n\r' || echo "0")
-        _SNAP_SIZE=$(wc -c < /data/omniroute/storage.sqlite 2>/dev/null | tr -d ' \t\n\r' || echo "0")
-        echo "[PERSISTENCE] Database sync report: Active DB (${_ACTIVE_SIZE} bytes) -> Persistent Snapshot (${_SNAP_SIZE} bytes)"
+        _SNAP_SIZE=$(wc -c < "${TARGET_SNAP}" 2>/dev/null | tr -d ' \t\n\r' || echo "0")
+        echo "[PERSISTENCE] Snapshot sync complete: Active DB (${_ACTIVE_SIZE} bytes) -> Persistent Snapshot (${_SNAP_SIZE} bytes)"
     fi
 }
 
 # Flush to persistent storage on exit signals
 trap sync_omniroute_db EXIT INT TERM
 
-# Background sync loop every 15s
+# Background sync loop every 120s (2 minutes)
 (
     while true; do
-        sleep 15
+        sleep 120
         sync_omniroute_db
     done
 ) &
