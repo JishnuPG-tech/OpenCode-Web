@@ -92,17 +92,25 @@ else
     echo "[PERSISTENCE] No pre-existing non-empty database found in /data. OmniRoute will start with fresh DB."
 fi
 
-# Restore pre-existing OAuth tokens, credentials, runtime files, and server.env if available
-for _ITEM in oauth credentials runtime server.env; do
+# Restore pre-existing OAuth tokens, credentials, runtime files, gemini_cli, and server.env if available
+for _ITEM in oauth credentials runtime gemini_cli config_dir server.env; do
     if [ -e "/data/omniroute/${_ITEM}" ]; then
-        cp -af /data/omniroute/${_ITEM} /root/.omniroute/ 2>/dev/null || true
+        if [ "$_ITEM" = "gemini_cli" ]; then
+            mkdir -p /root/.gemini 2>/dev/null || true
+            cp -af /data/omniroute/gemini_cli/* /root/.gemini/ 2>/dev/null || true
+        elif [ "$_ITEM" = "config_dir" ]; then
+            mkdir -p /root/.config 2>/dev/null || true
+            cp -af /data/omniroute/config_dir/* /root/.config/ 2>/dev/null || true
+        else
+            cp -af /data/omniroute/${_ITEM} /root/.omniroute/ 2>/dev/null || true
+        fi
         echo "[PERSISTENCE] Restored persistent OmniRoute state: ${_ITEM}"
     else
         echo "[PERSISTENCE] Initialized empty persistent state directory: ${_ITEM}"
     fi
 done
 
-# Continuous sync function (consolidates live ext4 DB & OAuth tokens -> persistent bucket snapshot)
+# Continuous sync function (consolidates live ext4 DB, OAuth tokens, & gemini CLI state -> persistent bucket snapshot)
 sync_omniroute_db() {
     if [ -f "/root/.omniroute/storage.sqlite" ] && [ -s "/root/.omniroute/storage.sqlite" ]; then
         TARGET_SNAP="/data/omniroute/storage.sqlite"
@@ -124,6 +132,17 @@ sync_omniroute_db() {
                 cp -af /root/.omniroute/${_ITEM} /data/omniroute/ 2>/dev/null || true
             fi
         done
+
+        # Synchronize Antigravity & Gemini CLI token files
+        if [ -d "/root/.gemini" ]; then
+            mkdir -p /data/omniroute/gemini_cli 2>/dev/null || true
+            cp -af /root/.gemini/* /data/omniroute/gemini_cli/ 2>/dev/null || true
+        fi
+
+        if [ -d "/root/.config" ]; then
+            mkdir -p /data/omniroute/config_dir 2>/dev/null || true
+            cp -af /root/.config/* /data/omniroute/config_dir/ 2>/dev/null || true
+        fi
 
         _ACTIVE_SIZE=$(wc -c < /root/.omniroute/storage.sqlite 2>/dev/null | tr -d ' \t\n\r' || echo "0")
         _SNAP_SIZE=$(wc -c < "${TARGET_SNAP}" 2>/dev/null | tr -d ' \t\n\r' || echo "0")
