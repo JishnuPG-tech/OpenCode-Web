@@ -8,14 +8,12 @@ app_port: 4096
 pinned: false
 ---
 
-# Opencode CLI Server
+# Multi-Service Container Hub
 
-This Hugging Face Space hosts the backend `opencode serve` API server on port 4096.
+This Hugging Face Space hosts a multi-service container hub on port 4096.
 
-## Connection Setup for Mobile App
+## Services
 
-To connect your OpenCode mobile client to this server:
-1. Open the mobile app and go to **Settings**.
-2. Under **Server URL**, enter the Space's direct domain:
-   `https://jishnupg-opencode-cli.hf.space` (or your corresponding Space URL)
-3. Set your **Auth Type** and credentials if you configured `OPENCODE_SERVER_USERNAME`/`OPENCODE_SERVER_PASSWORD` secrets.
+1. **Open WebUI** (`/`): Feature-rich AI chat interface.
+2. **Jellyfin Media Server** (`/jellyfin/`): Media streaming server.
+3. **Telegram Stream Proxy** (`/tg-stream/`): High-speed MTProto video range streamer for Telegram Drive.
