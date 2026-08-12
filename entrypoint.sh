@@ -210,10 +210,14 @@ export OMNIROUTE_ENABLE_REMOTE_OAUTH="true"
 export OAUTH_CALLBACK_URL="${WEBUI_URL:-https://jishnupg-opencode-cli.hf.space}/api/cloud-agent-credentials/callback"
 export NEXT_PUBLIC_OAUTH_CALLBACK_URL="${WEBUI_URL:-https://jishnupg-opencode-cli.hf.space}/api/cloud-agent-credentials/callback"
 
-# Default admin credentials for OmniRoute
-export INITIAL_PASSWORD="${INITIAL_PASSWORD:-admin}"
-export ADMIN_PASSWORD="${ADMIN_PASSWORD:-admin}"
-export OMNIROUTE_INITIAL_PASSWORD="${OMNIROUTE_INITIAL_PASSWORD:-admin}"
+# Admin credentials for OmniRoute (loaded directly from HF Space Secret INITIAL_PASSWORD)
+_PASS="${INITIAL_PASSWORD:-admin}"
+export INITIAL_PASSWORD="${_PASS}"
+export ADMIN_PASSWORD="${_PASS}"
+export OMNIROUTE_INITIAL_PASSWORD="${_PASS}"
+export OMNIROUTE_PASSWORD="${_PASS}"
+export PASSWORD="${_PASS}"
+unset _PASS
 
 # CLI Fingerprint & Provider Compatibility Flags
 export CLI_COMPAT_ANTIGRAVITY=1
