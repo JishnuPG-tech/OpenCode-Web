@@ -65,8 +65,11 @@ except Exception as e:
 # Start OmniRoute AI Gateway in background
 echo "[INIT] Starting OmniRoute AI Gateway on port 20128..."
 if command -v omniroute >/dev/null 2>&1; then
-    # Ensure all cache directories exist and are writable for Next.js
+    # Ensure all cache directories exist and are writable for Next.js getCacheDirectory() probe
     mkdir -p /root/.cache /data/cache /root/.omniroute /data/omniroute 2>/dev/null || true
+    chmod -R 777 /root/.cache /data/cache 2>/dev/null || true
+    export HOME="/root"
+    export XDG_CACHE_HOME="/root/.cache"
     
     # Critical: ensure Next.js cache directories exist inside OmniRoute's package dir
     OMNIROUTE_PKG="$(npm root -g)/omniroute"

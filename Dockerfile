@@ -4,7 +4,7 @@ FROM debian:bookworm-slim
 # All opencode data (sessions, DB, config) goes here so it survives container restarts
 ENV XDG_DATA_HOME=/data/share
 ENV XDG_CONFIG_HOME=/data/config
-ENV XDG_CACHE_HOME=/data/cache
+ENV XDG_CACHE_HOME=/root/.cache
 ENV XDG_STATE_HOME=/data/state
 
 ARG OPENCODE_VERSION=1.18.3
@@ -42,8 +42,8 @@ RUN curl -fsSL https://nodejs.org/dist/v22.22.2/node-v22.22.2-linux-x64.tar.gz \
 RUN npm install -g omniroute \
  && OMNIROUTE_PKG="$(npm root -g)/omniroute" \
  && omniroute runtime repair || true \
- && mkdir -p "${OMNIROUTE_PKG}/.next/cache" "${OMNIROUTE_PKG}/.build/next/cache" /root/.cache /data/omniroute \
- && chmod -R 777 "${OMNIROUTE_PKG}" /root/.cache /data/omniroute
+ && mkdir -p "${OMNIROUTE_PKG}/.next/cache" "${OMNIROUTE_PKG}/.build/next/cache" /root/.cache /data/cache /data/omniroute \
+ && chmod -R 777 "${OMNIROUTE_PKG}" /root/.cache /data/cache /data/omniroute
 
 # Download opencode binary
 RUN curl -fsSL "https://github.com/anomalyco/opencode/releases/download/v${OPENCODE_VERSION}/opencode-linux-x64.tar.gz" \
