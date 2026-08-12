@@ -104,7 +104,8 @@ async def route_catch_all(path: str, request: Request):
             "X-Forwarded-Proto": "https",
             "X-Forwarded-Port": "443"
         }
-        return await proxy_http_request(f"http://127.0.0.1:{OMNIROUTE_PORT}/{path}", request, default_prefix="/omniroute", extra_headers=extra)
+        sub_p = path.replace("omniroute/", "", 1).replace("omniroute", "", 1)
+        return await proxy_http_request(f"http://127.0.0.1:{OMNIROUTE_PORT}/{sub_p}", request, default_prefix="/omniroute", extra_headers=extra)
     elif "/openwebui" in referer or req_path.startswith("/openwebui"):
         sub_p = path.replace("openwebui/", "", 1).replace("openwebui", "", 1)
         return await proxy_http_request(f"http://127.0.0.1:{WEBUI_PORT}/{sub_p}", request, default_prefix="/openwebui", html_fixup=fixup_webui_html)
