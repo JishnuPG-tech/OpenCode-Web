@@ -90,6 +90,28 @@ if command -v omniroute >/dev/null 2>&1; then
     export INITIAL_PASSWORD="admin"
     export DISABLE_SQLITE_AUTO_BACKUP="true"
     export NODE_ENV="production"
+
+    # Write fresh .env to data dir to overwrite any stale env files from previous runs
+    python3 -c "
+import os
+for path in ['/data/omniroute/.env', '/root/.omniroute/.env']:
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, 'w') as f:
+        f.write('''DATA_DIR=/data/omniroute
+PORT=20128
+DASHBOARD_PORT=20128
+JWT_SECRET=opencode_omniroute_jwt_secret_key_2026_secure_random_token
+API_KEY_SECRET=e9f8a7b6c5d4e3f2a1b0c9d8e7f6a5b4c3d2e1f0a9b8c7d6e5f4a3b2c1d0e9f8
+STORAGE_ENCRYPTION_KEY=1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d3e4f5a6b7c8d9e0f1a2b
+INITIAL_PASSWORD=admin
+DISABLE_SQLITE_AUTO_BACKUP=true
+NODE_ENV=production
+AUTH_COOKIE_SECURE=true
+OMNIROUTE_SERVER_HOST=0.0.0.0
+''')
+print('[INIT] Wrote pristine OmniRoute .env config files.')
+" 2>/dev/null || true
+
     omniroute runtime repair 2>&1 || true
     omniroute serve --port 20128 --no-open &
     echo "[INIT] OmniRoute started in background with required secrets, HOSTNAME un-set, and runtime repair."
