@@ -184,6 +184,17 @@ OMNIROUTE_API_PREFIXES = (
     "/api/telemetry",
     "/api/translator",
     "/api/upstream-proxy",
+    "/api/cloud-agent-credentials",
+    "/api/cli-access-tokens",
+    "/api/oauth",
+    "/api/credentials",
+    "/api/connections",
+    "/api/agent-bridge",
+    "/api/inspector",
+    "/api/playground",
+    "/api/quota-pools",
+    "/api/quota-groups",
+    "/api/plugins",
 )
 
 # Dynamically register explicit route handlers for OmniRoute management & auth APIs
