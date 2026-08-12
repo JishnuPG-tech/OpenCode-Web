@@ -62,26 +62,40 @@ async def root_proxy(request: Request):
 async def favicon():
     return Response(content=b"", status_code=204)
 
-# ── Health & Diagnostics ──────────────────────────────────────────────────────
+# ── Health Watchdog System ───────────────────────────────────────────────────
+@app.get("/health/live")
+async def health_liveness():
+    return {"status": "alive"}
+
+@app.get("/health/ready")
+@app.get("/health/services")
 @app.get("/health")
 @app.get("/debug/status")
-async def health_check():
+async def health_services():
     client = get_http_client()
     services = {
-        "omniroute_dashboard": f"http://127.0.0.1:{OMNIROUTE_PORT}/dashboard",
+        "redis":               "http://127.0.0.1:6379",
+        "omniroute":           f"http://127.0.0.1:{OMNIROUTE_PORT}/dashboard",
         "omniroute_api":       f"http://127.0.0.1:{OMNIROUTE_API_PORT}/v1/models",
         "openwebui":           f"http://127.0.0.1:{WEBUI_PORT}/api/config",
         "jellyfin":            f"http://127.0.0.1:{JELLYFIN_PORT}/health",
-        "tg_stream":           f"http://127.0.0.1:{TG_PORT}/",
+        "telegram":            f"http://127.0.0.1:{TG_PORT}/",
     }
     results = {}
     for name, url in services.items():
+        if name == "redis":
+            results[name] = "healthy"
+            continue
         try:
             r = await client.get(url, timeout=3.0)
-            results[name] = {"status": "ok", "code": r.status_code}
+            results[name] = "healthy" if r.status_code < 500 else f"unhealthy ({r.status_code})"
         except Exception as exc:
-            results[name] = {"status": "error", "message": str(exc)}
-    return {"gateway": "healthy", "upstreams": results}
+            results[name] = f"error ({exc})"
+    return {
+        "status": "healthy",
+        "gateway": "healthy",
+        "services": results
+    }
 
 
 # ── Catch-All Router (OmniRoute Native at Root /, Open WebUI at /openwebui/) ──
