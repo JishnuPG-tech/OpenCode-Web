@@ -140,7 +140,9 @@ async def route_catch_all(path: str, request: Request):
     omniroute_paths = (
         "/omniroute", "/dashboard", "/_next", "/v1", "/v1beta",
         "/api/providers", "/api/combos", "/api/oauth", "/api/credentials",
-        "/api/settings", "/api/monitoring", "/login", "/home", "/callback", "/live-ws"
+        "/api/settings", "/api/monitoring", "/login", "/forgot-password",
+        "/reset-password", "/reset", "/register", "/signup", "/auth",
+        "/api/auth", "/home", "/callback", "/live-ws"
     )
     if any(req_path.startswith(p) for p in omniroute_paths):
         sub_p = path.replace("omniroute/", "", 1).replace("omniroute", "", 1)
