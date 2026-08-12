@@ -103,11 +103,21 @@ async def health_services():
 async def route_catch_all(path: str, request: Request):
     req_path = request.url.path.lower()
     referer  = request.headers.get("referer", "").lower()
+    has_owui_scope = request.cookies.get("OWUI_SCOPE") == "1"
 
-    # Open WebUI explicit subpath, SvelteKit assets, or referer
-    if req_path.startswith("/openwebui") or req_path.startswith("/_app") or "/openwebui" in referer:
+    # Context-aware Open WebUI detection
+    is_owui_path = req_path.startswith("/openwebui") or req_path.startswith("/_app")
+    if not is_owui_path and (has_owui_scope or "/openwebui" in referer):
+        if req_path in ("/api/config", "/api/version") or req_path.startswith("/api/v1/") or req_path.startswith("/ws/") or req_path.startswith("/socket.io"):
+            is_owui_path = True
+
+    # Open WebUI routing
+    if is_owui_path:
         sub_p = path.replace("openwebui/", "", 1).replace("openwebui", "", 1)
-        return await proxy_http_request(f"http://127.0.0.1:{WEBUI_PORT}/{sub_p}", request, default_prefix="/openwebui", html_fixup=fixup_webui_html)
+        resp = await proxy_http_request(f"http://127.0.0.1:{WEBUI_PORT}/{sub_p}", request, default_prefix="/openwebui", html_fixup=fixup_webui_html)
+        if req_path.startswith("/openwebui"):
+            resp.set_cookie("OWUI_SCOPE", "1", path="/", samesite="lax")
+        return resp
 
     # Jellyfin
     if req_path.startswith("/jellyfin") or "/jellyfin" in referer:
@@ -119,7 +129,7 @@ async def route_catch_all(path: str, request: Request):
         sub_p = path.replace("tg-stream/", "", 1).replace("tg_stream/", "", 1)
         return await proxy_http_request(f"http://127.0.0.1:{TG_PORT}/{sub_p}", request, default_prefix="/tg-stream")
 
-    # Handle legacy /omniroute links by redirecting or proxying natively to root
+    # Handle legacy /omniroute links by proxying natively to root
     if req_path.startswith("/omniroute"):
         sub_p = path.replace("omniroute/", "", 1).replace("omniroute", "", 1)
         extra = {
@@ -130,7 +140,7 @@ async def route_catch_all(path: str, request: Request):
         }
         return await proxy_http_request(f"http://127.0.0.1:{OMNIROUTE_PORT}/{sub_p}", request, default_prefix="", extra_headers=extra)
 
-    # Default all native root traffic (OmniRoute dashboard, /api/*, /_next/*, /dashboard/*, /login, /callback) -> OmniRoute (:20128)
+    # Default native root traffic (OmniRoute dashboard, /api/*, /_next/*, /dashboard/*, /login, /callback) -> OmniRoute (:20128)
     extra = {
         "Host": PUBLIC_HOST,
         "X-Forwarded-Host": PUBLIC_HOST,
