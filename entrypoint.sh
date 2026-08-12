@@ -31,7 +31,7 @@ for _ENV_FILE in \
 done
 unset _ENV_FILE
 
-# Ensure deterministic, permanent secrets and persist to /data/omniroute/server.env
+# Ensure deterministic, permanent secrets in container environment
 export STORAGE_ENCRYPTION_KEY="${STORAGE_ENCRYPTION_KEY:-$(echo "opencode_storage_encryption_key_2026" | sha256sum | cut -c1-64)}"
 export JWT_SECRET="${JWT_SECRET:-$(echo "opencode_jwt_secret_hf_space_key_2026" | sha256sum | cut -c1-48)}"
 export API_KEY_SECRET="${API_KEY_SECRET:-$(echo "opencode_api_key_secret_hf_space_key_2026" | sha256sum | cut -c1-64)}"
@@ -40,19 +40,8 @@ export WEBUI_SECRET_KEY="${WEBUI_SECRET_KEY:-$(echo "owui_${JWT_SECRET}" | sha25
 export ENCRYPTION_SECRET="${ENCRYPTION_SECRET:-${STORAGE_ENCRYPTION_KEY}}"
 export OMNIROUTE_SECRET_KEY="${OMNIROUTE_SECRET_KEY:-${STORAGE_ENCRYPTION_KEY}}"
 
-mkdir -p /data/omniroute 2>/dev/null || true
-if [ ! -f "/data/omniroute/server.env" ]; then
-    echo "[INIT] Persisting permanent encryption secrets to /data/omniroute/server.env..."
-    cat <<EOF > /data/omniroute/server.env
-STORAGE_ENCRYPTION_KEY="${STORAGE_ENCRYPTION_KEY}"
-JWT_SECRET="${JWT_SECRET}"
-API_KEY_SECRET="${API_KEY_SECRET}"
-OMNIROUTE_WS_BRIDGE_SECRET="${OMNIROUTE_WS_BRIDGE_SECRET}"
-WEBUI_SECRET_KEY="${WEBUI_SECRET_KEY}"
-ENCRYPTION_SECRET="${ENCRYPTION_SECRET}"
-OMNIROUTE_SECRET_KEY="${OMNIROUTE_SECRET_KEY}"
-EOF
-fi
+# Remove legacy server.env from storage bucket to maintain strict secret separation
+rm -f /data/omniroute/server.env 2>/dev/null || true
 
 # Debug: show secret statuses
 for _VAR in STORAGE_ENCRYPTION_KEY JWT_SECRET API_KEY_SECRET OMNIROUTE_WS_BRIDGE_SECRET WEBUI_SECRET_KEY; do
