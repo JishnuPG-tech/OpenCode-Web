@@ -45,8 +45,8 @@ RUN npm install -g omniroute@${OMNIROUTE_VERSION} \
  && OMNIROUTE_PKG="$(npm root -g)/omniroute" \
  && find "${OMNIROUTE_PKG}" -type f -name "package.json" -path "*/better-sqlite3/*" | while read -r pkg_json; do \
       dir="$(dirname "$pkg_json")"; \
-      echo "[BUILD] Rebuilding better-sqlite3 in $dir ..."; \
-      (cd "$dir" && npm rebuild better-sqlite3 --build-from-source) || true; \
+      echo "[BUILD] Rebuilding better-sqlite3 natively in $dir ..."; \
+      (cd "$dir" && npm rebuild && (npx --no-install node-gyp rebuild 2>/dev/null || true)) || true; \
     done \
  && omniroute runtime repair || true \
  && mkdir -p "${OMNIROUTE_PKG}/.next/cache" "${OMNIROUTE_PKG}/.build/next/cache" /root/.cache /data/cache /data/omniroute \
