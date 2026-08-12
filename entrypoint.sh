@@ -260,8 +260,6 @@ if command -v open-webui >/dev/null 2>&1; then
     export WEBUI_WORKERS=1
     # Disable local PyTorch/SentenceTransformers embedding engine to make Open WebUI lightweight & fast
     export BYPASS_EMBEDDING_AND_RETRIEVAL="true"
-    export OFFLINE_MODE="true"
-    export HF_HUB_OFFLINE="1"
     export RAG_EMBEDDING_ENGINE=""
     export RAG_EMBEDDING_MODEL=""
     export ENABLE_RAG_HYBRID_SEARCH="false"

@@ -104,8 +104,8 @@ async def route_catch_all(path: str, request: Request):
     req_path = request.url.path.lower()
     referer  = request.headers.get("referer", "").lower()
 
-    # Open WebUI explicit subpath or referer
-    if req_path.startswith("/openwebui") or "/openwebui" in referer:
+    # Open WebUI explicit subpath, SvelteKit assets, or referer
+    if req_path.startswith("/openwebui") or req_path.startswith("/_app") or "/openwebui" in referer:
         sub_p = path.replace("openwebui/", "", 1).replace("openwebui", "", 1)
         return await proxy_http_request(f"http://127.0.0.1:{WEBUI_PORT}/{sub_p}", request, default_prefix="/openwebui", html_fixup=fixup_webui_html)
 
