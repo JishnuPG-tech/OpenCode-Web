@@ -58,13 +58,19 @@ BACKUP_DIR="/data/omniroute/backups"
 RUNTIME_DIR="/root/.omniroute"
 RUNTIME_DB="/root/.omniroute/storage.sqlite"
 
+# Clean up legacy directory collision if storage.sqlite was created as a folder
+if [ -d "$PERSIST_DB" ]; then
+    echo "[PERSISTENCE] Fixing directory collision: removing directory $PERSIST_DB..."
+    rm -rf "$PERSIST_DB"
+fi
+
 mkdir -p "$PERSIST_DIR" "$BACKUP_DIR" "$RUNTIME_DIR" 2>/dev/null || true
 
 echo "[PERSISTENCE] Storage mount inspection:"
 mount | grep -E 'hf|bucket|data|fuse|nfs' || echo "[STORAGE] /data info: $(df -h /data 2>&1 || true)"
 
-# ── Snapshot Restoration on Boot ──────────────────────────────────────────────
-if [ -s "$PERSIST_DB" ]; then
+# ── Snapshot & State Restoration on Boot ──────────────────────────────────────
+if [ -f "$PERSIST_DB" ] && [ -s "$PERSIST_DB" ]; then
     _INIT_SIZE=$(wc -c < "$PERSIST_DB" 2>/dev/null | tr -d ' \t\n\r' || echo "0")
     echo "[PERSISTENCE] Found OmniRoute snapshot at: ${PERSIST_DB} (${_INIT_SIZE} bytes)"
     if command -v sqlite3 >/dev/null 2>&1; then
@@ -84,28 +90,66 @@ else
     echo "[PERSISTENCE] No snapshot found at ${PERSIST_DB}. Initializing fresh OmniRoute database."
 fi
 
-# ── SQLite WAL-aware Continuous Backup Function ───────────────────────────────
+# Restore supplementary state directories (oauth, credentials, runtime, gemini_cli, config_dir)
+for _ITEM in oauth credentials runtime gemini_cli config_dir; do
+    if [ -d "${PERSIST_DIR}/${_ITEM}" ]; then
+        if [ "$_ITEM" = "gemini_cli" ]; then
+            mkdir -p /root/.gemini 2>/dev/null || true
+            cp -af "${PERSIST_DIR}/gemini_cli/"* /root/.gemini/ 2>/dev/null || true
+        elif [ "$_ITEM" = "config_dir" ]; then
+            mkdir -p /root/.config 2>/dev/null || true
+            cp -af "${PERSIST_DIR}/config_dir/"* /root/.config/ 2>/dev/null || true
+        else
+            mkdir -p "${RUNTIME_DIR}/${_ITEM}" 2>/dev/null || true
+            cp -af "${PERSIST_DIR}/${_ITEM}/"* "${RUNTIME_DIR}/${_ITEM}/" 2>/dev/null || true
+        fi
+        echo "[PERSISTENCE] Restored persistent state directory: ${_ITEM}"
+    fi
+done
+
+# ── Unified Single Backup Pipeline ───────────────────────────────────────────
 sync_omniroute_db() {
     if [ -f "$RUNTIME_DB" ] && [ -s "$RUNTIME_DB" ]; then
         mkdir -p "$PERSIST_DIR" "$BACKUP_DIR" 2>/dev/null || true
+        
+        # 1. SQLite WAL-aware database backup
         if command -v sqlite3 >/dev/null 2>&1; then
             sqlite3 "$RUNTIME_DB" ".backup '$PERSIST_DB'" 2>/dev/null || cp -f "$RUNTIME_DB" "$PERSIST_DB" 2>/dev/null || true
         else
             cp -f "$RUNTIME_DB" "$PERSIST_DB" 2>/dev/null || true
         fi
 
-        # Verify integrity of persistent snapshot
+        # 2. Verify persistent snapshot integrity
         _CHK="ok"
         if command -v sqlite3 >/dev/null 2>&1; then
             _CHK=$(sqlite3 "$PERSIST_DB" "PRAGMA quick_check;" 2>/dev/null || echo "failed")
         fi
 
         if [ "$_CHK" = "ok" ]; then
-            # Rotate backups (keep last-known-good + rolling backups)
+            # Rotate database backups (keep last-known-good + 5 rolling snapshots)
             cp -f "$PERSIST_DB" "${BACKUP_DIR}/last-known-good.sqlite" 2>/dev/null || true
             TIMESTAMP=$(date +%Y%m%d-%H%M)
             cp -f "$PERSIST_DB" "${BACKUP_DIR}/storage-${TIMESTAMP}.sqlite" 2>/dev/null || true
             ls -t "${BACKUP_DIR}"/storage-*.sqlite 2>/dev/null | tail -n +6 | xargs rm -f 2>/dev/null || true
+            
+            # 3. Synchronize supplementary state directories
+            for _ITEM in oauth credentials runtime; do
+                if [ -d "${RUNTIME_DIR}/${_ITEM}" ]; then
+                    mkdir -p "${PERSIST_DIR}/${_ITEM}" 2>/dev/null || true
+                    cp -af "${RUNTIME_DIR}/${_ITEM}/"* "${PERSIST_DIR}/${_ITEM}/" 2>/dev/null || true
+                fi
+            done
+
+            if [ -d "/root/.gemini" ]; then
+                mkdir -p "${PERSIST_DIR}/gemini_cli" 2>/dev/null || true
+                cp -af /root/.gemini/* "${PERSIST_DIR}/gemini_cli/" 2>/dev/null || true
+            fi
+
+            if [ -d "/root/.config" ]; then
+                mkdir -p "${PERSIST_DIR}/config_dir" 2>/dev/null || true
+                cp -af /root/.config/* "${PERSIST_DIR}/config_dir/" 2>/dev/null || true
+            fi
+
             _SIZE=$(wc -c < "$PERSIST_DB" 2>/dev/null | tr -d ' \t\n\r' || echo "0")
             echo "[PERSISTENCE] Snapshot OK: ${_SIZE} bytes synced to ${PERSIST_DB}"
         else
