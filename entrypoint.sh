@@ -246,12 +246,13 @@ chmod -R 777 /root/.cache /data/cache 2>/dev/null || true
 # ── Start Open WebUI ──────────────────────────────────────────────────────────
 echo "[INIT] Starting Open WebUI on port 8098 pre-configured with OmniRoute API..."
 if command -v open-webui >/dev/null 2>&1; then
-    export WEBUI_URL="${WEBUI_URL:-https://jishnupg-opencode-cli.hf.space}"
+    export WEBUI_URL="${WEBUI_URL:-https://jishnupg-opencode-cli.hf.space/openwebui}"
     export OPENAI_API_BASE_URL="http://127.0.0.1:20129/v1"
     export OPENAI_API_KEY="omniroute"
     export WEBUI_SECRET_KEY="$WEBUI_SECRET_KEY"
     export ENABLE_OLLAMA_API="${ENABLE_OLLAMA_API:-false}"
     export ENABLE_OPENAI_API="true"
+    export ENABLE_WEBSOCKET_SUPPORT="true"
     export TOOL_SERVERS=""
     export OPENAPI_TOOL_SERVERS=""
     export PORT=8098
@@ -267,15 +268,17 @@ if command -v open-webui >/dev/null 2>&1; then
     export TRANSFORMERS_CACHE="/data/cache/huggingface/transformers"
     export SENTENCE_TRANSFORMERS_HOME="/data/cache/sentence_transformers"
     mkdir -p "$HF_HOME" "$HF_HUB_CACHE" "$TRANSFORMERS_CACHE" "$SENTENCE_TRANSFORMERS_HOME" 2>/dev/null || true
-    export CORS_ALLOW_ORIGIN="${WEBUI_URL:-https://jishnupg-opencode-cli.hf.space}"
+    export CORS_ALLOW_ORIGIN="https://jishnupg-opencode-cli.hf.space"
     export RAG_AUTO_UPDATE_INDEX="false"
+    export RAG_EMBEDDING_ENGINE=""
+    export ENABLE_RAG_HYBRID_SEARCH="false"
     export HF_HUB_ENABLE_HF_TRANSFER="1"
     export WEBUI_AUTH="true"
     export ENABLE_SIGNUP="true"
     open-webui serve --port 8098 &
     echo "[INIT] Open WebUI started in background (PID=$!). Waiting for health..."
     OWUI_HEALTHY=0
-    for i in $(seq 1 45); do
+    for i in $(seq 1 30); do
         if curl -fsS "http://127.0.0.1:8098/health" >/dev/null 2>&1 || curl -fsS "http://127.0.0.1:8098/api/config" >/dev/null 2>&1; then
             echo "[HEALTH] Open WebUI healthy after ${i}s"
             OWUI_HEALTHY=1
@@ -284,7 +287,7 @@ if command -v open-webui >/dev/null 2>&1; then
         sleep 1
     done
     if [ "$OWUI_HEALTHY" -eq 0 ]; then
-        echo "[WARN] Open WebUI startup check timed out after 45s, proceeding with Gateway startup."
+        echo "[WARN] Open WebUI startup check timed out after 30s, proceeding with Gateway startup."
     fi
 else
     echo "[WARN] open-webui binary not found, skipping."
