@@ -35,13 +35,16 @@ RUN mkdir -p /etc/apt/keyrings \
 
 # 3. Install Python Dependencies (CPU PyTorch to avoid massive CUDA wheels, plus Open WebUI & utilities)
 RUN pip3 install --no-cache-dir torch --index-url https://download.pytorch.org/whl/cpu --break-system-packages \
- && pip3 install --no-cache-dir aiohttp pyrogram tgcrypto open-webui httpx uvicorn fastapi --break-system-packages || true
+ && pip3 install --no-cache-dir aiohttp pyrogram tgcrypto open-webui httpx uvicorn fastapi sentence-transformers --break-system-packages || true
+
+# Pre-cache Open WebUI default embedding model inside Docker image so container boots in 1 second without downloading
+RUN python3 -c "from sentence_transformers import SentenceTransformer; SentenceTransformer('sentence-transformers/all-MiniLM-L6-v2')" || true
 
 # 4. Install Node.js 22.22.2 LTS (meets OmniRoute's minimum required runtime v22.22.2+)
 RUN curl -fsSL https://nodejs.org/dist/v22.22.2/node-v22.22.2-linux-x64.tar.gz \
     | tar -xz -C /usr/local --strip-components=1
 
-# 5. Clone and Build OmniRoute AI Gateway
+# 5. Clone and Prepare OmniRoute AI Gateway (fast install, defer build to runtime dev server for instant Docker builds)
 WORKDIR /omniroute
 ENV NEXT_TELEMETRY_DISABLED=1
 ENV OMNIROUTE_USE_TURBOPACK=0
@@ -50,8 +53,7 @@ ENV DISABLE_ESLINT_PLUGIN=true
 
 RUN git clone --depth 1 https://github.com/diegosouzapw/OmniRoute.git /omniroute \
  && npm install --legacy-peer-deps --no-audit --no-fund --prefer-offline \
- && npm rebuild better-sqlite3 --build-from-source \
- && NEXT_TELEMETRY_DISABLED=1 OMNIROUTE_USE_TURBOPACK=0 NODE_OPTIONS="--max-old-space-size=2048" npm run build || true
+ && npm rebuild better-sqlite3 --build-from-source
 
 RUN mkdir -p /root/.cache /data/cache /data/omniroute /data/open-webui
 RUN chmod -R 777 /root/.cache /data/cache /omniroute

@@ -128,8 +128,9 @@ if os.path.exists(db_p):
     except Exception as e:
         print('[CONFIG] WebUI DB sanitize note:', e)
 " 2>/dev/null || true
-    # Allow requests from all origins (including public HF Space origin & websockets)
     export CORS_ALLOW_ORIGIN="*"
+    export RAG_AUTO_UPDATE_INDEX="false"
+    export HF_HUB_ENABLE_HF_TRANSFER="1"
     # Enable authentication so user can log in / log out cleanly with saved credentials
     export WEBUI_AUTH="true"
     export ENABLE_SIGNUP="true"
