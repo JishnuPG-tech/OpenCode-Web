@@ -95,13 +95,33 @@ def build_upstream_headers(request: Request, extra_headers: Optional[Dict[str, s
 
 def build_downstream_raw_headers(resp_headers: httpx.Headers, default_prefix: str = "") -> list:
     raw_headers = []
+    has_csp = False
     for key, value in resp_headers.multi_items():
         lk = key.lower()
         if lk in _HOP_BY_HOP_HEADERS:
             continue
+        if lk == "x-frame-options":
+            # Strip restrictive frame options to allow Hugging Face Space iframe embedding
+            continue
+        if lk == "content-security-policy":
+            has_csp = True
+            # Update frame-ancestors directive to permit https://huggingface.co
+            if "frame-ancestors" in value.lower():
+                value = re.sub(
+                    r"frame-ancestors\s+[^;]+",
+                    "frame-ancestors 'self' https://huggingface.co https://*.hf.space",
+                    value,
+                    flags=re.IGNORECASE,
+                )
+            else:
+                value = f"{value}; frame-ancestors 'self' https://huggingface.co https://*.hf.space;"
         if lk == "location":
             value = fix_location_header(value, default_prefix=default_prefix)
         raw_headers.append((key.lower().encode("latin-1"), value.encode("latin-1")))
+
+    if not has_csp:
+        raw_headers.append((b"content-security-policy", b"frame-ancestors 'self' https://huggingface.co https://*.hf.space;"))
+
     return raw_headers
 
 
