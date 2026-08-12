@@ -178,11 +178,10 @@ async def omniroute_diagnostics():
     }
 
 
-# ── Catch-All Router (Approach A Master Specification) ──────────────────────
+# ── Catch-All Router (Approach A Specification: OmniRoute = Primary Root /) ─
 @app.api_route("/{path:path}", methods=["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"], operation_id="global_catchall_proxy")
 async def route_catch_all(path: str, request: Request):
     req_path = request.url.path.lower()
-    referer  = request.headers.get("referer", "").lower()
 
     # ── 1. Open WebUI Namespace Isolation ─────────────────────────────────────
     if req_path == "/openwebui" or req_path.startswith("/openwebui/"):
@@ -190,49 +189,25 @@ async def route_catch_all(path: str, request: Request):
         sub_p = path.replace("openwebui/", "", 1).replace("openwebui", "", 1)
         return await proxy_http_request(f"http://127.0.0.1:{WEBUI_PORT}/{sub_p}", request, default_prefix="/openwebui", html_fixup=fixup_webui_html)
 
-    # ── 2. OmniRoute Primary Root Endpoints ───────────────────────────────────
-    OMNIROUTE_EXACT = {
-        "/login", "/forgot-password", "/reset-password", "/reset",
-        "/register", "/signup", "/auth", "/home", "/callback",
-        "/live-ws", "/health", "/debug"
-    }
-
-    OMNIROUTE_PREFIXES = (
-        "/omniroute", "/dashboard", "/_next", "/v1", "/v1beta",
-        "/api", "/static", "/favicon", "/manifest.json"
-    )
-
-    is_omniroute = (
-        req_path in OMNIROUTE_EXACT
-        or any(
-            req_path == prefix or req_path.startswith(prefix + "/")
-            for prefix in OMNIROUTE_PREFIXES
-        )
-    )
-
-    if is_omniroute:
-        logger.info(f"[ROUTER] {req_path} -> OmniRoute (20128)")
-        sub_p = path.replace("omniroute/", "", 1).replace("omniroute", "", 1)
-        extra = {
-            "Host": PUBLIC_HOST,
-            "X-Forwarded-Host": PUBLIC_HOST,
-            "X-Forwarded-Proto": "https",
-            "X-Forwarded-Port": "443"
-        }
-        return await proxy_http_request(f"http://127.0.0.1:{OMNIROUTE_PORT}/{sub_p}", request, default_prefix="", extra_headers=extra)
-
-    # ── 3. Jellyfin Media Server ──────────────────────────────────────────────
-    if req_path.startswith("/jellyfin") or "/jellyfin" in referer:
+    # ── 2. Jellyfin Media Server Namespace ────────────────────────────────────
+    if req_path == "/jellyfin" or req_path.startswith("/jellyfin/"):
         logger.info(f"[ROUTER] {req_path} -> Jellyfin (8096)")
         sub_p = path.replace("jellyfin/", "", 1).replace("jellyfin", "", 1)
         return await proxy_http_request(f"http://127.0.0.1:{JELLYFIN_PORT}/{sub_p}", request, default_prefix="/jellyfin", extra_headers={"X-Forwarded-Prefix": "/jellyfin"})
 
-    # ── 4. Telegram Streamer ──────────────────────────────────────────────────
-    if req_path.startswith("/tg-stream") or req_path.startswith("/tg_stream") or "/tg" in referer:
+    # ── 3. Telegram Streamer Namespace ────────────────────────────────────────
+    if req_path == "/tg-stream" or req_path.startswith("/tg-stream/") or req_path == "/tg_stream" or req_path.startswith("/tg_stream/"):
         logger.info(f"[ROUTER] {req_path} -> Telegram Streamer (8080)")
         sub_p = path.replace("tg-stream/", "", 1).replace("tg_stream/", "", 1)
         return await proxy_http_request(f"http://127.0.0.1:{TG_PORT}/{sub_p}", request, default_prefix="/tg-stream")
 
-    # ── 5. Clean 404 Fallback for Unknown Traffic ─────────────────────────────
-    logger.warning(f"[ROUTER] {req_path} -> 404 Not Found")
-    return Response(content="Not Found", status_code=404)
+    # ── 4. Primary Root Application & Catch-All -> OmniRoute (:20128) ────────
+    logger.info(f"[ROUTER] {req_path} -> OmniRoute (20128)")
+    sub_p = path.replace("omniroute/", "", 1).replace("omniroute", "", 1)
+    extra = {
+        "Host": PUBLIC_HOST,
+        "X-Forwarded-Host": PUBLIC_HOST,
+        "X-Forwarded-Proto": "https",
+        "X-Forwarded-Port": "443"
+    }
+    return await proxy_http_request(f"http://127.0.0.1:{OMNIROUTE_PORT}/{sub_p}", request, default_prefix="", extra_headers=extra)
