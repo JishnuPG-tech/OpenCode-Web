@@ -64,10 +64,16 @@ app.include_router(jellyfin_router)
 app.include_router(tg_stream_router)
 
 
-# ── Root Direct Handler for Open WebUI Landing Page ───────────────────────────
+# ── Root Direct Handler for OmniRoute Landing Page (Approach A) ────────────────
 @app.api_route("/", methods=["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"], operation_id="root_landing_proxy")
 async def root_proxy(request: Request):
-    return await proxy_http_request(f"http://127.0.0.1:{WEBUI_PORT}/", request, default_prefix="")
+    extra = {
+        "Host": PUBLIC_HOST,
+        "X-Forwarded-Host": PUBLIC_HOST,
+        "X-Forwarded-Proto": "https",
+        "X-Forwarded-Port": "443"
+    }
+    return await proxy_http_request(f"http://127.0.0.1:{OMNIROUTE_PORT}/", request, default_prefix="", extra_headers=extra)
 
 @app.api_route("/favicon.ico", methods=["GET", "HEAD"], operation_id="root_favicon_proxy")
 async def favicon():
@@ -172,13 +178,19 @@ async def omniroute_diagnostics():
     }
 
 
-# ── Catch-All Router (Open WebUI Native at Root /, OmniRoute at /omniroute and /dashboard) ──
+# ── Catch-All Router (Approach A Master Specification) ──────────────────────
 @app.api_route("/{path:path}", methods=["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"], operation_id="global_catchall_proxy")
 async def route_catch_all(path: str, request: Request):
     req_path = request.url.path.lower()
     referer  = request.headers.get("referer", "").lower()
 
-    # ── 1. OmniRoute Explicit Route Classification ─────────────────────────────
+    # ── 1. Open WebUI Namespace Isolation ─────────────────────────────────────
+    if req_path == "/openwebui" or req_path.startswith("/openwebui/"):
+        logger.info(f"[ROUTER] {req_path} -> Open WebUI (8098)")
+        sub_p = path.replace("openwebui/", "", 1).replace("openwebui", "", 1)
+        return await proxy_http_request(f"http://127.0.0.1:{WEBUI_PORT}/{sub_p}", request, default_prefix="/openwebui", html_fixup=fixup_webui_html)
+
+    # ── 2. OmniRoute Primary Root Endpoints ───────────────────────────────────
     OMNIROUTE_EXACT = {
         "/login", "/forgot-password", "/reset-password", "/reset",
         "/register", "/signup", "/auth", "/home", "/callback",
@@ -187,9 +199,7 @@ async def route_catch_all(path: str, request: Request):
 
     OMNIROUTE_PREFIXES = (
         "/omniroute", "/dashboard", "/_next", "/v1", "/v1beta",
-        "/api/providers", "/api/combos", "/api/oauth", "/api/credentials",
-        "/api/settings", "/api/monitoring", "/api/auth", "/api/models",
-        "/api/cloud-agent-credentials"
+        "/api", "/static", "/favicon", "/manifest.json"
     )
 
     is_omniroute = (
@@ -211,17 +221,18 @@ async def route_catch_all(path: str, request: Request):
         }
         return await proxy_http_request(f"http://127.0.0.1:{OMNIROUTE_PORT}/{sub_p}", request, default_prefix="", extra_headers=extra)
 
-    # ── 2. Jellyfin Media Server ──────────────────────────────────────────────
+    # ── 3. Jellyfin Media Server ──────────────────────────────────────────────
     if req_path.startswith("/jellyfin") or "/jellyfin" in referer:
+        logger.info(f"[ROUTER] {req_path} -> Jellyfin (8096)")
         sub_p = path.replace("jellyfin/", "", 1).replace("jellyfin", "", 1)
         return await proxy_http_request(f"http://127.0.0.1:{JELLYFIN_PORT}/{sub_p}", request, default_prefix="/jellyfin", extra_headers={"X-Forwarded-Prefix": "/jellyfin"})
 
-    # ── 3. Telegram Streamer ──────────────────────────────────────────────────
+    # ── 4. Telegram Streamer ──────────────────────────────────────────────────
     if req_path.startswith("/tg-stream") or req_path.startswith("/tg_stream") or "/tg" in referer:
+        logger.info(f"[ROUTER] {req_path} -> Telegram Streamer (8080)")
         sub_p = path.replace("tg-stream/", "", 1).replace("tg_stream/", "", 1)
         return await proxy_http_request(f"http://127.0.0.1:{TG_PORT}/{sub_p}", request, default_prefix="/tg-stream")
 
-    # ── 4. Open WebUI Native Fallback ─────────────────────────────────────────
-    logger.info(f"[ROUTER] {req_path} -> Open WebUI (8098)")
-    sub_p = path.replace("openwebui/", "", 1).replace("openwebui", "", 1)
-    return await proxy_http_request(f"http://127.0.0.1:{WEBUI_PORT}/{sub_p}", request, default_prefix="")
+    # ── 5. Clean 404 Fallback for Unknown Traffic ─────────────────────────────
+    logger.warning(f"[ROUTER] {req_path} -> 404 Not Found")
+    return Response(content="Not Found", status_code=404)
