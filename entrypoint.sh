@@ -86,7 +86,15 @@ else
     echo "[PERSISTENCE] No pre-existing non-empty database found in /data. OmniRoute will start with fresh DB."
 fi
 
-# Continuous sync function (consolidates live ext4 DB -> persistent bucket snapshot)
+# Restore pre-existing OAuth tokens, credentials, runtime files, and server.env if available
+for _ITEM in oauth credentials runtime server.env; do
+    if [ -e "/data/omniroute/${_ITEM}" ]; then
+        cp -af /data/omniroute/${_ITEM} /root/.omniroute/ 2>/dev/null || true
+        echo "[PERSISTENCE] Restored persistent OmniRoute state: ${_ITEM}"
+    fi
+done
+
+# Continuous sync function (consolidates live ext4 DB & OAuth tokens -> persistent bucket snapshot)
 sync_omniroute_db() {
     if [ -f "/root/.omniroute/storage.sqlite" ] && [ -s "/root/.omniroute/storage.sqlite" ]; then
         TARGET_SNAP="/data/omniroute/storage.sqlite"
@@ -102,9 +110,16 @@ sync_omniroute_db() {
             cp -f /root/.omniroute/storage.sqlite "${TARGET_SNAP}" 2>/dev/null || true
         fi
 
+        # Synchronize OAuth token files, credentials, runtime data, and server.env to persistent volume
+        for _ITEM in oauth credentials runtime server.env; do
+            if [ -e "/root/.omniroute/${_ITEM}" ]; then
+                cp -af /root/.omniroute/${_ITEM} /data/omniroute/ 2>/dev/null || true
+            fi
+        done
+
         _ACTIVE_SIZE=$(wc -c < /root/.omniroute/storage.sqlite 2>/dev/null | tr -d ' \t\n\r' || echo "0")
         _SNAP_SIZE=$(wc -c < "${TARGET_SNAP}" 2>/dev/null | tr -d ' \t\n\r' || echo "0")
-        echo "[PERSISTENCE] Snapshot sync complete: Active DB (${_ACTIVE_SIZE} bytes) -> Persistent Snapshot (${_SNAP_SIZE} bytes)"
+        echo "[PERSISTENCE] Snapshot & OAuth state sync complete: Active DB (${_ACTIVE_SIZE} bytes) -> Persistent Snapshot (${_SNAP_SIZE} bytes)"
     fi
 }
 
