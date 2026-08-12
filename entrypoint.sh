@@ -114,7 +114,12 @@ OMNIROUTE_SERVER_HOST=0.0.0.0
 print('[INIT] Wrote pristine OmniRoute .env config files.')
 " 2>/dev/null || true
 
-    (cd "$OMNIROUTE_PKG" && npm rebuild better-sqlite3) 2>&1 || true
+    echo "[DIAG] Scanning for all better-sqlite3 copies in $OMNIROUTE_PKG..."
+    find "$OMNIROUTE_PKG" -type f -name "package.json" -path "*/better-sqlite3/*" 2>/dev/null | while read -r pkg_json; do
+        dir="$(dirname "$pkg_json")"
+        echo "[DIAG] Found better-sqlite3 in $dir"
+        (cd "$dir" && npm rebuild better-sqlite3) 2>&1 || true
+    done
     omniroute runtime repair 2>&1 || true
     omniroute serve --port 20128 --no-open > /data/omniroute/omniroute.log 2>&1 &
     echo "[INIT] OmniRoute started in background with secrets and logging to /data/omniroute/omniroute.log."

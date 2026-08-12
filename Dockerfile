@@ -40,10 +40,14 @@ RUN curl -fsSL https://nodejs.org/dist/v22.22.2/node-v22.22.2-linux-x64.tar.gz \
 
 ARG OMNIROUTE_VERSION=3.8.49
 
-# Install OmniRoute globally (pinned version), rebuild better-sqlite3 from source, and ensure cache dirs are writable
+# Install OmniRoute globally, locate and rebuild ALL nested copies of better-sqlite3 from source, and set permissions
 RUN npm install -g omniroute@${OMNIROUTE_VERSION} \
  && OMNIROUTE_PKG="$(npm root -g)/omniroute" \
- && (cd "${OMNIROUTE_PKG}" && npm install better-sqlite3@latest --build-from-source) || true \
+ && find "${OMNIROUTE_PKG}" -type f -name "package.json" -path "*/better-sqlite3/*" | while read -r pkg_json; do \
+      dir="$(dirname "$pkg_json")"; \
+      echo "[BUILD] Rebuilding better-sqlite3 in $dir ..."; \
+      (cd "$dir" && npm rebuild better-sqlite3 --build-from-source) || true; \
+    done \
  && omniroute runtime repair || true \
  && mkdir -p "${OMNIROUTE_PKG}/.next/cache" "${OMNIROUTE_PKG}/.build/next/cache" /root/.cache /data/cache /data/omniroute \
  && chmod -R 777 "${OMNIROUTE_PKG}" /root/.cache /data/cache /data/omniroute
