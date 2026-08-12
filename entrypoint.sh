@@ -217,6 +217,20 @@ export ADMIN_PASSWORD="${_PASS}"
 export OMNIROUTE_INITIAL_PASSWORD="${_PASS}"
 export OMNIROUTE_PASSWORD="${_PASS}"
 export PASSWORD="${_PASS}"
+export RESET_PASSWORD="${_PASS}"
+export OMNIROUTE_RESET_PASSWORD="${_PASS}"
+
+if [ -n "$INITIAL_PASSWORD" ]; then
+    echo "[AUTH] INITIAL_PASSWORD present: yes"
+else
+    echo "[AUTH] INITIAL_PASSWORD present: no (using default fallback)"
+fi
+
+if [ -f "$RUNTIME_DB" ] && [ -s "$RUNTIME_DB" ]; then
+    echo "[AUTH] Existing admin credential record: present in runtime database"
+else
+    echo "[AUTH] Existing admin credential record: absent (fresh baseline initialization)"
+fi
 unset _PASS
 
 # CLI Fingerprint & Provider Compatibility Flags
