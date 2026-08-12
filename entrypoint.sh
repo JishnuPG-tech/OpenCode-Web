@@ -69,27 +69,43 @@ mkdir -p /root/.omniroute /data/omniroute 2>/dev/null || true
 
 # Restore DB snapshot from persistent volume if it exists
 if [ -f "/data/omniroute/storage.sqlite" ] && [ -s "/data/omniroute/storage.sqlite" ]; then
-    _SIZE=$(wc -c < /data/omniroute/storage.sqlite 2>/dev/null || echo "0")
-    echo "[PERSISTENCE] Found persistent snapshot: /data/omniroute/storage.sqlite (${_SIZE} bytes)"
-    cp -f /data/omniroute/storage.sqlite /root/.omniroute/storage.sqlite 2>/dev/null || true
-    if [ -f "/data/omniroute/storage.sqlite-wal" ]; then
-        cp -f /data/omniroute/storage.sqlite-wal /root/.omniroute/storage.sqlite-wal 2>/dev/null || true
+    _SIZE=$(wc -c < /data/omniroute/storage.sqlite 2>/dev/null | tr -d ' ' || echo "0")
+    if [ "$_SIZE" -gt 0 ]; then
+        echo "[PERSISTENCE] Found persistent snapshot: /data/omniroute/storage.sqlite (${_SIZE} bytes)"
+        if command -v sqlite3 >/dev/null 2>&1; then
+            _CHK=$(sqlite3 /data/omniroute/storage.sqlite "PRAGMA quick_check;" 2>/dev/null || echo "failed")
+            echo "[PERSISTENCE] Snapshot integrity: ${_CHK}"
+        fi
+        cp -f /data/omniroute/storage.sqlite /root/.omniroute/storage.sqlite 2>/dev/null || true
+        if [ -f "/data/omniroute/storage.sqlite-wal" ]; then
+            cp -f /data/omniroute/storage.sqlite-wal /root/.omniroute/storage.sqlite-wal 2>/dev/null || true
+        fi
+        echo "[PERSISTENCE] Restored persistent OmniRoute database successfully."
+    else
+        echo "[PERSISTENCE] Snapshot in /data/omniroute/storage.sqlite is 0 bytes. Starting with fresh DB."
     fi
-    echo "[PERSISTENCE] Restored persistent OmniRoute database successfully."
 else
     echo "[PERSISTENCE] No pre-existing database found in /data/omniroute. OmniRoute will start with fresh DB."
 fi
 
-# Continuous sync function (flushes local ext4 DB -> persistent /data)
+# Continuous sync function (flushes local ext4 DB -> persistent /data using SQLite online backup)
 sync_omniroute_db() {
     if [ -f "/root/.omniroute/storage.sqlite" ] && [ -s "/root/.omniroute/storage.sqlite" ]; then
         mkdir -p /data/omniroute 2>/dev/null || true
-        cp -f /root/.omniroute/storage.sqlite /data/omniroute/storage.sqlite 2>/dev/null || true
-        if [ -f "/root/.omniroute/storage.sqlite-wal" ]; then
-            cp -f /root/.omniroute/storage.sqlite-wal /data/omniroute/storage.sqlite-wal 2>/dev/null || true
+        if command -v sqlite3 >/dev/null 2>&1; then
+            sqlite3 /root/.omniroute/storage.sqlite ".backup /data/omniroute/storage.sqlite" 2>/dev/null || cp -f /root/.omniroute/storage.sqlite /data/omniroute/storage.sqlite 2>/dev/null || true
+        else
+            cp -f /root/.omniroute/storage.sqlite /data/omniroute/storage.sqlite 2>/dev/null || true
+            if [ -f "/root/.omniroute/storage.sqlite-wal" ]; then
+                cp -f /root/.omniroute/storage.sqlite-wal /data/omniroute/storage.sqlite-wal 2>/dev/null || true
+            fi
         fi
-        _SIZE=$(wc -c < /data/omniroute/storage.sqlite 2>/dev/null || echo "0")
-        echo "[PERSISTENCE] Snapshot sync complete: /root/.omniroute/storage.sqlite -> /data/omniroute/storage.sqlite (${_SIZE} bytes)"
+        _SIZE=$(wc -c < /data/omniroute/storage.sqlite 2>/dev/null | tr -d ' ' || echo "0")
+        _CHK="unknown"
+        if command -v sqlite3 >/dev/null 2>&1 && [ "$_SIZE" -gt 0 ]; then
+            _CHK=$(sqlite3 /data/omniroute/storage.sqlite "PRAGMA quick_check;" 2>/dev/null || echo "failed")
+        fi
+        echo "[PERSISTENCE] Snapshot sync complete: /root/.omniroute/storage.sqlite -> /data/omniroute/storage.sqlite (${_SIZE} bytes, integrity: ${_CHK})"
     fi
 }
 
