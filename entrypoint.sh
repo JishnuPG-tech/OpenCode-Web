@@ -54,8 +54,12 @@ if [ -d "/omniroute" ]; then
     cd /omniroute
     if [ -f "server.js" ]; then
         node server.js &
-    else
+    elif [ -d ".build/next" ] || [ -d ".next" ]; then
+        echo "[INIT] Found OmniRoute production build, starting server..."
         npm run start -- --port 20128 &
+    else
+        echo "[INIT] OmniRoute production build missing, launching Next dev server on port 20128..."
+        npx next dev --port 20128 -H 127.0.0.1 &
     fi
     echo "[INIT] OmniRoute AI Gateway started in background."
 else

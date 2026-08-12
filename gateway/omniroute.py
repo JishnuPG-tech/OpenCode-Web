@@ -150,13 +150,27 @@ OMNIROUTE_API_PREFIXES = (
     "/api/upstream-proxy",
 )
 
-@router.api_route("/api/{path:path}", methods=["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"])
-async def omniroute_specific_apis(request: Request, path: str = ""):
-    full_path = f"/api/{path}"
-    # Check if this route belongs to OmniRoute's management API suite
-    if any(full_path.startswith(prefix) for prefix in OMNIROUTE_API_PREFIXES):
-        target = f"http://127.0.0.1:{OMNIROUTE_PORT}/api/{path}"
-        return await proxy_http_request(target, request, default_prefix="/omniroute")
+# Dynamically register explicit route handlers for OmniRoute management APIs
+# This prevents capturing non-OmniRoute routes (such as Open WebUI's /api/config or /api/v1)
+for prefix in OMNIROUTE_API_PREFIXES:
+    sub_path = prefix.replace("/api/", "")
     
-    # If not an OmniRoute-specific management route, return 404 to let Open WebUI / fallback router handle it
-    return Response(status_code=404)
+    def _create_route(s_path: str):
+        @router.api_route(
+            f"/api/{s_path}",
+            methods=["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"],
+            include_in_schema=False
+        )
+        @router.api_route(
+            f"/api/{s_path}/{{path:path}}",
+            methods=["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"],
+            include_in_schema=False
+        )
+        async def omniroute_api_handler(request: Request, path: str = ""):
+            target_path = f"/api/{s_path}/{path}" if path else f"/api/{s_path}"
+            target = f"http://127.0.0.1:{OMNIROUTE_PORT}{target_path}"
+            return await proxy_http_request(target, request, default_prefix="/omniroute")
+        return omniroute_api_handler
+
+    _create_route(sub_path)
+
