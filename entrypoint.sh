@@ -61,22 +61,44 @@ mkdir -p /data/open-webui /data/omniroute 2>/dev/null || echo "[WARN] Could not 
 mkdir -p /data/jellyfin/data /data/jellyfin/config /data/jellyfin/cache /data/jellyfin/log \
           /data/jellyfin/media/Movies /data/jellyfin/media/TVShows 2>/dev/null || true
 
-# ── OmniRoute Database Direct Persistent Storage ────────────────────────────────
-echo "[INIT] Mounting persistent OmniRoute directory at /data/omniroute..."
-if [ ! -L "/root/.omniroute" ]; then
-    if [ -d "/root/.omniroute" ]; then
-        cp -af /root/.omniroute/* /data/omniroute/ 2>/dev/null || true
-        rm -rf /root/.omniroute
-    fi
-    ln -sf /data/omniroute /root/.omniroute
+# ── OmniRoute Database Storage & Persistent Sync ───────────────────────────────
+if [ -L "/root/.omniroute" ]; then
+    rm -f /root/.omniroute
 fi
-chmod -R 777 /data/omniroute /root/.omniroute 2>/dev/null || true
+mkdir -p /root/.omniroute /data/omniroute 2>/dev/null || true
 
-if [ -f "/data/omniroute/storage.sqlite" ]; then
-    echo "[INIT] Persistent OmniRoute SQLite database verified: /data/omniroute/storage.sqlite"
+# Restore DB snapshot from persistent volume if it exists
+if [ -f "/data/omniroute/storage.sqlite" ] && [ -s "/data/omniroute/storage.sqlite" ]; then
+    echo "[INIT] Restoring persistent OmniRoute database from /data/omniroute/storage.sqlite..."
+    cp -f /data/omniroute/storage.sqlite /root/.omniroute/storage.sqlite 2>/dev/null || true
+    if [ -f "/data/omniroute/storage.sqlite-wal" ]; then
+        cp -f /data/omniroute/storage.sqlite-wal /root/.omniroute/storage.sqlite-wal 2>/dev/null || true
+    fi
 else
-    echo "[INIT] No pre-existing database found in /data/omniroute. OmniRoute will initialize a fresh persistent DB."
+    echo "[INIT] No pre-existing database found in /data/omniroute. OmniRoute will start with fresh DB."
 fi
+
+# Continuous sync function (flushes local ext4 DB -> persistent /data)
+sync_omniroute_db() {
+    if [ -f "/root/.omniroute/storage.sqlite" ] && [ -s "/root/.omniroute/storage.sqlite" ]; then
+        mkdir -p /data/omniroute 2>/dev/null || true
+        cp -f /root/.omniroute/storage.sqlite /data/omniroute/storage.sqlite 2>/dev/null || true
+        if [ -f "/root/.omniroute/storage.sqlite-wal" ]; then
+            cp -f /root/.omniroute/storage.sqlite-wal /data/omniroute/storage.sqlite-wal 2>/dev/null || true
+        fi
+    fi
+}
+
+# Flush to persistent storage on exit signals
+trap sync_omniroute_db EXIT INT TERM
+
+# Background sync loop every 15s
+(
+    while true; do
+        sleep 15
+        sync_omniroute_db
+    done
+) &
 
 # ── Start Redis ────────────────────────────────────────────────────────────────
 echo "[INIT] Starting Redis server on port 6379..."
