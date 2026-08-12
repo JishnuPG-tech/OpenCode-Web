@@ -183,35 +183,11 @@ export HOSTNAME="127.0.0.1"
 export DATA_DIR="/root/.omniroute"
 export REDIS_URL="redis://127.0.0.1:6379"
 
-# Public Base URL and Origin settings for OAuth and WebSockets
-export APP_URL="${WEBUI_URL:-https://jishnupg-opencode-cli.hf.space}"
-export PUBLIC_URL="${WEBUI_URL:-https://jishnupg-opencode-cli.hf.space}"
-export BASE_URL="${WEBUI_URL:-https://jishnupg-opencode-cli.hf.space}"
-export NEXT_PUBLIC_BASE_URL="${WEBUI_URL:-https://jishnupg-opencode-cli.hf.space}"
-export NEXT_PUBLIC_APP_URL="${WEBUI_URL:-https://jishnupg-opencode-cli.hf.space}"
-export OMNIROUTE_PUBLIC_URL="${WEBUI_URL:-https://jishnupg-opencode-cli.hf.space}"
-export OMNIROUTE_URL="${WEBUI_URL:-https://jishnupg-opencode-cli.hf.space}"
-export OMNIROUTE_BASE_PATH=""
-export NEXT_PUBLIC_OMNIROUTE_BASE_PATH=""
-export LIVE_WS_ALLOWED_ORIGINS="${WEBUI_URL:-https://jishnupg-opencode-cli.hf.space}"
-export OMNIROUTE_AUTO_FREE_FALLBACK_TO_FULL_POOL="true"
-
-# Force enable Browser OAuth & Remote OAuth across all providers
+# Official OmniRoute Public Base URL & Production HTTPS Settings
+export NEXT_PUBLIC_BASE_URL="https://jishnupg-opencode-cli.hf.space"
+export AUTH_COOKIE_SECURE="true"
 export ALLOW_REMOTE_OAUTH="true"
-export ENABLE_REMOTE_OAUTH="true"
 export ALLOW_BROWSER_OAUTH="true"
-export ENABLE_BROWSER_OAUTH="true"
-export DISABLE_LOCAL_OAUTH="false"
-export FORCE_PUBLIC_OAUTH="true"
-export ALLOW_HEADLESS_OAUTH="true"
-export ENABLE_HEADLESS_OAUTH="true"
-export OMNIROUTE_ALLOW_BROWSER_OAUTH="true"
-export OMNIROUTE_ENABLE_REMOTE_OAUTH="true"
-export OAUTH_CALLBACK_URL="https://jishnupg-opencode-cli.hf.space/callback"
-export NEXT_PUBLIC_OAUTH_CALLBACK_URL="https://jishnupg-opencode-cli.hf.space/callback"
-export REDIRECT_URI="https://jishnupg-opencode-cli.hf.space/callback"
-export ANTIGRAVITY_OAUTH_REDIRECT_URI="https://jishnupg-opencode-cli.hf.space/callback"
-export ANTIGRAVITY_REDIRECT_URI="https://jishnupg-opencode-cli.hf.space/callback"
 
 # Admin credentials for OmniRoute (loaded directly from HF Space Secret INITIAL_PASSWORD)
 _PASS="${INITIAL_PASSWORD:-admin}"
