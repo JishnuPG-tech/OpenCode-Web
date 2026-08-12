@@ -17,15 +17,19 @@ ENV NEXT_PUBLIC_OMNIROUTE_BASE_PATH="/omniroute"
 ARG OMNIROUTE_REF=release/v3.8.50
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    ca-certificates git python3 build-essential make g++ sqlite3 libsqlite3-dev \
- && update-ca-certificates \
+    ca-certificates git python3 build-essential make g++ sqlite3 libsqlite3-dev curl \
+ && update-ca-certificates --fresh \
  && git config --system http.sslCAInfo /etc/ssl/certs/ca-certificates.crt \
+ && git config --system http.sslVerify true \
+ && git config --system --get http.sslCAInfo \
+ && test -f /etc/ssl/certs/ca-certificates.crt \
  && rm -rf /var/lib/apt/lists/*
 
 COPY fix_omniroute.py /fix_omniroute.py
 
-# Clone OmniRoute (pinned to release/v3.8.50), repair migration collisions, install dependencies, rebuild better-sqlite3, and run production build STRICTLY WITHOUT || true
-RUN git clone --depth 1 --branch "${OMNIROUTE_REF}" https://github.com/diegosouzapw/OmniRoute.git /omniroute \
+# Download OmniRoute release/v3.8.50 via git clone with fallback to verified HTTPS tarball, repair migration collisions, install dependencies, rebuild better-sqlite3, and run production build STRICTLY WITHOUT || true
+RUN (git clone --depth 1 --branch "${OMNIROUTE_REF}" https://github.com/diegosouzapw/OmniRoute.git /omniroute || \
+     (curl -sSL https://codeload.github.com/diegosouzapw/OmniRoute/tar.gz/refs/heads/${OMNIROUTE_REF} | tar -xz -C /omniroute --strip-components=1)) \
  && python3 /fix_omniroute.py /omniroute \
  && npm install --legacy-peer-deps --no-audit --no-fund \
  && npm rebuild better-sqlite3 --build-from-source \
