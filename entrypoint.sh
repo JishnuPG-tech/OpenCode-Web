@@ -119,6 +119,20 @@ export NEXT_PUBLIC_OMNIROUTE_BASE_PATH=""
 export LIVE_WS_ALLOWED_ORIGINS="${WEBUI_URL:-https://jishnupg-opencode-cli.hf.space}"
 export OMNIROUTE_AUTO_FREE_FALLBACK_TO_FULL_POOL="true"
 
+# Force enable Browser OAuth & Remote OAuth across all providers
+export ALLOW_REMOTE_OAUTH="true"
+export ENABLE_REMOTE_OAUTH="true"
+export ALLOW_BROWSER_OAUTH="true"
+export ENABLE_BROWSER_OAUTH="true"
+export DISABLE_LOCAL_OAUTH="false"
+export FORCE_PUBLIC_OAUTH="true"
+export ALLOW_HEADLESS_OAUTH="true"
+export ENABLE_HEADLESS_OAUTH="true"
+export OMNIROUTE_ALLOW_BROWSER_OAUTH="true"
+export OMNIROUTE_ENABLE_REMOTE_OAUTH="true"
+export OAUTH_CALLBACK_URL="${WEBUI_URL:-https://jishnupg-opencode-cli.hf.space}/api/cloud-agent-credentials/callback"
+export NEXT_PUBLIC_OAUTH_CALLBACK_URL="${WEBUI_URL:-https://jishnupg-opencode-cli.hf.space}/api/cloud-agent-credentials/callback"
+
 # Default admin credentials for OmniRoute
 export INITIAL_PASSWORD="${INITIAL_PASSWORD:-admin}"
 export ADMIN_PASSWORD="${ADMIN_PASSWORD:-admin}"
