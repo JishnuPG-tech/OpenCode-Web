@@ -38,9 +38,10 @@ RUN pip3 install --no-cache-dir aiohttp pyrogram tgcrypto open-webui --break-sys
 RUN curl -fsSL https://nodejs.org/dist/v22.22.2/node-v22.22.2-linux-x64.tar.gz \
     | tar -xz -C /usr/local --strip-components=1
 
-# Install OmniRoute globally, repair runtime binaries (better-sqlite3), and ensure Next.js cache dirs are writable
+# Install OmniRoute globally, rebuild better-sqlite3 from source, and ensure cache dirs are writable
 RUN npm install -g omniroute \
  && OMNIROUTE_PKG="$(npm root -g)/omniroute" \
+ && (cd "${OMNIROUTE_PKG}" && npm install better-sqlite3@latest --build-from-source) || true \
  && omniroute runtime repair || true \
  && mkdir -p "${OMNIROUTE_PKG}/.next/cache" "${OMNIROUTE_PKG}/.build/next/cache" /root/.cache /data/cache /data/omniroute \
  && chmod -R 777 "${OMNIROUTE_PKG}" /root/.cache /data/cache /data/omniroute

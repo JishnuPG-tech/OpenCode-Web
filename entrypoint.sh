@@ -101,6 +101,7 @@ OMNIROUTE_SERVER_HOST=0.0.0.0
 print('[INIT] Wrote pristine OmniRoute .env config files.')
 " 2>/dev/null || true
 
+    (cd "$OMNIROUTE_PKG" && npm rebuild better-sqlite3) 2>&1 || true
     omniroute runtime repair 2>&1 || true
     omniroute serve --port 20128 --no-open > /data/omniroute/omniroute.log 2>&1 &
     echo "[INIT] OmniRoute started in background with required secrets, HOSTNAME un-set, and logging to /data/omniroute/omniroute.log."
