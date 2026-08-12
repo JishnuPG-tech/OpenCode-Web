@@ -178,15 +178,21 @@ async def route_catch_all(path: str, request: Request):
     req_path = request.url.path.lower()
     referer  = request.headers.get("referer", "").lower()
 
-    # ── OmniRoute Core Application & API Endpoints ──────────────────────────────
-    omniroute_paths = (
+    # ── OmniRoute Explicit Route Classification & Logging ────────────────────────
+    OMNIROUTE_PREFIXES = (
         "/omniroute", "/dashboard", "/_next", "/v1", "/v1beta",
         "/api/providers", "/api/combos", "/api/oauth", "/api/credentials",
-        "/api/settings", "/api/monitoring", "/login", "/forgot-password",
-        "/reset-password", "/reset", "/register", "/signup", "/auth",
-        "/api/auth", "/home", "/callback", "/live-ws", "/health", "/debug"
+        "/api/settings", "/api/monitoring", "/api/auth", "/api/models",
+        "/api/cloud-agent-credentials"
     )
-    if any(req_path.startswith(p) for p in omniroute_paths):
+    OMNIROUTE_EXACT = (
+        "/login", "/forgot-password", "/reset-password", "/reset",
+        "/register", "/signup", "/auth", "/home", "/callback",
+        "/live-ws", "/health", "/debug"
+    )
+
+    if any(req_path.startswith(p) for p in OMNIROUTE_PREFIXES) or any(req_path == p or req_path.startswith(p + "/") for p in OMNIROUTE_EXACT):
+        logger.info(f"[ROUTER] {req_path} -> OmniRoute (20128)")
         sub_p = path.replace("omniroute/", "", 1).replace("omniroute", "", 1)
         extra = {
             "Host": PUBLIC_HOST,
