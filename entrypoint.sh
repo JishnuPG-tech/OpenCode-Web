@@ -105,10 +105,19 @@ export HOSTNAME="127.0.0.1"
 # Override DATA_DIR to local ext4 to avoid SQLite FUSE I/O errors on HF /data
 export DATA_DIR="/root/.omniroute"
 export REDIS_URL="redis://127.0.0.1:6379"
-export OMNIROUTE_BASE_PATH="/omniroute"
-export NEXT_PUBLIC_OMNIROUTE_BASE_PATH="/omniroute"
-export NEXT_PUBLIC_BASE_URL="${WEBUI_URL:-https://jishnupg-opencode-cli.hf.space}/omniroute"
+
+# Public Base URL and Origin settings for OAuth and WebSockets
+export APP_URL="${WEBUI_URL:-https://jishnupg-opencode-cli.hf.space}"
+export PUBLIC_URL="${WEBUI_URL:-https://jishnupg-opencode-cli.hf.space}"
+export BASE_URL="${WEBUI_URL:-https://jishnupg-opencode-cli.hf.space}"
+export NEXT_PUBLIC_BASE_URL="${WEBUI_URL:-https://jishnupg-opencode-cli.hf.space}"
+export NEXT_PUBLIC_APP_URL="${WEBUI_URL:-https://jishnupg-opencode-cli.hf.space}"
+export OMNIROUTE_PUBLIC_URL="${WEBUI_URL:-https://jishnupg-opencode-cli.hf.space}"
+export OMNIROUTE_URL="${WEBUI_URL:-https://jishnupg-opencode-cli.hf.space}"
+export OMNIROUTE_BASE_PATH=""
+export NEXT_PUBLIC_OMNIROUTE_BASE_PATH=""
 export LIVE_WS_ALLOWED_ORIGINS="${WEBUI_URL:-https://jishnupg-opencode-cli.hf.space}"
+export OMNIROUTE_AUTO_FREE_FALLBACK_TO_FULL_POOL="true"
 
 # Default admin credentials for OmniRoute
 export INITIAL_PASSWORD="${INITIAL_PASSWORD:-admin}"

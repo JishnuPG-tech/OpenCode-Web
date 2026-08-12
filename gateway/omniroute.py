@@ -31,9 +31,10 @@ router = APIRouter(tags=["OmniRoute"])
 @router.api_route("/omniroute/{path:path}", methods=["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"])
 async def omniroute_main_route(request: Request, path: str = ""):
     extra = {
-        "Host": f"127.0.0.1:{OMNIROUTE_PORT}",
+        "Host": PUBLIC_HOST,
         "X-Forwarded-Host": PUBLIC_HOST,
-        "X-Forwarded-Proto": "https"
+        "X-Forwarded-Proto": "https",
+        "X-Forwarded-Port": "443"
     }
     # Strip /omniroute prefix when proxying to OmniRoute backend on port 20128
     target = f"http://127.0.0.1:{OMNIROUTE_PORT}/{path}" if path else f"http://127.0.0.1:{OMNIROUTE_PORT}/"
@@ -74,9 +75,10 @@ async def omniroute_monitoring(request: Request, path: str = ""):
 @router.api_route("/omniroute/_next/{path:path}", methods=["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"])
 async def omniroute_assets(request: Request, path: str = ""):
     extra = {
-        "Host": f"127.0.0.1:{OMNIROUTE_PORT}",
+        "Host": PUBLIC_HOST,
         "X-Forwarded-Host": PUBLIC_HOST,
-        "X-Forwarded-Proto": "https"
+        "X-Forwarded-Proto": "https",
+        "X-Forwarded-Port": "443"
     }
     target = f"http://127.0.0.1:{OMNIROUTE_PORT}/omniroute/_next/{path}"
     res = await proxy_http_request(target, request, default_prefix="/omniroute", extra_headers=extra)
@@ -140,9 +142,10 @@ for p_route in OMNIROUTE_PAGE_ROUTES:
         )
         async def omniroute_page_handler(request: Request, path: str = ""):
             extra = {
-                "Host": f"127.0.0.1:{OMNIROUTE_PORT}",
+                "Host": PUBLIC_HOST,
                 "X-Forwarded-Host": PUBLIC_HOST,
-                "X-Forwarded-Proto": "https"
+                "X-Forwarded-Proto": "https",
+                "X-Forwarded-Port": "443"
             }
             target_path = f"{page_path}/{path}" if path else page_path
             target = f"http://127.0.0.1:{OMNIROUTE_PORT}{target_path}"
