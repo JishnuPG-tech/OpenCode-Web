@@ -200,10 +200,14 @@ async def proxy_http_request(
     finally:
         await resp.aclose()
 
-    if "text/html" in content_type and html_fixup and content:
+    if ("text/" in content_type or "application/json" in content_type or "application/javascript" in content_type) and content:
         try:
             text = content.decode("utf-8", errors="replace")
-            text = html_fixup(text)
+            text = text.replace("http://127.0.0.1:20128", PUBLIC_ORIGIN)
+            text = text.replace("http://localhost:20128", PUBLIC_ORIGIN)
+            text = text.replace("http://127.0.0.1:443", PUBLIC_ORIGIN)
+            if "text/html" in content_type and html_fixup:
+                text = html_fixup(text)
             content = text.encode("utf-8")
         except Exception:
             pass
