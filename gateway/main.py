@@ -127,10 +127,12 @@ import subprocess
 
 @app.get("/debug/omniroute-diagnostics", operation_id="debug_omniroute_diagnostics")
 async def omniroute_diagnostics(request: Request):
-    secret_key = os.getenv("INITIAL_PASSWORD") or "admin"
-    provided_key = request.query_params.get("key") or request.headers.get("X-Admin-Key")
+    secret_key = os.getenv("DEBUG_DIAGNOSTIC_TOKEN") or os.getenv("INITIAL_PASSWORD") or "admin"
+    auth_header = request.headers.get("Authorization", "")
+    token_bearer = auth_header.replace("Bearer ", "").strip() if auth_header.startswith("Bearer ") else ""
+    provided_key = request.headers.get("X-Admin-Key") or token_bearer or request.query_params.get("key")
     if provided_key != secret_key:
-        return JSONResponse({"error": "Unauthorized: Admin Authentication Required (?key=YOUR_INITIAL_PASSWORD)"}, status_code=401)
+        return JSONResponse({"error": "Unauthorized: Bearer Token or X-Admin-Key Required"}, status_code=401)
 
     env_info = {
         "DATA_DIR": os.getenv("DATA_DIR", ""),
