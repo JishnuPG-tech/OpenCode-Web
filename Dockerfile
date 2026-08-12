@@ -42,10 +42,14 @@ RUN curl -fsSL https://nodejs.org/dist/v22.22.2/node-v22.22.2-linux-x64.tar.gz \
 
 # 5. Clone and Build OmniRoute AI Gateway
 WORKDIR /omniroute
+ENV NEXT_TELEMETRY_DISABLED=1
+ENV OMNIROUTE_USE_TURBOPACK=0
+ENV NODE_OPTIONS="--max-old-space-size=4096"
+
 RUN git clone --depth 1 https://github.com/diegosouzapw/OmniRoute.git /omniroute \
  && npm install --legacy-peer-deps \
  && npm rebuild better-sqlite3 --build-from-source \
- && npm run build || true
+ && NEXT_TELEMETRY_DISABLED=1 OMNIROUTE_USE_TURBOPACK=0 NODE_OPTIONS="--max-old-space-size=4096" npm run build || true
 
 RUN mkdir -p /root/.cache /data/cache /data/omniroute /data/open-webui
 RUN chmod -R 777 /root/.cache /data/cache /omniroute
