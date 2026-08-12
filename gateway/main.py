@@ -116,11 +116,22 @@ async def route_catch_all(path: str, request: Request):
     referer  = request.headers.get("referer", "").lower()
     has_owui_scope = request.cookies.get("OWUI_SCOPE") == "1"
 
-    # Context-aware Open WebUI detection
-    is_owui_path = req_path.startswith("/openwebui") or req_path.startswith("/_app")
-    if not is_owui_path and (has_owui_scope or "/openwebui" in referer):
-        if req_path in ("/api/config", "/api/version", "/manifest.json", "/favicon.ico") or req_path.startswith(("/api/v1/", "/ws/", "/socket.io/", "/static/", "/assets/")):
+    # ── Hard Boundary: Protect OmniRoute Core Routes from Open WebUI Interception ──
+    omniroute_protected_paths = (
+        "/api/providers", "/api/combos", "/api/oauth", "/api/credentials",
+        "/api/settings", "/api/monitoring", "/_next", "/dashboard",
+        "/login", "/home", "/v1", "/v1beta", "/callback", "/live-ws"
+    )
+    is_omniroute_protected = any(req_path.startswith(p) for p in omniroute_protected_paths)
+
+    # Context-aware Open WebUI detection (only if NOT an OmniRoute protected path)
+    is_owui_path = False
+    if not is_omniroute_protected:
+        if req_path.startswith("/openwebui"):
             is_owui_path = True
+        elif (has_owui_scope or "/openwebui" in referer):
+            if req_path in ("/api/config", "/api/version", "/manifest.json", "/favicon.ico") or req_path.startswith(("/api/v1/", "/ws/", "/socket.io/", "/_app/", "/static/", "/assets/")):
+                is_owui_path = True
 
     # Open WebUI routing
     if is_owui_path:
