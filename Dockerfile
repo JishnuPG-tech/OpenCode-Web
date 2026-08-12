@@ -49,7 +49,7 @@ ENV NODE_OPTIONS="--max-old-space-size=2048"
 ENV DISABLE_ESLINT_PLUGIN=true
 
 RUN git clone --depth 1 https://github.com/diegosouzapw/OmniRoute.git /omniroute \
- && npm install --legacy-peer-deps \
+ && npm install --legacy-peer-deps --no-audit --no-fund --prefer-offline \
  && npm rebuild better-sqlite3 --build-from-source \
  && NEXT_TELEMETRY_DISABLED=1 OMNIROUTE_USE_TURBOPACK=0 NODE_OPTIONS="--max-old-space-size=2048" npm run build || true
 

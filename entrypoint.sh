@@ -83,13 +83,10 @@ elif [ -f "/usr/bin/jellyfin" ]; then
 else
     echo "[WARN] Could not find jellyfin binary"
 fi
-sleep 3
-
 
 # Ensure cache directories exist
 mkdir -p /root/.cache /data/cache 2>/dev/null || true
 chmod -R 777 /root/.cache /data/cache 2>/dev/null || true
-sleep 2
 
 # Pre-configure & Start Open WebUI on port 8098 (Mounted at / via FastAPI proxy)
 echo "[INIT] Starting Open WebUI on port 8098 pre-configured with OmniRoute..."
