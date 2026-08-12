@@ -178,20 +178,29 @@ async def route_catch_all(path: str, request: Request):
     req_path = request.url.path.lower()
     referer  = request.headers.get("referer", "").lower()
 
-    # ── OmniRoute Explicit Route Classification & Logging ────────────────────────
+    # ── 1. OmniRoute Explicit Route Classification ─────────────────────────────
+    OMNIROUTE_EXACT = {
+        "/login", "/forgot-password", "/reset-password", "/reset",
+        "/register", "/signup", "/auth", "/home", "/callback",
+        "/live-ws", "/health", "/debug"
+    }
+
     OMNIROUTE_PREFIXES = (
         "/omniroute", "/dashboard", "/_next", "/v1", "/v1beta",
         "/api/providers", "/api/combos", "/api/oauth", "/api/credentials",
         "/api/settings", "/api/monitoring", "/api/auth", "/api/models",
         "/api/cloud-agent-credentials"
     )
-    OMNIROUTE_EXACT = (
-        "/login", "/forgot-password", "/reset-password", "/reset",
-        "/register", "/signup", "/auth", "/home", "/callback",
-        "/live-ws", "/health", "/debug"
+
+    is_omniroute = (
+        req_path in OMNIROUTE_EXACT
+        or any(
+            req_path == prefix or req_path.startswith(prefix + "/")
+            for prefix in OMNIROUTE_PREFIXES
+        )
     )
 
-    if any(req_path.startswith(p) for p in OMNIROUTE_PREFIXES) or any(req_path == p or req_path.startswith(p + "/") for p in OMNIROUTE_EXACT):
+    if is_omniroute:
         logger.info(f"[ROUTER] {req_path} -> OmniRoute (20128)")
         sub_p = path.replace("omniroute/", "", 1).replace("omniroute", "", 1)
         extra = {
@@ -202,16 +211,17 @@ async def route_catch_all(path: str, request: Request):
         }
         return await proxy_http_request(f"http://127.0.0.1:{OMNIROUTE_PORT}/{sub_p}", request, default_prefix="", extra_headers=extra)
 
-    # Jellyfin Media Server
+    # ── 2. Jellyfin Media Server ──────────────────────────────────────────────
     if req_path.startswith("/jellyfin") or "/jellyfin" in referer:
         sub_p = path.replace("jellyfin/", "", 1).replace("jellyfin", "", 1)
         return await proxy_http_request(f"http://127.0.0.1:{JELLYFIN_PORT}/{sub_p}", request, default_prefix="/jellyfin", extra_headers={"X-Forwarded-Prefix": "/jellyfin"})
 
-    # Telegram Streamer
+    # ── 3. Telegram Streamer ──────────────────────────────────────────────────
     if req_path.startswith("/tg-stream") or req_path.startswith("/tg_stream") or "/tg" in referer:
         sub_p = path.replace("tg-stream/", "", 1).replace("tg_stream/", "", 1)
         return await proxy_http_request(f"http://127.0.0.1:{TG_PORT}/{sub_p}", request, default_prefix="/tg-stream")
 
-    # Default root traffic (Open WebUI native at /, /api/config, /ws/socket.io, /_app/*, /static/*, /assets/*)
+    # ── 4. Open WebUI Native Fallback ─────────────────────────────────────────
+    logger.info(f"[ROUTER] {req_path} -> Open WebUI (8098)")
     sub_p = path.replace("openwebui/", "", 1).replace("openwebui", "", 1)
     return await proxy_http_request(f"http://127.0.0.1:{WEBUI_PORT}/{sub_p}", request, default_prefix="")
