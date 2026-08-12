@@ -65,34 +65,44 @@ app.include_router(tg_stream_router)
 
 
 # ── Root Direct Handler for Open WebUI Landing Page ───────────────────────────
-@app.api_route("/", methods=["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"])
+@app.api_route("/", methods=["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"], operation_id="root_landing_proxy")
 async def root_proxy(request: Request):
     return await proxy_http_request(f"http://127.0.0.1:{WEBUI_PORT}/", request, default_prefix="")
 
-@app.api_route("/favicon.ico", methods=["GET", "HEAD"])
+@app.api_route("/favicon.ico", methods=["GET", "HEAD"], operation_id="root_favicon_proxy")
 async def favicon():
     return Response(content=b"", status_code=204)
 
 # ── Dedicated Open WebUI Socket.IO WebSocket Handler ──────────────────────────
 @app.websocket("/ws/socket.io")
-@app.websocket("/ws/socket.io/{path:path}")
-@app.websocket("/openwebui/ws/socket.io")
-@app.websocket("/openwebui/ws/socket.io/{path:path}")
-async def handle_openwebui_socketio(websocket: WebSocket, path: str = ""):
+async def handle_openwebui_socketio_root(websocket: WebSocket):
     target = f"ws://127.0.0.1:{WEBUI_PORT}/ws/socket.io"
-    if path:
-        target = f"{target}/{path}"
+    await proxy_websocket_stream(websocket, target)
+
+@app.websocket("/ws/socket.io/{path:path}")
+async def handle_openwebui_socketio_subpath(websocket: WebSocket, path: str = ""):
+    target = f"ws://127.0.0.1:{WEBUI_PORT}/ws/socket.io/{path}"
+    await proxy_websocket_stream(websocket, target)
+
+@app.websocket("/openwebui/ws/socket.io")
+async def handle_openwebui_socketio_owui_root(websocket: WebSocket):
+    target = f"ws://127.0.0.1:{WEBUI_PORT}/ws/socket.io"
+    await proxy_websocket_stream(websocket, target)
+
+@app.websocket("/openwebui/ws/socket.io/{path:path}")
+async def handle_openwebui_socketio_owui_subpath(websocket: WebSocket, path: str = ""):
+    target = f"ws://127.0.0.1:{WEBUI_PORT}/ws/socket.io/{path}"
     await proxy_websocket_stream(websocket, target)
 
 # ── Health Watchdog System ───────────────────────────────────────────────────
-@app.get("/health/live")
+@app.get("/health/live", operation_id="health_live_check")
 async def health_liveness():
     return {"status": "alive"}
 
-@app.get("/health/ready")
-@app.get("/health/services")
-@app.get("/health")
-@app.get("/debug/status")
+@app.get("/health/ready", operation_id="health_ready_check")
+@app.get("/health/services", operation_id="health_services_check")
+@app.get("/health", operation_id="health_root_check")
+@app.get("/debug/status", operation_id="health_debug_status_check")
 async def health_services():
     client = get_http_client()
     services = {
@@ -121,7 +131,7 @@ async def health_services():
 
 
 # ── Catch-All Router (Open WebUI Native at Root /, OmniRoute at /omniroute and /dashboard) ──
-@app.api_route("/{path:path}", methods=["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"])
+@app.api_route("/{path:path}", methods=["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"], operation_id="global_catchall_proxy")
 async def route_catch_all(path: str, request: Request):
     req_path = request.url.path.lower()
     referer  = request.headers.get("referer", "").lower()
