@@ -83,15 +83,26 @@ async def route_catch_all(path: str, request: Request):
     referer = request.headers.get("referer", "").lower()
     req_path = request.url.path.lower()
 
+    # High-priority OAuth callback relay -> OmniRoute
+    if req_path.startswith("/callback") or req_path.startswith("/auth/callback") or req_path.startswith("/oauth/callback"):
+        extra = {
+            "Host": PUBLIC_HOST,
+            "X-Forwarded-Host": PUBLIC_HOST,
+            "X-Forwarded-Proto": "https",
+            "X-Forwarded-Port": "443"
+        }
+        return await proxy_http_request(f"http://127.0.0.1:{OMNIROUTE_PORT}/{path}", request, default_prefix="", extra_headers=extra)
+
     if "/jellyfin" in referer or req_path.startswith("/jellyfin"):
         return await proxy_http_request(f"http://127.0.0.1:{JELLYFIN_PORT}/{path}", request, default_prefix="/jellyfin", extra_headers={"X-Forwarded-Prefix": "/jellyfin"})
     elif "/tg_stream" in referer or req_path.startswith("/tg_stream"):
         return await proxy_http_request(f"http://127.0.0.1:{TG_PORT}/{path}", request, default_prefix="/tg_stream")
     elif "/omniroute" in referer or "_rsc" in request.query_params or req_path in OMNIROUTE_PAGE_ROUTES or any(req_path.startswith(r) for r in OMNIROUTE_PAGE_ROUTES):
         extra = {
-            "Host": f"127.0.0.1:{OMNIROUTE_PORT}",
-            "X-Forwarded-Host": f"127.0.0.1:{OMNIROUTE_PORT}",
-            "X-Forwarded-Proto": "http"
+            "Host": PUBLIC_HOST,
+            "X-Forwarded-Host": PUBLIC_HOST,
+            "X-Forwarded-Proto": "https",
+            "X-Forwarded-Port": "443"
         }
         return await proxy_http_request(f"http://127.0.0.1:{OMNIROUTE_PORT}/{path}", request, default_prefix="/omniroute", extra_headers=extra)
     elif "/openwebui" in referer or req_path.startswith("/openwebui"):

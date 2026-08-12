@@ -138,6 +138,23 @@ export INITIAL_PASSWORD="${INITIAL_PASSWORD:-admin}"
 export ADMIN_PASSWORD="${ADMIN_PASSWORD:-admin}"
 export OMNIROUTE_INITIAL_PASSWORD="${OMNIROUTE_INITIAL_PASSWORD:-admin}"
 
+# CLI Fingerprint & Provider Compatibility Flags
+export CLI_COMPAT_ANTIGRAVITY=1
+export CLI_COMPAT_GITHUB=1
+export CLI_COMPAT_KIMI_CODING=1
+export CLI_COMPAT_CLAUDE=1
+export CLI_COMPAT_CODEX=1
+export CLI_COMPAT_CURSOR=1
+export CLI_COMPAT_QWEN=1
+
+# Optional Provider OAuth Client Credentials (loaded from /data/.env or Space Secrets if provided)
+export ANTIGRAVITY_OAUTH_CLIENT_ID="${ANTIGRAVITY_OAUTH_CLIENT_ID:-}"
+export ANTIGRAVITY_OAUTH_CLIENT_SECRET="${ANTIGRAVITY_OAUTH_CLIENT_SECRET:-}"
+export GEMINI_CLI_OAUTH_CLIENT_ID="${GEMINI_CLI_OAUTH_CLIENT_ID:-}"
+export GEMINI_CLI_OAUTH_CLIENT_SECRET="${GEMINI_CLI_OAUTH_CLIENT_SECRET:-}"
+export GITHUB_OAUTH_CLIENT_ID="${GITHUB_OAUTH_CLIENT_ID:-}"
+export KIMI_CODING_OAUTH_CLIENT_ID="${KIMI_CODING_OAUTH_CLIENT_ID:-}"
+
 # Required secrets — crash early with a clear message if missing
 export JWT_SECRET="${JWT_SECRET:?JWT_SECRET is not set. Add it to /data/.env or Space Secrets.}"
 export API_KEY_SECRET="${API_KEY_SECRET:?API_KEY_SECRET is not set. Add it to /data/.env or Space Secrets.}"
