@@ -63,98 +63,22 @@ unset _VAR _VAL
 
 # /data is the persistent HF dataset bucket mount
 echo "[INIT] Setting up /data directories..."
-mkdir -p /data/open-webui /data/omniroute 2>/dev/null || echo "[WARN] Could not create /data directories"
+mkdir -p /data/open-webui 2>/dev/null || echo "[WARN] Could not create /data directories"
 mkdir -p /data/jellyfin/data /data/jellyfin/config /data/jellyfin/cache /data/jellyfin/log \
           /data/jellyfin/media/Movies /data/jellyfin/media/TVShows 2>/dev/null || true
 
-# ── OmniRoute Database Storage & Dynamic Snapshot Resolution ──────────────────
-if [ -L "/root/.omniroute" ]; then
-    rm -f /root/.omniroute
-fi
-mkdir -p /root/.omniroute /data/omniroute 2>/dev/null || true
-mkdir -p /root/.omniroute/oauth /root/.omniroute/credentials /root/.omniroute/runtime 2>/dev/null || true
-mkdir -p /data/omniroute/oauth /data/omniroute/credentials /data/omniroute/runtime 2>/dev/null || true
+# ── Permanently Wipe and Disable /data/omniroute ──────────────────────────────
+echo "[PERSISTENCE] Permanently wiping all omniroute folders from /data storage..."
+rm -rf /data/omniroute /data/omniroute-old /data/omniroute* /root/.omniroute /root/.omniroute* 2>/dev/null || true
+mkdir -p /root/.omniroute /root/.omniroute/oauth /root/.omniroute/credentials /root/.omniroute/runtime 2>/dev/null || true
+echo "[PERSISTENCE] /data/omniroute and /data/omniroute-old completely wiped and purged."
 
 echo "[STORAGE] Filesystem mount inspection:"
 mount | grep -E 'hf|bucket|data|fuse|nfs' || echo "[STORAGE] /data info: $(df -h /data 2>&1 || true)"
 
-# ── Complete OmniRoute State Removal & Clean Baseline Reset ──
-echo "[PERSISTENCE] Wiping all omniroute folders from persistent storage..."
-rm -rf /data/omniroute /data/omniroute-old /root/.omniroute /data/omniroute* /root/.omniroute* 2>/dev/null || true
-echo "[PERSISTENCE] ALL omniroute folders successfully wiped from /data persistent storage."
-
-# Search for pre-existing non-empty database snapshot anywhere inside /data
-FOUND_DB_PATH=$(find /data/omniroute -name "storage.sqlite" -type f -size +0c 2>/dev/null | head -n 1 || true)
-
-if [ -n "$FOUND_DB_PATH" ] && [ -f "$FOUND_DB_PATH" ]; then
-    _SIZE=$(wc -c < "$FOUND_DB_PATH" 2>/dev/null | tr -d ' \t\n\r' || echo "0")
-    echo "[PERSISTENCE] Found persistent snapshot at: ${FOUND_DB_PATH} (${_SIZE} bytes)"
-    if command -v sqlite3 >/dev/null 2>&1; then
-        _CHK=$(sqlite3 "$FOUND_DB_PATH" "PRAGMA quick_check;" 2>/dev/null || echo "failed")
-        echo "[PERSISTENCE] Snapshot integrity: ${_CHK}"
-    fi
-    cp -f "$FOUND_DB_PATH" /root/.omniroute/storage.sqlite
-    echo "[PERSISTENCE] Restored persistent OmniRoute database successfully into /root/.omniroute/storage.sqlite"
-else
-    echo "[PERSISTENCE] No pre-existing non-empty database found in /data. OmniRoute will start with fresh DB."
-fi
-
-# Restore pre-existing OAuth tokens, credentials, runtime files, gemini_cli, and server.env if available
-for _ITEM in oauth credentials runtime gemini_cli config_dir server.env; do
-    if [ -e "/data/omniroute/${_ITEM}" ]; then
-        if [ "$_ITEM" = "gemini_cli" ]; then
-            mkdir -p /root/.gemini 2>/dev/null || true
-            cp -af /data/omniroute/gemini_cli/* /root/.gemini/ 2>/dev/null || true
-        elif [ "$_ITEM" = "config_dir" ]; then
-            mkdir -p /root/.config 2>/dev/null || true
-            cp -af /data/omniroute/config_dir/* /root/.config/ 2>/dev/null || true
-        else
-            cp -af /data/omniroute/${_ITEM} /root/.omniroute/ 2>/dev/null || true
-        fi
-        echo "[PERSISTENCE] Restored persistent OmniRoute state: ${_ITEM}"
-    else
-        echo "[PERSISTENCE] Initialized empty persistent state directory: ${_ITEM}"
-    fi
-done
-
-# Continuous sync function (consolidates live ext4 DB, OAuth tokens, & gemini CLI state -> persistent bucket snapshot)
+# Continuous sync dummy function
 sync_omniroute_db() {
-    if [ -f "/root/.omniroute/storage.sqlite" ] && [ -s "/root/.omniroute/storage.sqlite" ]; then
-        TARGET_SNAP="/data/omniroute/storage.sqlite"
-        if [ -d "/data/omniroute/storage.sqlite" ]; then
-            TARGET_SNAP="/data/omniroute/storage.sqlite/storage.sqlite"
-        else
-            mkdir -p /data/omniroute 2>/dev/null || true
-        fi
-
-        if command -v sqlite3 >/dev/null 2>&1; then
-            sqlite3 /root/.omniroute/storage.sqlite ".backup ${TARGET_SNAP}" 2>/dev/null || cp -f /root/.omniroute/storage.sqlite "${TARGET_SNAP}" 2>/dev/null || true
-        else
-            cp -f /root/.omniroute/storage.sqlite "${TARGET_SNAP}" 2>/dev/null || true
-        fi
-
-        # Synchronize OAuth token files, credentials, runtime data, and server.env to persistent volume
-        for _ITEM in oauth credentials runtime server.env; do
-            if [ -e "/root/.omniroute/${_ITEM}" ]; then
-                cp -af /root/.omniroute/${_ITEM} /data/omniroute/ 2>/dev/null || true
-            fi
-        done
-
-        # Synchronize Antigravity & Gemini CLI token files
-        if [ -d "/root/.gemini" ]; then
-            mkdir -p /data/omniroute/gemini_cli 2>/dev/null || true
-            cp -af /root/.gemini/* /data/omniroute/gemini_cli/ 2>/dev/null || true
-        fi
-
-        if [ -d "/root/.config" ]; then
-            mkdir -p /data/omniroute/config_dir 2>/dev/null || true
-            cp -af /root/.config/* /data/omniroute/config_dir/ 2>/dev/null || true
-        fi
-
-        _ACTIVE_SIZE=$(wc -c < /root/.omniroute/storage.sqlite 2>/dev/null | tr -d ' \t\n\r' || echo "0")
-        _SNAP_SIZE=$(wc -c < "${TARGET_SNAP}" 2>/dev/null | tr -d ' \t\n\r' || echo "0")
-        echo "[PERSISTENCE] Snapshot & OAuth state sync complete: Active DB (${_ACTIVE_SIZE} bytes) -> Persistent Snapshot (${_SNAP_SIZE} bytes)"
-    fi
+    rm -rf /data/omniroute /data/omniroute-old /data/omniroute* 2>/dev/null || true
 }
 
 # Flush to persistent storage on exit signals
