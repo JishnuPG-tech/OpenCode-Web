@@ -70,6 +70,8 @@ if [ -L "/root/.omniroute" ]; then
     rm -f /root/.omniroute
 fi
 mkdir -p /root/.omniroute /data/omniroute 2>/dev/null || true
+mkdir -p /root/.omniroute/oauth /root/.omniroute/credentials /root/.omniroute/runtime 2>/dev/null || true
+mkdir -p /data/omniroute/oauth /data/omniroute/credentials /data/omniroute/runtime 2>/dev/null || true
 
 echo "[STORAGE] Filesystem mount inspection:"
 mount | grep -E 'hf|bucket|data|fuse|nfs' || echo "[STORAGE] /data info: $(df -h /data 2>&1 || true)"
@@ -95,6 +97,8 @@ for _ITEM in oauth credentials runtime server.env; do
     if [ -e "/data/omniroute/${_ITEM}" ]; then
         cp -af /data/omniroute/${_ITEM} /root/.omniroute/ 2>/dev/null || true
         echo "[PERSISTENCE] Restored persistent OmniRoute state: ${_ITEM}"
+    else
+        echo "[PERSISTENCE] Initialized empty persistent state directory: ${_ITEM}"
     fi
 done
 
@@ -306,8 +310,6 @@ if command -v open-webui >/dev/null 2>&1; then
     export RAG_AUTO_UPDATE="false"
     export RAG_AUTO_UPDATE_INDEX="false"
     export ENABLE_VERSION_UPDATE_CHECK="false"
-    export HF_HUB_OFFLINE="1"
-    export TRANSFORMERS_OFFLINE="1"
     export TOOL_SERVERS=""
     export OPENAPI_TOOL_SERVERS=""
     export PORT=8098

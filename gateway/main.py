@@ -41,6 +41,22 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="OpenCode Space Gateway", lifespan=lifespan, docs_url=None, redoc_url=None)
 
+# ── P0 Security Middleware: Hard Block Sensitive Files & Path Traversal ──────
+from fastapi.responses import JSONResponse
+
+@app.middleware("http")
+async def block_sensitive_files_middleware(request: Request, call_next):
+    raw_path = str(request.url.path).lower()
+    query_str = str(request.url.query).lower()
+    combined = f"{raw_path}?{query_str}"
+
+    if any(p in combined for p in (".env", "server.env", "/secrets", "file=", "..", "%2e%2e", "%5c", ".git", ".sqlite")):
+        if not raw_path.startswith("/api/credentials"):
+            logger.warning(f"[SECURITY] Blocked unauthorized sensitive path access attempt: {combined}")
+            return JSONResponse({"error": "Access Denied: Protected System Resource"}, status_code=403)
+
+    return await call_next(request)
+
 # Include Service Routers
 app.include_router(omniroute_router)
 app.include_router(openwebui_router)
