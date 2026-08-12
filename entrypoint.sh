@@ -78,13 +78,13 @@ mkdir -p /data/omniroute/oauth /data/omniroute/credentials /data/omniroute/runti
 echo "[STORAGE] Filesystem mount inspection:"
 mount | grep -E 'hf|bucket|data|fuse|nfs' || echo "[STORAGE] /data info: $(df -h /data 2>&1 || true)"
 
-# ── Reversible OmniRoute State Reset (Archive /data/omniroute -> /data/omniroute-old once) ──
-if [ -d "/data/omniroute" ] && [ ! -d "/data/omniroute-old" ] && [ -f "/data/omniroute/storage.sqlite" ]; then
-    echo "[PERSISTENCE] Archiving old pre-encryption state /data/omniroute -> /data/omniroute-old..."
-    cp -af /data/omniroute /data/omniroute-old 2>/dev/null || true
-    rm -rf /data/omniroute/storage.sqlite* /data/omniroute/oauth /data/omniroute/credentials /data/omniroute/runtime /data/omniroute/gemini_cli /data/omniroute/config_dir 2>/dev/null || true
-    echo "[PERSISTENCE] /data/omniroute state cleared for clean baseline initialization."
-fi
+# ── Complete OmniRoute State Removal & Clean Baseline Reset ──
+echo "[PERSISTENCE] Completely removing old omniroute data folders..."
+rm -rf /data/omniroute /data/omniroute-old /root/.omniroute 2>/dev/null || true
+mkdir -p /root/.omniroute /data/omniroute 2>/dev/null || true
+mkdir -p /root/.omniroute/oauth /root/.omniroute/credentials /root/.omniroute/runtime 2>/dev/null || true
+mkdir -p /data/omniroute/oauth /data/omniroute/credentials /data/omniroute/runtime 2>/dev/null || true
+echo "[PERSISTENCE] /data/omniroute and /data/omniroute-old completely removed. Fresh initialization ready."
 
 # Search for pre-existing non-empty database snapshot anywhere inside /data
 FOUND_DB_PATH=$(find /data/omniroute -name "storage.sqlite" -type f -size +0c 2>/dev/null | head -n 1 || true)
