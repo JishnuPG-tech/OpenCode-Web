@@ -42,8 +42,6 @@ async def lifespan(app: FastAPI):
 app = FastAPI(title="OpenCode Space Gateway", lifespan=lifespan, docs_url=None, redoc_url=None)
 
 # ── P0 Security Middleware: Hard Block Sensitive Files & Path Traversal ──────
-from fastapi.responses import JSONResponse
-
 @app.middleware("http")
 async def block_sensitive_files_middleware(request: Request, call_next):
     raw_path = str(request.url.path).lower()
@@ -51,9 +49,8 @@ async def block_sensitive_files_middleware(request: Request, call_next):
     combined = f"{raw_path}?{query_str}"
 
     if any(p in combined for p in (".env", "server.env", "/secrets", "file=", "..", "%2e%2e", "%5c", ".git", ".sqlite")):
-        if not raw_path.startswith("/api/credentials"):
-            logger.warning(f"[SECURITY] Blocked unauthorized sensitive path access attempt: {combined}")
-            return JSONResponse({"error": "Access Denied: Protected System Resource"}, status_code=403)
+        logger.warning(f"[SECURITY] Blocked unauthorized sensitive path access attempt: {combined}")
+        return JSONResponse({"error": "Access Denied: Protected System Resource"}, status_code=403)
 
     return await call_next(request)
 
@@ -74,10 +71,6 @@ async def root_proxy(request: Request):
         "X-Forwarded-Port": "443"
     }
     return await proxy_http_request(f"http://127.0.0.1:{OMNIROUTE_PORT}/", request, default_prefix="", extra_headers=extra)
-
-@app.api_route("/favicon.ico", methods=["GET", "HEAD"], operation_id="root_favicon_proxy")
-async def favicon():
-    return Response(content=b"", status_code=204)
 
 # ── Dedicated Open WebUI Socket.IO WebSocket Handler ──────────────────────────
 @app.websocket("/ws/socket.io")
@@ -135,11 +128,16 @@ async def health_services():
         "services": results
     }
 
-# ── Live OmniRoute Provider & Decryption Diagnostic Inspection Endpoint ────────
+# ── Protected Live OmniRoute Provider & Decryption Diagnostic Inspection ──────
 import subprocess
 
 @app.get("/debug/omniroute-diagnostics", operation_id="debug_omniroute_diagnostics")
-async def omniroute_diagnostics():
+async def omniroute_diagnostics(request: Request):
+    secret_key = os.getenv("INITIAL_PASSWORD") or "admin"
+    provided_key = request.query_params.get("key") or request.headers.get("X-Admin-Key")
+    if provided_key != secret_key:
+        return JSONResponse({"error": "Unauthorized: Admin Authentication Required (?key=YOUR_INITIAL_PASSWORD)"}, status_code=401)
+
     env_info = {
         "DATA_DIR": os.getenv("DATA_DIR", ""),
         "PORT": os.getenv("PORT", ""),
@@ -203,11 +201,10 @@ async def route_catch_all(path: str, request: Request):
 
     # ── 4. Primary Root Application & Catch-All -> OmniRoute (:20128) ────────
     logger.info(f"[ROUTER] {req_path} -> OmniRoute (20128)")
-    sub_p = path.replace("omniroute/", "", 1).replace("omniroute", "", 1)
     extra = {
         "Host": PUBLIC_HOST,
         "X-Forwarded-Host": PUBLIC_HOST,
         "X-Forwarded-Proto": "https",
         "X-Forwarded-Port": "443"
     }
-    return await proxy_http_request(f"http://127.0.0.1:{OMNIROUTE_PORT}/{sub_p}", request, default_prefix="", extra_headers=extra)
+    return await proxy_http_request(f"http://127.0.0.1:{OMNIROUTE_PORT}/{path}", request, default_prefix="", extra_headers=extra)
