@@ -68,12 +68,12 @@ if command -v omniroute >/dev/null 2>&1; then
     # Ensure all cache directories exist and are writable for Next.js
     mkdir -p /root/.cache /data/cache /root/.omniroute /data/omniroute 2>/dev/null || true
     
-    # Critical: ensure Next.js .next/cache exists inside OmniRoute's package dir
+    # Critical: ensure Next.js cache directories exist inside OmniRoute's package dir
     OMNIROUTE_PKG="$(npm root -g)/omniroute"
     if [ -d "$OMNIROUTE_PKG" ]; then
-        mkdir -p "${OMNIROUTE_PKG}/.next/cache" 2>/dev/null || true
-        chmod -R 777 "${OMNIROUTE_PKG}/.next" 2>/dev/null || true
-        echo "[INIT] OmniRoute package at: $OMNIROUTE_PKG (.next/cache ready)"
+        mkdir -p "${OMNIROUTE_PKG}/.next/cache" "${OMNIROUTE_PKG}/.build/next/cache" 2>/dev/null || true
+        chmod -R 777 "$OMNIROUTE_PKG" 2>/dev/null || true
+        echo "[INIT] OmniRoute package at: $OMNIROUTE_PKG (.next/cache & .build/next/cache ready)"
     fi
     
     unset HOSTNAME 2>/dev/null || true

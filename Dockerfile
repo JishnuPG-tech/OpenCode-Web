@@ -42,8 +42,8 @@ RUN curl -fsSL https://nodejs.org/dist/v22.14.0/node-v22.14.0-linux-x64.tar.gz \
 RUN npm install -g omniroute \
  && OMNIROUTE_PKG="$(npm root -g)/omniroute" \
  && omniroute runtime repair || true \
- && mkdir -p "${OMNIROUTE_PKG}/.next/cache" /root/.cache /data/omniroute \
- && chmod -R 777 "${OMNIROUTE_PKG}/.next" /root/.cache
+ && mkdir -p "${OMNIROUTE_PKG}/.next/cache" "${OMNIROUTE_PKG}/.build/next/cache" /root/.cache /data/omniroute \
+ && chmod -R 777 "${OMNIROUTE_PKG}" /root/.cache /data/omniroute
 
 # Download opencode binary
 RUN curl -fsSL "https://github.com/anomalyco/opencode/releases/download/v${OPENCODE_VERSION}/opencode-linux-x64.tar.gz" \
