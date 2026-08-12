@@ -36,7 +36,7 @@ async def webui_prefix_proxy(request: Request, path: str = ""):
 async def webui_sw(request: Request):
     target = f"http://127.0.0.1:{WEBUI_PORT}/sw.js"
     res = await proxy_http_request(target, request, default_prefix="/openwebui")
-    if res.status_code == 404:
+    if res.status_code >= 400:
         sw_code = "self.addEventListener('install', (e) => { self.skipWaiting(); }); self.addEventListener('activate', (e) => { e.waitUntil(clients.claim()); });"
         return Response(content=sw_code, status_code=200, media_type="application/javascript")
     return res

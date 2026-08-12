@@ -280,8 +280,9 @@ if command -v open-webui >/dev/null 2>&1; then
     export CORS_ALLOW_ORIGIN="https://jishnupg-opencode-cli.hf.space"
     export WEBUI_AUTH="true"
     export ENABLE_SIGNUP="true"
-    open-webui serve --port 8098 --workers 1 &
-    echo "[INIT] Open WebUI started in background (PID=$!). Waiting for health..."
+    open-webui serve --port 8098 &
+    OWUI_PID=$!
+    echo "[INIT] Open WebUI started in background (PID=${OWUI_PID}). Waiting for health..."
     OWUI_HEALTHY=0
     for i in $(seq 1 30); do
         if curl -fsS "http://127.0.0.1:8098/health" >/dev/null 2>&1 || curl -fsS "http://127.0.0.1:8098/api/config" >/dev/null 2>&1; then
@@ -289,10 +290,14 @@ if command -v open-webui >/dev/null 2>&1; then
             OWUI_HEALTHY=1
             break
         fi
+        if ! kill -0 "$OWUI_PID" 2>/dev/null; then
+            echo "[ERROR] Open WebUI process (PID=${OWUI_PID}) exited prematurely during startup"
+            break
+        fi
         sleep 1
     done
     if [ "$OWUI_HEALTHY" -eq 0 ]; then
-        echo "[WARN] Open WebUI startup check timed out after 30s, proceeding with Gateway startup."
+        echo "[WARN] Open WebUI startup check completed without health confirmation, proceeding with Gateway startup."
     fi
 else
     echo "[WARN] open-webui binary not found, skipping."
