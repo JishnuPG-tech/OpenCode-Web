@@ -61,16 +61,10 @@ app.include_router(jellyfin_router)
 app.include_router(tg_stream_router)
 
 
-# ── Root Direct Handler for OmniRoute Landing Page (Approach A) ────────────────
+# ── Root Direct Handler for Open WebUI Landing Page (Option A) ─────────────────
 @app.api_route("/", methods=["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"], operation_id="root_landing_proxy")
 async def root_proxy(request: Request):
-    extra = {
-        "Host": PUBLIC_HOST,
-        "X-Forwarded-Host": PUBLIC_HOST,
-        "X-Forwarded-Proto": "https",
-        "X-Forwarded-Port": "443"
-    }
-    return await proxy_http_request(f"http://127.0.0.1:{OMNIROUTE_PORT}/", request, default_prefix="", extra_headers=extra)
+    return await proxy_http_request(f"http://127.0.0.1:{WEBUI_PORT}/", request, default_prefix="")
 
 # ── Dedicated Open WebUI Socket.IO WebSocket Handler ──────────────────────────
 @app.websocket("/ws/socket.io")
@@ -176,16 +170,42 @@ async def omniroute_diagnostics(request: Request):
     }
 
 
-# ── Catch-All Router (Approach A Specification: OmniRoute = Primary Root /) ─
+# ── Catch-All Router (Option A Specification: Open WebUI = Root /) ───────────
 @app.api_route("/{path:path}", methods=["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"], operation_id="global_catchall_proxy")
 async def route_catch_all(path: str, request: Request):
     req_path = request.url.path.lower()
 
-    # ── 1. Open WebUI Namespace Isolation ─────────────────────────────────────
-    if req_path == "/openwebui" or req_path.startswith("/openwebui/"):
-        logger.info(f"[ROUTER] {req_path} -> Open WebUI (8098)")
-        sub_p = path.replace("openwebui/", "", 1).replace("openwebui", "", 1)
-        return await proxy_http_request(f"http://127.0.0.1:{WEBUI_PORT}/{sub_p}", request, default_prefix="/openwebui", html_fixup=fixup_webui_html)
+    # ── 1. OmniRoute Explicit Management & API Endpoints ──────────────────────
+    OMNIROUTE_EXACT = {
+        "/dashboard", "/login", "/forgot-password", "/reset-password", "/reset",
+        "/register", "/signup", "/auth", "/home", "/callback",
+        "/live-ws", "/health", "/debug"
+    }
+
+    OMNIROUTE_PREFIXES = (
+        "/omniroute", "/dashboard", "/_next", "/v1", "/v1beta",
+        "/api/providers", "/api/combos", "/api/oauth", "/api/credentials",
+        "/api/settings", "/api/monitoring", "/api/auth", "/api/models",
+        "/api/cloud-agent-credentials"
+    )
+
+    is_omniroute = (
+        req_path in OMNIROUTE_EXACT
+        or any(
+            req_path == prefix or req_path.startswith(prefix + "/")
+            for prefix in OMNIROUTE_PREFIXES
+        )
+    )
+
+    if is_omniroute:
+        logger.info(f"[ROUTER] {req_path} -> OmniRoute (20128)")
+        extra = {
+            "Host": PUBLIC_HOST,
+            "X-Forwarded-Host": PUBLIC_HOST,
+            "X-Forwarded-Proto": "https",
+            "X-Forwarded-Port": "443"
+        }
+        return await proxy_http_request(f"http://127.0.0.1:{OMNIROUTE_PORT}/{path}", request, default_prefix="", extra_headers=extra)
 
     # ── 2. Jellyfin Media Server Namespace ────────────────────────────────────
     if req_path == "/jellyfin" or req_path.startswith("/jellyfin/"):
@@ -199,12 +219,7 @@ async def route_catch_all(path: str, request: Request):
         sub_p = path.replace("tg-stream/", "", 1).replace("tg_stream/", "", 1)
         return await proxy_http_request(f"http://127.0.0.1:{TG_PORT}/{sub_p}", request, default_prefix="/tg-stream")
 
-    # ── 4. Primary Root Application & Catch-All -> OmniRoute (:20128) ────────
-    logger.info(f"[ROUTER] {req_path} -> OmniRoute (20128)")
-    extra = {
-        "Host": PUBLIC_HOST,
-        "X-Forwarded-Host": PUBLIC_HOST,
-        "X-Forwarded-Proto": "https",
-        "X-Forwarded-Port": "443"
-    }
-    return await proxy_http_request(f"http://127.0.0.1:{OMNIROUTE_PORT}/{path}", request, default_prefix="", extra_headers=extra)
+    # ── 4. Primary Root Application Fallback -> Open WebUI (:8098) ────────────
+    logger.info(f"[ROUTER] {req_path} -> Open WebUI (8098)")
+    sub_p = path.replace("openwebui/", "", 1).replace("openwebui", "", 1)
+    return await proxy_http_request(f"http://127.0.0.1:{WEBUI_PORT}/{sub_p}", request, default_prefix="")
