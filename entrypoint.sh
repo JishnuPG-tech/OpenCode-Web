@@ -94,9 +94,25 @@ export OMNIROUTE_BASE_PATH="/omniroute"
 export NEXT_PUBLIC_OMNIROUTE_BASE_PATH="/omniroute"
 export NEXT_PUBLIC_BASE_URL="${WEBUI_URL:-https://jishnupg-opencode-cli.hf.space}/omniroute"
 export LIVE_WS_ALLOWED_ORIGINS="${WEBUI_URL:-https://jishnupg-opencode-cli.hf.space}"
-export OMNIROUTE_WS_BRIDGE_SECRET="${OMNIROUTE_WS_BRIDGE_SECRET:?OMNIROUTE_WS_BRIDGE_SECRET is not set in Space Secrets}"
-export JWT_SECRET="${JWT_SECRET:?JWT_SECRET is not set in Space Secrets}"
-export API_KEY_SECRET="${API_KEY_SECRET:?API_KEY_SECRET is not set in Space Secrets}"
+
+# Required secrets — crash early with a clear message if missing
+export JWT_SECRET="${JWT_SECRET:?JWT_SECRET is not set. Add it to /data/.env or Space Secrets.}"
+export API_KEY_SECRET="${API_KEY_SECRET:?API_KEY_SECRET is not set. Add it to /data/.env or Space Secrets.}"
+
+# Optional secrets — auto-generate from JWT_SECRET if not explicitly set
+# OMNIROUTE_WS_BRIDGE_SECRET: used only for the Live WebSocket monitoring bridge (port 20132)
+if [ -z "$OMNIROUTE_WS_BRIDGE_SECRET" ]; then
+    OMNIROUTE_WS_BRIDGE_SECRET="ws_bridge_$(echo "$JWT_SECRET" | sha256sum | cut -c1-48 2>/dev/null || echo "$JWT_SECRET" | md5sum | cut -c1-32)"
+    echo "[INIT] OMNIROUTE_WS_BRIDGE_SECRET auto-generated (add to /data/.env to make permanent)"
+fi
+export OMNIROUTE_WS_BRIDGE_SECRET
+
+# WEBUI_SECRET_KEY: Open WebUI JWT signing secret (must be ≥32 chars)
+if [ -z "$WEBUI_SECRET_KEY" ]; then
+    WEBUI_SECRET_KEY="owui_$(echo "${JWT_SECRET}openwebui" | sha256sum | cut -c1-56 2>/dev/null || echo "${JWT_SECRET}openwebui" | md5sum | cut -c1-32)"
+    echo "[INIT] WEBUI_SECRET_KEY auto-generated (add to /data/.env to make permanent)"
+fi
+export WEBUI_SECRET_KEY
 
 if [ -d "/omniroute" ]; then
     cd /omniroute
@@ -165,7 +181,7 @@ if command -v open-webui >/dev/null 2>&1; then
     export WEBUI_URL="${WEBUI_URL:-https://jishnupg-opencode-cli.hf.space}"
     export OPENAI_API_BASE_URL="http://127.0.0.1:20129/v1"
     export OPENAI_API_KEY="omniroute"
-    export WEBUI_SECRET_KEY="${WEBUI_SECRET_KEY:?WEBUI_SECRET_KEY is not set in Space Secrets}"
+    export WEBUI_SECRET_KEY="$WEBUI_SECRET_KEY"
     export ENABLE_OLLAMA_API="${ENABLE_OLLAMA_API:-false}"
     export ENABLE_OPENAI_API="true"
     export TOOL_SERVERS=""
