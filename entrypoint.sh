@@ -61,27 +61,70 @@ for _VAR in STORAGE_ENCRYPTION_KEY JWT_SECRET API_KEY_SECRET OMNIROUTE_WS_BRIDGE
 done
 unset _VAR _VAL
 
-# /data is the persistent HF dataset bucket mount
-echo "[INIT] Setting up /data directories..."
-mkdir -p /data/open-webui 2>/dev/null || echo "[WARN] Could not create /data directories"
-mkdir -p /data/jellyfin/data /data/jellyfin/config /data/jellyfin/cache /data/jellyfin/log \
-          /data/jellyfin/media/Movies /data/jellyfin/media/TVShows 2>/dev/null || true
+# ── Deterministic Paths & Directory Model ────────────────────────────────────
+PERSIST_DIR="/data/omniroute"
+PERSIST_DB="/data/omniroute/storage.sqlite"
+BACKUP_DIR="/data/omniroute/backups"
 
-# ── Permanently Wipe and Disable /data/omniroute ──────────────────────────────
-echo "[PERSISTENCE] Permanently wiping all omniroute folders from /data storage..."
-rm -rf /data/omniroute /data/omniroute-old /data/omniroute* /root/.omniroute /root/.omniroute* 2>/dev/null || true
-mkdir -p /root/.omniroute /root/.omniroute/oauth /root/.omniroute/credentials /root/.omniroute/runtime 2>/dev/null || true
-echo "[PERSISTENCE] /data/omniroute and /data/omniroute-old completely wiped and purged."
+RUNTIME_DIR="/root/.omniroute"
+RUNTIME_DB="/root/.omniroute/storage.sqlite"
 
-echo "[STORAGE] Filesystem mount inspection:"
+mkdir -p "$PERSIST_DIR" "$BACKUP_DIR" "$RUNTIME_DIR" 2>/dev/null || true
+
+echo "[PERSISTENCE] Storage mount inspection:"
 mount | grep -E 'hf|bucket|data|fuse|nfs' || echo "[STORAGE] /data info: $(df -h /data 2>&1 || true)"
 
-# Continuous sync dummy function
+# ── Snapshot Restoration on Boot ──────────────────────────────────────────────
+if [ -s "$PERSIST_DB" ]; then
+    _INIT_SIZE=$(wc -c < "$PERSIST_DB" 2>/dev/null | tr -d ' \t\n\r' || echo "0")
+    echo "[PERSISTENCE] Found OmniRoute snapshot at: ${PERSIST_DB} (${_INIT_SIZE} bytes)"
+    if command -v sqlite3 >/dev/null 2>&1; then
+        _CHK=$(sqlite3 "$PERSIST_DB" "PRAGMA quick_check;" 2>/dev/null || echo "failed")
+        echo "[PERSISTENCE] Snapshot integrity check: ${_CHK}"
+        if [ "$_CHK" = "ok" ]; then
+            cp -f "$PERSIST_DB" "$RUNTIME_DB"
+            echo "[PERSISTENCE] Restored persistent database into ${RUNTIME_DB} successfully."
+        else
+            echo "[PERSISTENCE] WARNING: Persistent snapshot failed integrity check. Initializing fresh runtime DB."
+        fi
+    else
+        cp -f "$PERSIST_DB" "$RUNTIME_DB"
+        echo "[PERSISTENCE] Restored persistent database into ${RUNTIME_DB}."
+    fi
+else
+    echo "[PERSISTENCE] No snapshot found at ${PERSIST_DB}. Initializing fresh OmniRoute database."
+fi
+
+# ── SQLite WAL-aware Continuous Backup Function ───────────────────────────────
 sync_omniroute_db() {
-    rm -rf /data/omniroute /data/omniroute-old /data/omniroute* 2>/dev/null || true
+    if [ -f "$RUNTIME_DB" ] && [ -s "$RUNTIME_DB" ]; then
+        mkdir -p "$PERSIST_DIR" "$BACKUP_DIR" 2>/dev/null || true
+        if command -v sqlite3 >/dev/null 2>&1; then
+            sqlite3 "$RUNTIME_DB" ".backup '$PERSIST_DB'" 2>/dev/null || cp -f "$RUNTIME_DB" "$PERSIST_DB" 2>/dev/null || true
+        else
+            cp -f "$RUNTIME_DB" "$PERSIST_DB" 2>/dev/null || true
+        fi
+
+        # Verify integrity of persistent snapshot
+        _CHK="ok"
+        if command -v sqlite3 >/dev/null 2>&1; then
+            _CHK=$(sqlite3 "$PERSIST_DB" "PRAGMA quick_check;" 2>/dev/null || echo "failed")
+        fi
+
+        if [ "$_CHK" = "ok" ]; then
+            # Rotate backups (keep last-known-good + rolling backups)
+            cp -f "$PERSIST_DB" "${BACKUP_DIR}/last-known-good.sqlite" 2>/dev/null || true
+            TIMESTAMP=$(date +%Y%m%d-%H%M)
+            cp -f "$PERSIST_DB" "${BACKUP_DIR}/storage-${TIMESTAMP}.sqlite" 2>/dev/null || true
+            ls -t "${BACKUP_DIR}"/storage-*.sqlite 2>/dev/null | tail -n +6 | xargs rm -f 2>/dev/null || true
+            _SIZE=$(wc -c < "$PERSIST_DB" 2>/dev/null | tr -d ' \t\n\r' || echo "0")
+            echo "[PERSISTENCE] Snapshot OK: ${_SIZE} bytes synced to ${PERSIST_DB}"
+        else
+            echo "[PERSISTENCE] WARNING: Backup snapshot integrity check failed."
+        fi
+    fi
 }
 
-# Flush to persistent storage on exit signals
 trap sync_omniroute_db EXIT INT TERM
 
 # Background sync loop every 120s (2 minutes)
