@@ -129,6 +129,48 @@ async def health_services():
         "services": results
     }
 
+# ── Live OmniRoute Provider & Decryption Diagnostic Inspection Endpoint ────────
+import subprocess
+
+@app.get("/debug/omniroute-diagnostics", operation_id="debug_omniroute_diagnostics")
+async def omniroute_diagnostics():
+    env_info = {
+        "DATA_DIR": os.getenv("DATA_DIR", ""),
+        "PORT": os.getenv("PORT", ""),
+        "NEXT_PUBLIC_BASE_URL": os.getenv("NEXT_PUBLIC_BASE_URL", ""),
+        "STORAGE_ENCRYPTION_KEY_PRESENT": bool(os.getenv("STORAGE_ENCRYPTION_KEY")),
+        "STORAGE_ENCRYPTION_KEY_LEN": len(os.getenv("STORAGE_ENCRYPTION_KEY", "")),
+    }
+    
+    db_info = {}
+    for p in ["/root/.omniroute/storage.sqlite", "/data/omniroute/storage.sqlite"]:
+        if os.path.exists(p):
+            db_info[p] = {
+                "exists": True,
+                "size_bytes": os.path.getsize(p)
+            }
+        else:
+            db_info[p] = {"exists": False}
+
+    cli_results = {}
+    try:
+        res = subprocess.run(["omniroute", "providers", "list", "--json"], capture_output=True, text=True, timeout=5)
+        cli_results["providers_list"] = res.stdout if res.returncode == 0 else res.stderr
+    except Exception as e:
+        cli_results["providers_list"] = f"Error: {e}"
+
+    try:
+        res = subprocess.run(["omniroute", "providers", "validate"], capture_output=True, text=True, timeout=5)
+        cli_results["providers_validate"] = res.stdout if res.returncode == 0 else res.stderr
+    except Exception as e:
+        cli_results["providers_validate"] = f"Error: {e}"
+
+    return {
+        "environment": env_info,
+        "database": db_info,
+        "omniroute_cli": cli_results
+    }
+
 
 # ── Catch-All Router (Open WebUI Native at Root /, OmniRoute at /omniroute and /dashboard) ──
 @app.api_route("/{path:path}", methods=["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"], operation_id="global_catchall_proxy")
