@@ -18,6 +18,7 @@ from gateway.utils import (
     OMNIROUTE_PORT,
     OMNIROUTE_API_PORT,
     OMNIROUTE_WS_PORT,
+    PUBLIC_HOST,
     proxy_http_request,
     proxy_websocket_stream,
 )
@@ -31,8 +32,8 @@ router = APIRouter(tags=["OmniRoute"])
 async def omniroute_main_route(request: Request, path: str = ""):
     extra = {
         "Host": f"127.0.0.1:{OMNIROUTE_PORT}",
-        "X-Forwarded-Host": f"127.0.0.1:{OMNIROUTE_PORT}",
-        "X-Forwarded-Proto": "http"
+        "X-Forwarded-Host": PUBLIC_HOST,
+        "X-Forwarded-Proto": "https"
     }
     # Strip /omniroute prefix when proxying to OmniRoute backend on port 20128
     target = f"http://127.0.0.1:{OMNIROUTE_PORT}/{path}" if path else f"http://127.0.0.1:{OMNIROUTE_PORT}/"
@@ -68,14 +69,14 @@ async def omniroute_monitoring(request: Request, path: str = ""):
     target = f"http://127.0.0.1:{OMNIROUTE_PORT}/api/monitoring/{path}"
     return await proxy_http_request(target, request, default_prefix="")
 
-# ── 3. Next.js Static Asset Routing ──────────────────────────────────────────
+# ── 5. Next.js Static Asset Routing ──────────────────────────────────────────
 @router.api_route("/_next/{path:path}", methods=["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"])
 @router.api_route("/omniroute/_next/{path:path}", methods=["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"])
 async def omniroute_assets(request: Request, path: str = ""):
     extra = {
         "Host": f"127.0.0.1:{OMNIROUTE_PORT}",
-        "X-Forwarded-Host": f"127.0.0.1:{OMNIROUTE_PORT}",
-        "X-Forwarded-Proto": "http"
+        "X-Forwarded-Host": PUBLIC_HOST,
+        "X-Forwarded-Proto": "https"
     }
     target = f"http://127.0.0.1:{OMNIROUTE_PORT}/omniroute/_next/{path}"
     res = await proxy_http_request(target, request, default_prefix="/omniroute", extra_headers=extra)
@@ -86,8 +87,14 @@ async def omniroute_assets(request: Request, path: str = ""):
             return alt_res
     return res
 
-# ── 4. OmniRoute Page Routes (Captured both at root and /omniroute/) ──────────
+# ── 6. OmniRoute Page Routes (Captured both at root and /omniroute/) ──────────
 OMNIROUTE_PAGE_ROUTES = (
+    "/auth",
+    "/oauth",
+    "/callback",
+    "/auth/callback",
+    "/oauth/callback",
+    "/home",
     "/forgot-password",
     "/reset-password",
     "/change-password",
@@ -134,8 +141,8 @@ for p_route in OMNIROUTE_PAGE_ROUTES:
         async def omniroute_page_handler(request: Request, path: str = ""):
             extra = {
                 "Host": f"127.0.0.1:{OMNIROUTE_PORT}",
-                "X-Forwarded-Host": f"127.0.0.1:{OMNIROUTE_PORT}",
-                "X-Forwarded-Proto": "http"
+                "X-Forwarded-Host": PUBLIC_HOST,
+                "X-Forwarded-Proto": "https"
             }
             target_path = f"{page_path}/{path}" if path else page_path
             target = f"http://127.0.0.1:{OMNIROUTE_PORT}{target_path}"
