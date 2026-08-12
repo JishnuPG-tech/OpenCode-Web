@@ -62,6 +62,17 @@ async def root_proxy(request: Request):
 async def favicon():
     return Response(content=b"", status_code=204)
 
+# ── Dedicated Open WebUI Socket.IO WebSocket Handler ──────────────────────────
+@app.websocket("/ws/socket.io")
+@app.websocket("/ws/socket.io/{path:path}")
+@app.websocket("/openwebui/ws/socket.io")
+@app.websocket("/openwebui/ws/socket.io/{path:path}")
+async def handle_openwebui_socketio(websocket: WebSocket, path: str = ""):
+    target = f"ws://127.0.0.1:{WEBUI_PORT}/ws/socket.io"
+    if path:
+        target = f"{target}/{path}"
+    await proxy_websocket_stream(websocket, target)
+
 # ── Health Watchdog System ───────────────────────────────────────────────────
 @app.get("/health/live")
 async def health_liveness():

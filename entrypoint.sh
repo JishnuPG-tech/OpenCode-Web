@@ -88,24 +88,23 @@ else
     echo "[PERSISTENCE] No pre-existing database found in /data/omniroute. OmniRoute will start with fresh DB."
 fi
 
-# Continuous sync function (flushes local ext4 DB -> persistent /data using SQLite online backup)
+# Continuous sync function (flushes local ext4 DB -> persistent /data)
 sync_omniroute_db() {
-    if [ -f "/root/.omniroute/storage.sqlite" ] && [ -s "/root/.omniroute/storage.sqlite" ]; then
+    if [ -d "/root/.omniroute" ]; then
         mkdir -p /data/omniroute 2>/dev/null || true
-        if command -v sqlite3 >/dev/null 2>&1; then
-            sqlite3 /root/.omniroute/storage.sqlite ".backup /data/omniroute/storage.sqlite" 2>/dev/null || cp -f /root/.omniroute/storage.sqlite /data/omniroute/storage.sqlite 2>/dev/null || true
-        else
+        if [ -f "/root/.omniroute/storage.sqlite" ]; then
             cp -f /root/.omniroute/storage.sqlite /data/omniroute/storage.sqlite 2>/dev/null || true
-            if [ -f "/root/.omniroute/storage.sqlite-wal" ]; then
-                cp -f /root/.omniroute/storage.sqlite-wal /data/omniroute/storage.sqlite-wal 2>/dev/null || true
-            fi
         fi
-        _SIZE=$(wc -c < /data/omniroute/storage.sqlite 2>/dev/null | tr -d ' ' || echo "0")
-        _CHK="unknown"
-        if command -v sqlite3 >/dev/null 2>&1 && [ "$_SIZE" -gt 0 ]; then
-            _CHK=$(sqlite3 /data/omniroute/storage.sqlite "PRAGMA quick_check;" 2>/dev/null || echo "failed")
+        if [ -f "/root/.omniroute/storage.sqlite-wal" ]; then
+            cp -f /root/.omniroute/storage.sqlite-wal /data/omniroute/storage.sqlite-wal 2>/dev/null || true
         fi
-        echo "[PERSISTENCE] Snapshot sync complete: /root/.omniroute/storage.sqlite -> /data/omniroute/storage.sqlite (${_SIZE} bytes, integrity: ${_CHK})"
+        if [ -f "/root/.omniroute/storage.sqlite-shm" ]; then
+            cp -f /root/.omniroute/storage.sqlite-shm /data/omniroute/storage.sqlite-shm 2>/dev/null || true
+        fi
+
+        _ACTIVE_SIZE=$(wc -c < /root/.omniroute/storage.sqlite 2>/dev/null | tr -d ' \t\n\r' || echo "0")
+        _SNAP_SIZE=$(wc -c < /data/omniroute/storage.sqlite 2>/dev/null | tr -d ' \t\n\r' || echo "0")
+        echo "[PERSISTENCE] Database sync report: Active DB (${_ACTIVE_SIZE} bytes) -> Persistent Snapshot (${_SNAP_SIZE} bytes)"
     fi
 }
 
