@@ -93,16 +93,16 @@ def build_upstream_headers(request: Request, extra_headers: Optional[Dict[str, s
         headers.update(extra_headers)
     return headers
 
-def build_downstream_headers(resp_headers: httpx.Headers, default_prefix: str = "") -> list:
-    headers = []
+def build_downstream_raw_headers(resp_headers: httpx.Headers, default_prefix: str = "") -> list:
+    raw_headers = []
     for key, value in resp_headers.multi_items():
         lk = key.lower()
         if lk in _HOP_BY_HOP_HEADERS:
             continue
         if lk == "location":
             value = fix_location_header(value, default_prefix=default_prefix)
-        headers.append((key, value))
-    return headers
+        raw_headers.append((key.lower().encode("latin-1"), value.encode("latin-1")))
+    return raw_headers
 
 
 async def proxy_http_request(
@@ -175,7 +175,7 @@ async def proxy_http_request(
     if resp is None:
         return Response(content=f"<h2>502 Bad Gateway</h2><p>{last_exc}</p>", status_code=502, media_type="text/html")
 
-    res_headers = build_downstream_headers(resp.headers, default_prefix=default_prefix)
+    raw_headers = build_downstream_raw_headers(resp.headers, default_prefix=default_prefix)
     content_type = resp.headers.get("content-type", "")
     status_code  = resp.status_code
 
@@ -189,12 +189,13 @@ async def proxy_http_request(
             finally:
                 await resp.aclose()
 
-        return StreamingResponse(
+        streaming_resp = StreamingResponse(
             stream_generator(),
             status_code=status_code,
-            headers=res_headers,
             media_type=content_type or None,
         )
+        streaming_resp.raw_headers = raw_headers
+        return streaming_resp
 
     try:
         content = await resp.aread()
@@ -209,12 +210,13 @@ async def proxy_http_request(
         except Exception:
             pass
 
-    return Response(
+    normal_resp = Response(
         content=content,
         status_code=status_code,
-        headers=res_headers,
         media_type=content_type or None,
     )
+    normal_resp.raw_headers = raw_headers
+    return normal_resp
 
 
 async def proxy_websocket_stream(websocket: WebSocket, target_ws_url: str):

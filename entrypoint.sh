@@ -81,11 +81,12 @@ unset _DB_CANDIDATE _RESTORED
 # Clean stale lock files
 rm -f /root/.omniroute/*.sqlite-wal /root/.omniroute/*.sqlite-shm /root/.omniroute/*.lock 2>/dev/null || true
 
-# SQLite-aware consistent snapshot backup every 5 minutes
+# SQLite-aware consistent snapshot backup every 60 seconds
 (
     while true; do
-        sleep 300
+        sleep 60
         if [ -f "/root/.omniroute/storage.sqlite" ] && command -v sqlite3 >/dev/null 2>&1; then
+            mkdir -p /data/omniroute 2>/dev/null || true
             sqlite3 /root/.omniroute/storage.sqlite ".backup /data/omniroute/storage.sqlite" 2>/dev/null || true
         fi
     done
@@ -194,6 +195,10 @@ if [ -d "/omniroute" ]; then
         if curl -fsS "http://127.0.0.1:20128/api/monitoring/health" >/dev/null 2>&1; then
             echo "[HEALTH] OmniRoute dashboard healthy after ${i}s"
             OMNIROUTE_HEALTHY=1
+            if [ -f "/root/.omniroute/storage.sqlite" ] && command -v sqlite3 >/dev/null 2>&1; then
+                mkdir -p /data/omniroute 2>/dev/null || true
+                sqlite3 /root/.omniroute/storage.sqlite ".backup /data/omniroute/storage.sqlite" 2>/dev/null || true
+            fi
             break
         fi
         sleep 1
@@ -263,7 +268,19 @@ if command -v open-webui >/dev/null 2>&1; then
     export WEBUI_AUTH="true"
     export ENABLE_SIGNUP="true"
     open-webui serve --port 8098 &
-    echo "[INIT] Open WebUI started in background."
+    echo "[INIT] Open WebUI started in background (PID=$!). Waiting for health..."
+    OWUI_HEALTHY=0
+    for i in $(seq 1 45); do
+        if curl -fsS "http://127.0.0.1:8098/health" >/dev/null 2>&1 || curl -fsS "http://127.0.0.1:8098/api/config" >/dev/null 2>&1; then
+            echo "[HEALTH] Open WebUI healthy after ${i}s"
+            OWUI_HEALTHY=1
+            break
+        fi
+        sleep 1
+    done
+    if [ "$OWUI_HEALTHY" -eq 0 ]; then
+        echo "[WARN] Open WebUI startup check timed out after 45s, proceeding with Gateway startup."
+    fi
 else
     echo "[WARN] open-webui binary not found, skipping."
 fi

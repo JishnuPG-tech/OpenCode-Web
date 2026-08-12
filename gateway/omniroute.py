@@ -156,59 +156,30 @@ for p_route in OMNIROUTE_PAGE_ROUTES:
 
 
 # ── 5. Specific OmniRoute Backend Management & Auth APIs ──────────────────────
+# Only capture specific OAuth/CLI credential paths on root /api/
+# All other /api/* requests (like /api/config, /api/sync, /api/v1) belong strictly to Open WebUI
 OMNIROUTE_API_PREFIXES = (
-    "/api/auth",
-    "/api/user",
-    "/api/users",
-    "/api/setup",
-    "/api/initial-setup",
-    "/api/account",
-    "/api/profile",
-    "/api/reset-password",
-    "/api/forgot-password",
-    "/api/keys",
-    "/api/api-keys",
-    "/api/dashboard",
-    "/api/status",
-    "/api/health",
-    "/api/logs",
-    "/api/audit",
-    "/api/providers",
-    "/api/combos",
-    "/api/circuit-breakers",
-    "/api/settings",
-    "/api/usage",
-    "/api/system",
-    "/api/skills",
-    "/api/tunnels",
-    "/api/version-manager",
-    "/api/tools",
-    "/api/mcp",
-    "/api/a2a",
-    "/api/webhooks",
-    "/api/token-health",
-    "/api/synced-available-models",
-    "/api/shutdown",
-    "/api/storage",
-    "/api/sync",
-    "/api/telemetry",
-    "/api/translator",
-    "/api/upstream-proxy",
     "/api/cloud-agent-credentials",
     "/api/cli-access-tokens",
     "/api/oauth",
-    "/api/credentials",
-    "/api/connections",
-    "/api/agent-bridge",
-    "/api/inspector",
-    "/api/playground",
-    "/api/quota-pools",
-    "/api/quota-groups",
-    "/api/plugins",
 )
 
+@router.api_route(
+    "/omniroute/api/{path:path}",
+    methods=["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"],
+    include_in_schema=False
+)
+async def omniroute_prefixed_api_handler(request: Request, path: str = ""):
+    extra = {
+        "Host": PUBLIC_HOST,
+        "X-Forwarded-Host": PUBLIC_HOST,
+        "X-Forwarded-Proto": "https",
+        "X-Forwarded-Port": "443"
+    }
+    target = f"http://127.0.0.1:{OMNIROUTE_PORT}/api/{path}"
+    return await proxy_http_request(target, request, default_prefix="/omniroute", extra_headers=extra)
+
 # Dynamically register explicit route handlers for OmniRoute management & auth APIs
-# This prevents capturing non-OmniRoute routes (such as Open WebUI's /api/config or /api/v1)
 for prefix in OMNIROUTE_API_PREFIXES:
     sub_path = prefix.replace("/api/", "")
     
