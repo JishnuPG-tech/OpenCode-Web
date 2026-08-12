@@ -5,6 +5,8 @@ FROM node:24-bookworm-slim AS omniroute-builder
 
 WORKDIR /omniroute
 
+ENV GIT_SSL_CAINFO=/etc/ssl/certs/ca-certificates.crt
+ENV SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt
 ENV NEXT_TELEMETRY_DISABLED=1
 ENV OMNIROUTE_USE_TURBOPACK=0
 ENV NODE_OPTIONS="--max-old-space-size=4096"
@@ -12,14 +14,18 @@ ENV DISABLE_ESLINT_PLUGIN=true
 ENV OMNIROUTE_BASE_PATH="/omniroute"
 ENV NEXT_PUBLIC_OMNIROUTE_BASE_PATH="/omniroute"
 
+ARG OMNIROUTE_REF=release/v3.8.50
+
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    git python3 build-essential make g++ sqlite3 libsqlite3-dev \
+    ca-certificates git python3 build-essential make g++ sqlite3 libsqlite3-dev \
+ && update-ca-certificates \
+ && git config --system http.sslCAInfo /etc/ssl/certs/ca-certificates.crt \
  && rm -rf /var/lib/apt/lists/*
 
 COPY fix_omniroute.py /fix_omniroute.py
 
-# Clone OmniRoute, repair migration collisions, install dependencies, rebuild better-sqlite3, and run production build STRICTLY WITHOUT || true
-RUN git clone --depth 1 https://github.com/diegosouzapw/OmniRoute.git /omniroute \
+# Clone OmniRoute (pinned to release/v3.8.50), repair migration collisions, install dependencies, rebuild better-sqlite3, and run production build STRICTLY WITHOUT || true
+RUN git clone --depth 1 --branch "${OMNIROUTE_REF}" https://github.com/diegosouzapw/OmniRoute.git /omniroute \
  && python3 /fix_omniroute.py /omniroute \
  && npm install --legacy-peer-deps --no-audit --no-fund \
  && npm rebuild better-sqlite3 --build-from-source \
