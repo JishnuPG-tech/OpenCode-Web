@@ -114,15 +114,49 @@ async def omniroute_main_route(request: Request, path: str = ""):
             if location.rstrip("/") in ("/omniroute", f"https://{OMNIROUTE_PORT}", "http://127.0.0.1:20128", "/"):
                 return RedirectResponse("/omniroute/dashboard", status_code=302)
     
-    # If status is 404 or 500, try with /omniroute/ subpath prefix on upstream
-    if res.status_code in (404, 500):
-        alt_target = f"http://127.0.0.1:{OMNIROUTE_PORT}/omniroute/{path}"
-        try:
-            alt_res = await proxy_http_request(alt_target, request, default_prefix="/omniroute", extra_headers=extra, html_fixup=fixup_omniroute_html)
-            if alt_res.status_code not in (404, 500):
-                return alt_res
-        except Exception:
-            pass
+    # If status is 500 on GET, capture OmniRoute server log file and expose to Browser DevTools Console & UI
+    if res.status_code == 500 and request.method == "GET":
+        log_content = ""
+        for log_file in ["/data/omniroute/omniroute.log", "/root/.omniroute/omniroute.log"]:
+            try:
+                import os
+                if os.path.exists(log_file):
+                    with open(log_file, "r", encoding="utf-8", errors="ignore") as f:
+                        lines = f.readlines()
+                        log_content = "".join(lines[-120:])
+                    if log_content:
+                        break
+            except Exception:
+                pass
+        
+        if log_content:
+            print(f"[OMNIROUTE 500 DIAGNOSTIC LOGS]\n{log_content}")
+            safe_logs = log_content.replace("\\", "\\\\").replace("`", "\\`").replace("$", "\\$")
+            diagnostic_html = f"""<!DOCTYPE html>
+<html>
+<head>
+    <title>OmniRoute Server Error Diagnostic</title>
+    <style>
+        body {{ font-family: system-ui, monospace; background: #0f172a; color: #f8fafc; padding: 24px; max-width: 1000px; margin: 0 auto; }}
+        h1 {{ color: #f87171; font-size: 1.4rem; margin-top: 0; }}
+        p {{ color: #94a3b8; font-size: 0.95rem; }}
+        pre {{ background: #1e293b; padding: 16px; border-radius: 8px; overflow-x: auto; color: #38bdf8; border: 1px solid #334155; font-size: 0.85rem; line-height: 1.5; }}
+    </style>
+    <script>
+        console.error("=== OMNIROUTE BACKEND 500 DIAGNOSTIC LOGS ===");
+        console.error(`{safe_logs}`);
+        console.group("OmniRoute Backend Server Logs");
+        console.log(`{safe_logs}`);
+        console.groupEnd();
+    </script>
+</head>
+<body>
+    <h1>⚠️ OmniRoute Server Diagnostic (HTTP 500)</h1>
+    <p>Captured backend process logs for route <code>/{path}</code>. Logs have also been printed to <strong>Browser Inspect → Console</strong>:</p>
+    <pre>{log_content}</pre>
+</body>
+</html>"""
+            return HTMLResponse(content=diagnostic_html, status_code=500)
 
     return res
 
