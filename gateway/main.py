@@ -57,10 +57,11 @@ async def favicon():
 async def health_check():
     client = get_http_client()
     services = {
-        "omniroute": f"http://127.0.0.1:{OMNIROUTE_PORT}/healthz",
-        "openwebui": f"http://127.0.0.1:{WEBUI_PORT}/",
-        "jellyfin":  f"http://127.0.0.1:{JELLYFIN_PORT}/",
-        "tg_stream": f"http://127.0.0.1:{TG_PORT}/",
+        "omniroute_dashboard": f"http://127.0.0.1:{OMNIROUTE_PORT}/omniroute",
+        "omniroute_api":       f"http://127.0.0.1:{OMNIROUTE_API_PORT}/v1/models",
+        "openwebui":           f"http://127.0.0.1:{WEBUI_PORT}/api/config",
+        "jellyfin":            f"http://127.0.0.1:{JELLYFIN_PORT}/health",
+        "tg_stream":           f"http://127.0.0.1:{TG_PORT}/",
     }
     results = {}
     for name, url in services.items():

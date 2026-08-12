@@ -20,13 +20,14 @@ if [ -L "/root/.omniroute" ]; then
 fi
 mkdir -p /root/.omniroute /data/omniroute 2>/dev/null || true
 
-# Restore existing DB and secrets from persistent volume if available
+# Restore existing DB from persistent volume if available with quick_check validation
 if [ -f "/data/omniroute/storage.sqlite" ] && [ ! -f "/root/.omniroute/storage.sqlite" ]; then
-    echo "[INIT] Restoring OmniRoute SQLite database from persistent volume..."
+    echo "[INIT] Restoring OmniRoute SQLite database snapshot from persistent volume..."
     cp -f /data/omniroute/storage.sqlite /root/.omniroute/storage.sqlite 2>/dev/null || true
-fi
-if [ -f "/data/omniroute/server.env" ] && [ ! -f "/root/.omniroute/server.env" ]; then
-    cp -f /data/omniroute/server.env /root/.omniroute/server.env 2>/dev/null || true
+    if command -v sqlite3 >/dev/null 2>&1; then
+        CHK=$(sqlite3 /root/.omniroute/storage.sqlite "PRAGMA quick_check;" 2>/dev/null || echo "error")
+        echo "[INIT] SQLite restored snapshot integrity check: ${CHK}"
+    fi
 fi
 
 # Clean up stale lock files
@@ -36,7 +37,7 @@ rm -f /root/.omniroute/*.sqlite-wal /root/.omniroute/*.sqlite-shm /root/.omnirou
 echo "[INIT] Starting Redis server on port 6379..."
 redis-server --daemonize yes --bind 127.0.0.1 --port 6379 2>/dev/null || echo "[WARN] Redis server startup warning"
 
-# Safe SQLite Backup Process (Uses sqlite3 .backup API every 5 mins to prevent live DB corruption)
+# Safe SQLite Backup Process (Uses sqlite3 .backup API every 5 mins for consistent snapshot)
 (
     while true; do
         sleep 300
@@ -55,7 +56,9 @@ export HOSTNAME="127.0.0.1"
 export DATA_DIR="/root/.omniroute"
 export REDIS_URL="redis://127.0.0.1:6379"
 export OMNIROUTE_BASE_PATH="/omniroute"
+export NEXT_PUBLIC_OMNIROUTE_BASE_PATH="/omniroute"
 export NEXT_PUBLIC_BASE_URL="${WEBUI_URL:-https://jishnupg-opencode-cli.hf.space}/omniroute"
+export LIVE_WS_ALLOWED_ORIGINS="${WEBUI_URL:-https://jishnupg-opencode-cli.hf.space}"
 export OMNIROUTE_WS_BRIDGE_SECRET="${OMNIROUTE_WS_BRIDGE_SECRET:-opencode_ws_bridge_secret_2026}"
 export JWT_SECRET="${JWT_SECRET:-opencode_jwt_secret_2026}"
 export API_KEY_SECRET="${API_KEY_SECRET:-opencode_api_key_secret_2026}"

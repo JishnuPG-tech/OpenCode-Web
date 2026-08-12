@@ -21,73 +21,22 @@ from gateway.utils import OMNIROUTE_PORT, proxy_http_request
 logger = logging.getLogger("OmniRouteGateway")
 router = APIRouter(tags=["OmniRoute"])
 
-OMNIROUTE_JS_PATCH = """<script>
-(function() {
-  var origFetch = window.fetch;
-  window.fetch = function(resource, init) {
-    if (typeof resource === 'string') {
-      if (resource.startsWith('/') && !resource.startsWith('/omniroute') && !resource.startsWith('/_next') && !resource.startsWith('/v1') && !resource.startsWith('/v1beta')) {
-        resource = '/omniroute' + resource;
-      }
-    }
-    return origFetch.call(this, resource, init);
-  };
-  var origOpen = XMLHttpRequest.prototype.open;
-  XMLHttpRequest.prototype.open = function(method, url) {
-    if (typeof url === 'string' && url.startsWith('/') && !url.startsWith('/omniroute') && !url.startsWith('/_next') && !url.startsWith('/v1') && !url.startsWith('/v1beta')) {
-      url = '/omniroute' + url;
-    }
-    return origOpen.apply(this, arguments);
-  };
-})();
-</script>"""
-
-def fixup_omniroute_html(html: str) -> str:
-    """Rewrite Next.js root-relative URLs & inject JS fetch interceptor into <head>."""
-    html = html.replace('href="/', 'href="/omniroute/')
-    html = html.replace("href='/", "href='/omniroute/")
-    html = html.replace('src="/', 'src="/omniroute/')
-    html = html.replace("src='/", "src='/omniroute/")
-    html = html.replace('action="/', 'action="/omniroute/')
-    html = html.replace('"/_next/', '"/omniroute/_next/')
-    html = html.replace("'/_next/", "'/omniroute/_next/")
-    # Deduplicate double prefixes
-    html = html.replace('/omniroute/omniroute', '/omniroute')
-    if "<head>" in html:
-        html = html.replace("<head>", f"<head>{OMNIROUTE_JS_PATCH}", 1)
-    elif "<head " in html:
-        html = re.sub(r"(<head[^>]*>)", r"\1" + OMNIROUTE_JS_PATCH, html, count=1)
-    return html
-
-# ── 1. OmniRoute Dashboard Pages ──────────────────────────────────────────────
+# ── 1. OmniRoute Dashboard Pages (Port 20128) ─────────────────────────────────
 @router.api_route("/omniroute", methods=["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"])
 @router.api_route("/omniroute/{path:path}", methods=["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"])
 async def omniroute_main_route(request: Request, path: str = ""):
-    if not path or path in ("", "/"):
-        if request.method == "GET":
-            return RedirectResponse("/omniroute/dashboard", status_code=302)
-        path = ""
-    
     extra = {
         "Host": f"127.0.0.1:{OMNIROUTE_PORT}",
         "X-Forwarded-Host": f"127.0.0.1:{OMNIROUTE_PORT}",
         "X-Forwarded-Proto": "http"
     }
-    target = f"http://127.0.0.1:{OMNIROUTE_PORT}/{path}"
-    res = await proxy_http_request(
+    target = f"http://127.0.0.1:{OMNIROUTE_PORT}/omniroute/{path}" if path else f"http://127.0.0.1:{OMNIROUTE_PORT}/omniroute"
+    return await proxy_http_request(
         target,
         request,
         default_prefix="/omniroute",
-        extra_headers=extra,
-        html_fixup=fixup_omniroute_html
+        extra_headers=extra
     )
-    
-    if res.status_code in (301, 302, 307, 308):
-        location = res.headers.get("location", "")
-        if location and location.rstrip("/") in ("/omniroute", f"https://127.0.0.1:{OMNIROUTE_PORT}", "http://127.0.0.1:20128", "/"):
-            return RedirectResponse("/omniroute/dashboard", status_code=302)
-            
-    return res
 
 # ── 2. OpenAI & Gemini Compatibility APIs (Dedicated API Port 20129) ──────────
 @router.api_route("/v1", methods=["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"])
