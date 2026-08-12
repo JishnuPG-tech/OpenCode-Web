@@ -84,28 +84,28 @@ async def health_check():
     return {"gateway": "healthy", "upstreams": results}
 
 
-# ── Catch-All Router (OmniRoute at Root /, OpenWebUI at /openwebui/) ─────────
+# ── Catch-All Router (OmniRoute Native at Root /, Open WebUI at /openwebui/) ──
 @app.api_route("/{path:path}", methods=["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"])
 async def route_catch_all(path: str, request: Request):
     req_path = request.url.path.lower()
     referer  = request.headers.get("referer", "").lower()
 
-    # Open WebUI routes (/openwebui and /openwebui/*)
-    if req_path.startswith("/openwebui"):
+    # Open WebUI explicit subpath or referer
+    if req_path.startswith("/openwebui") or "/openwebui" in referer:
         sub_p = path.replace("openwebui/", "", 1).replace("openwebui", "", 1)
         return await proxy_http_request(f"http://127.0.0.1:{WEBUI_PORT}/{sub_p}", request, default_prefix="/openwebui", html_fixup=fixup_webui_html)
 
-    # Jellyfin routes (/jellyfin and /jellyfin/*)
+    # Jellyfin
     if req_path.startswith("/jellyfin") or "/jellyfin" in referer:
         sub_p = path.replace("jellyfin/", "", 1).replace("jellyfin", "", 1)
         return await proxy_http_request(f"http://127.0.0.1:{JELLYFIN_PORT}/{sub_p}", request, default_prefix="/jellyfin", extra_headers={"X-Forwarded-Prefix": "/jellyfin"})
 
-    # Telegram Streamer routes (/tg-stream and /tg-stream/*)
+    # Telegram Streamer
     if req_path.startswith("/tg-stream") or req_path.startswith("/tg_stream") or "/tg" in referer:
         sub_p = path.replace("tg-stream/", "", 1).replace("tg_stream/", "", 1)
         return await proxy_http_request(f"http://127.0.0.1:{TG_PORT}/{sub_p}", request, default_prefix="/tg-stream")
 
-    # Handle legacy /omniroute links by stripping prefix or proxying
+    # Handle legacy /omniroute links by redirecting or proxying natively to root
     if req_path.startswith("/omniroute"):
         sub_p = path.replace("omniroute/", "", 1).replace("omniroute", "", 1)
         extra = {
@@ -116,7 +116,7 @@ async def route_catch_all(path: str, request: Request):
         }
         return await proxy_http_request(f"http://127.0.0.1:{OMNIROUTE_PORT}/{sub_p}", request, default_prefix="", extra_headers=extra)
 
-    # Default all root traffic (OmniRoute dashboard, /api/*, /_next/*, /dashboard/*, /login, /callback) -> OmniRoute (:20128)
+    # Default all native root traffic (OmniRoute dashboard, /api/*, /_next/*, /dashboard/*, /login, /callback) -> OmniRoute (:20128)
     extra = {
         "Host": PUBLIC_HOST,
         "X-Forwarded-Host": PUBLIC_HOST,
