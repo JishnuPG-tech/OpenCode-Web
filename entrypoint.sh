@@ -7,6 +7,22 @@ echo "============================================"
 
 git config --global --add safe.directory '*' 2>/dev/null || true
 
+# ── Load secrets from data bucket (before :? validation runs) ─────────────────
+# Check candidate locations in order of preference.
+# Format: KEY=value lines, one per line. Lines starting with # are ignored.
+for _ENV_FILE in "/data/.env" "/data/secrets.env" "/data/secrets" "/data/config/.env"; do
+    if [ -f "$_ENV_FILE" ]; then
+        echo "[INIT] Loading secrets from ${_ENV_FILE}..."
+        set -a
+        # shellcheck disable=SC1090
+        . "$_ENV_FILE"
+        set +a
+        echo "[INIT] Secrets loaded from ${_ENV_FILE}"
+        break
+    fi
+done
+unset _ENV_FILE
+
 # /data is the persistent HF dataset bucket mount
 echo "[INIT] Setting up /data directories..."
 mkdir -p /data/open-webui 2>/dev/null || echo "[WARN] Could not create /data/open-webui"
