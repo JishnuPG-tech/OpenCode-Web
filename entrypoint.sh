@@ -51,6 +51,14 @@ sleep 3
 # Start OmniRoute AI Gateway in background
 echo "[INIT] Starting OmniRoute AI Gateway on port 20128..."
 if command -v omniroute >/dev/null 2>&1; then
+    echo "[INIT] OmniRoute version: $(omniroute --version 2>/dev/null || echo unknown)"
+
+    # Optional data reset flag (set RESET_OMNIROUTE_DATA=true in Space Secrets if schema reset is required)
+    if [ "$RESET_OMNIROUTE_DATA" = "true" ]; then
+        echo "[INIT] RESET_OMNIROUTE_DATA=true: clearing /data/omniroute data directory..."
+        rm -rf /data/omniroute/* /root/.omniroute/* 2>/dev/null || true
+    fi
+
     # Ensure all cache directories exist and are writable for Next.js getCacheDirectory() probe
     mkdir -p /root/.cache /data/cache /root/.omniroute /data/omniroute 2>/dev/null || true
     chmod -R 777 /root/.cache /data/cache 2>/dev/null || true
@@ -73,26 +81,31 @@ if command -v omniroute >/dev/null 2>&1; then
     export DASHBOARD_PORT=20128
     export PORT=20128
     export AUTH_COOKIE_SECURE="true"
-    export JWT_SECRET="opencode_omniroute_jwt_secret_key_2026_secure_random_token"
-    export API_KEY_SECRET="e9f8a7b6c5d4e3f2a1b0c9d8e7f6a5b4c3d2e1f0a9b8c7d6e5f4a3b2c1d0e9f8"
-    export STORAGE_ENCRYPTION_KEY="1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d3e4f5a6b7c8d9e0f1a2b"
-    export INITIAL_PASSWORD="admin"
+    export JWT_SECRET="${OMNIROUTE_JWT_SECRET:-opencode_omniroute_jwt_secret_key_2026_secure_random_token}"
+    export API_KEY_SECRET="${OMNIROUTE_API_KEY_SECRET:-e9f8a7b6c5d4e3f2a1b0c9d8e7f6a5b4c3d2e1f0a9b8c7d6e5f4a3b2c1d0e9f8}"
+    export STORAGE_ENCRYPTION_KEY="${OMNIROUTE_STORAGE_KEY:-1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d3e4f5a6b7c8d9e0f1a2b}"
+    export INITIAL_PASSWORD="${OMNIROUTE_INITIAL_PASSWORD:-admin}"
     export DISABLE_SQLITE_AUTO_BACKUP="true"
     export NODE_ENV="production"
 
-    # Write fresh .env to data dir to overwrite any stale env files from previous runs
+    # Write fresh .env to data dir to pass process secrets to OmniRoute server
     python3 -c "
 import os
+jwt = os.environ.get('JWT_SECRET', 'opencode_omniroute_jwt_secret_key_2026_secure_random_token')
+api_sec = os.environ.get('API_KEY_SECRET', 'e9f8a7b6c5d4e3f2a1b0c9d8e7f6a5b4c3d2e1f0a9b8c7d6e5f4a3b2c1d0e9f8')
+store_key = os.environ.get('STORAGE_ENCRYPTION_KEY', '1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d3e4f5a6b7c8d9e0f1a2b')
+init_pass = os.environ.get('INITIAL_PASSWORD', 'admin')
+
 for path in ['/data/omniroute/.env', '/root/.omniroute/.env']:
     os.makedirs(os.path.dirname(path), exist_ok=True)
     with open(path, 'w') as f:
-        f.write('''DATA_DIR=/data/omniroute
+        f.write(f'''DATA_DIR=/data/omniroute
 PORT=20128
 DASHBOARD_PORT=20128
-JWT_SECRET=opencode_omniroute_jwt_secret_key_2026_secure_random_token
-API_KEY_SECRET=e9f8a7b6c5d4e3f2a1b0c9d8e7f6a5b4c3d2e1f0a9b8c7d6e5f4a3b2c1d0e9f8
-STORAGE_ENCRYPTION_KEY=1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d3e4f5a6b7c8d9e0f1a2b
-INITIAL_PASSWORD=admin
+JWT_SECRET={jwt}
+API_KEY_SECRET={api_sec}
+STORAGE_ENCRYPTION_KEY={store_key}
+INITIAL_PASSWORD={init_pass}
 DISABLE_SQLITE_AUTO_BACKUP=true
 NODE_ENV=production
 AUTH_COOKIE_SECURE=true
@@ -104,7 +117,7 @@ print('[INIT] Wrote pristine OmniRoute .env config files.')
     (cd "$OMNIROUTE_PKG" && npm rebuild better-sqlite3) 2>&1 || true
     omniroute runtime repair 2>&1 || true
     omniroute serve --port 20128 --no-open > /data/omniroute/omniroute.log 2>&1 &
-    echo "[INIT] OmniRoute started in background with required secrets, HOSTNAME un-set, and logging to /data/omniroute/omniroute.log."
+    echo "[INIT] OmniRoute started in background with secrets and logging to /data/omniroute/omniroute.log."
 else
     echo "[WARN] omniroute binary not found, skipping background service."
 fi
@@ -117,7 +130,7 @@ if command -v open-webui >/dev/null 2>&1; then
     export WEBUI_URL="https://jishnupg-opencode-cli.hf.space"
     export OPENAI_API_BASE_URL="http://127.0.0.1:20128/v1"
     export OPENAI_API_KEY="omniroute"
-    export WEBUI_SECRET_KEY="opencode_webui_jwt_secret_2026"
+    export WEBUI_SECRET_KEY="${WEBUI_SECRET_KEY:-opencode_webui_jwt_secret_2026}"
     export ENABLE_OLLAMA_API="false"
     export ENABLE_OPENAI_API="true"
     # Ensure OmniRoute is NOT registered as an OpenAPI tool server (fixes 500 ContentTypeError crash)
