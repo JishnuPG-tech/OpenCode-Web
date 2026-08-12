@@ -224,9 +224,15 @@ for prefix in OMNIROUTE_API_PREFIXES:
             include_in_schema=False
         )
         async def omniroute_api_handler(request: Request, path: str = ""):
+            extra = {
+                "Host": PUBLIC_HOST,
+                "X-Forwarded-Host": PUBLIC_HOST,
+                "X-Forwarded-Proto": "https",
+                "X-Forwarded-Port": "443"
+            }
             target_path = f"/api/{s_path}/{path}" if path else f"/api/{s_path}"
             target = f"http://127.0.0.1:{OMNIROUTE_PORT}{target_path}"
-            return await proxy_http_request(target, request, default_prefix="/omniroute")
+            return await proxy_http_request(target, request, default_prefix="/omniroute", extra_headers=extra)
         return omniroute_api_handler
 
     _create_route(sub_path)
