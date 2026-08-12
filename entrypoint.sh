@@ -7,43 +7,24 @@ echo "============================================"
 
 git config --global --add safe.directory '*' 2>/dev/null || true
 
-# ── Load secrets from data bucket (before :? validation runs) ─────────────────
-# Load ALL matching env files so partial secret files can be combined.
-# Checks both /data/ root and /data/omniroute/ (where persistent config is stored).
-for _ENV_FILE in \
-    "/data/.env" \
-    "/data/secrets.env" \
-    "/data/secrets" \
-    "/data/config/.env" \
-    "/data/omniroute/.env" \
-    "/data/omniroute/secrets.env" \
-    "/data/omniroute/secrets" \
-    "/data/omniroute/.secrets" \
-    "/data/omniroute/server.env"; do
-    if [ -f "$_ENV_FILE" ]; then
-        echo "[INIT] Loading secrets from ${_ENV_FILE}..."
-        set -a
-        # shellcheck disable=SC1090
-        . "$_ENV_FILE"
-        set +a
-        echo "[INIT] Secrets loaded from ${_ENV_FILE}"
-    fi
-done
-unset _ENV_FILE
+# ── Strict Secret Validation (Master Secrets Must Come From HF Secrets / Environment) ─
+if [ -z "$STORAGE_ENCRYPTION_KEY" ]; then
+    echo "[FATAL ERROR] STORAGE_ENCRYPTION_KEY is not set in environment or HF Space Secrets!"
+    echo "[FATAL ERROR] Master encryption key must be provided via Hugging Face Space Secrets to decrypt persistent credentials."
+    exit 1
+fi
 
-# Ensure deterministic, permanent secrets in container environment
-export STORAGE_ENCRYPTION_KEY="${STORAGE_ENCRYPTION_KEY:-$(echo "opencode_storage_encryption_key_2026" | sha256sum | cut -c1-64)}"
+export ENCRYPTION_SECRET="${STORAGE_ENCRYPTION_KEY}"
+export OMNIROUTE_SECRET_KEY="${STORAGE_ENCRYPTION_KEY}"
 export JWT_SECRET="${JWT_SECRET:-$(echo "opencode_jwt_secret_hf_space_key_2026" | sha256sum | cut -c1-48)}"
 export API_KEY_SECRET="${API_KEY_SECRET:-$(echo "opencode_api_key_secret_hf_space_key_2026" | sha256sum | cut -c1-64)}"
 export OMNIROUTE_WS_BRIDGE_SECRET="${OMNIROUTE_WS_BRIDGE_SECRET:-$(echo "ws_bridge_${JWT_SECRET}" | sha256sum | cut -c1-48)}"
 export WEBUI_SECRET_KEY="${WEBUI_SECRET_KEY:-$(echo "owui_${JWT_SECRET}" | sha256sum | cut -c1-56)}"
-export ENCRYPTION_SECRET="${ENCRYPTION_SECRET:-${STORAGE_ENCRYPTION_KEY}}"
-export OMNIROUTE_SECRET_KEY="${OMNIROUTE_SECRET_KEY:-${STORAGE_ENCRYPTION_KEY}}"
 
-# Remove legacy server.env from storage bucket to maintain strict secret separation
-rm -f /data/omniroute/server.env 2>/dev/null || true
+# Purge any legacy secret env files from storage bucket to maintain strict secret separation
+rm -f /data/.env /data/secrets.env /data/secrets /data/config/.env /data/omniroute/.env /data/omniroute/secrets.env /data/omniroute/secrets /data/omniroute/.secrets /data/omniroute/server.env 2>/dev/null || true
 
-# Debug: show secret statuses
+# Debug: display configured secret statuses
 for _VAR in STORAGE_ENCRYPTION_KEY JWT_SECRET API_KEY_SECRET OMNIROUTE_WS_BRIDGE_SECRET WEBUI_SECRET_KEY; do
     eval _VAL=\$$_VAR
     echo "[INIT] ${_VAR} is configured (${#_VAL} chars)"
