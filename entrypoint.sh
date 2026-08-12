@@ -32,24 +32,34 @@ fi
 # Clean up stale lock files
 rm -f /root/.omniroute/*.sqlite-wal /root/.omniroute/*.sqlite-shm /root/.omniroute/*.lock 2>/dev/null || true
 
-# Background sync process to preserve OmniRoute database and secrets to /data mount
+# Start Redis server for OmniRoute distributed caching and rate limiting
+echo "[INIT] Starting Redis server on port 6379..."
+redis-server --daemonize yes --bind 127.0.0.1 --port 6379 2>/dev/null || echo "[WARN] Redis server startup warning"
+
+# Safe SQLite Backup Process (Uses sqlite3 .backup API every 5 mins to prevent live DB corruption)
 (
     while true; do
-        sleep 25
-        if [ -f "/root/.omniroute/storage.sqlite" ]; then
-            cp -f /root/.omniroute/storage.sqlite /data/omniroute/storage.sqlite 2>/dev/null || true
-        fi
-        if [ -f "/root/.omniroute/server.env" ]; then
-            cp -f /root/.omniroute/server.env /data/omniroute/server.env 2>/dev/null || true
+        sleep 300
+        if [ -f "/root/.omniroute/storage.sqlite" ] && command -v sqlite3 >/dev/null 2>&1; then
+            sqlite3 /root/.omniroute/storage.sqlite ".backup /data/omniroute/storage.sqlite" 2>/dev/null || true
         fi
     done
 ) &
 
-# Start OmniRoute AI Gateway on Port 20128
-echo "[INIT] Starting OmniRoute AI Gateway on port 20128..."
+# Start OmniRoute AI Gateway (Multi-Port: Dashboard: 20128, Dedicated API: 20129, Live WS: 20132)
+echo "[INIT] Starting OmniRoute AI Gateway (Dashboard: 20128, API: 20129, WS: 20132)..."
 export PORT=20128
+export API_PORT=20129
+export LIVE_WS_PORT=20132
 export HOSTNAME="127.0.0.1"
 export DATA_DIR="/root/.omniroute"
+export REDIS_URL="redis://127.0.0.1:6379"
+export OMNIROUTE_BASE_PATH="/omniroute"
+export NEXT_PUBLIC_BASE_URL="${WEBUI_URL:-https://jishnupg-opencode-cli.hf.space}/omniroute"
+export OMNIROUTE_WS_BRIDGE_SECRET="${OMNIROUTE_WS_BRIDGE_SECRET:-opencode_ws_bridge_secret_2026}"
+export JWT_SECRET="${JWT_SECRET:-opencode_jwt_secret_2026}"
+export API_KEY_SECRET="${API_KEY_SECRET:-opencode_api_key_secret_2026}"
+
 if [ -d "/omniroute" ]; then
     cd /omniroute
     # Fix any upstream migration version collisions (e.g. version 143 collisions)
@@ -63,11 +73,11 @@ if [ -d "/omniroute" ]; then
         npm run start -- --port 20128 &
     else
         echo "[INIT] Building OmniRoute production assets to resolve WASM modules..."
-        NEXT_TELEMETRY_DISABLED=1 OMNIROUTE_USE_TURBOPACK=0 NODE_OPTIONS="--max-old-space-size=2560" npm run build 2>/dev/null || true
+        OMNIROUTE_BASE_PATH="/omniroute" NEXT_PUBLIC_BASE_PATH="/omniroute" NEXT_TELEMETRY_DISABLED=1 OMNIROUTE_USE_TURBOPACK=0 NODE_OPTIONS="--max-old-space-size=2560" npm run build 2>/dev/null || true
         if [ -d ".build/next" ] || [ -d ".next" ]; then
             npm run start -- --port 20128 &
         else
-            npx next dev --port 20128 -H 127.0.0.1 &
+            OMNIROUTE_BASE_PATH="/omniroute" npx next dev --port 20128 -H 127.0.0.1 &
         fi
     fi
     echo "[INIT] OmniRoute AI Gateway started in background."
@@ -102,11 +112,11 @@ mkdir -p /root/.cache /data/cache 2>/dev/null || true
 chmod -R 777 /root/.cache /data/cache 2>/dev/null || true
 
 # Pre-configure & Start Open WebUI on port 8098 (Mounted at / via FastAPI proxy)
-echo "[INIT] Starting Open WebUI on port 8098 pre-configured with OmniRoute..."
+echo "[INIT] Starting Open WebUI on port 8098 pre-configured with OmniRoute API..."
 if command -v open-webui >/dev/null 2>&1; then
-    # Tell Open WebUI its public-facing URL and point OpenAI API to OmniRoute port 20128
+    # Point OpenAI API to OmniRoute dedicated API port 20129
     export WEBUI_URL="${WEBUI_URL:-https://jishnupg-opencode-cli.hf.space}"
-    export OPENAI_API_BASE_URL="http://127.0.0.1:20128/v1"
+    export OPENAI_API_BASE_URL="http://127.0.0.1:20129/v1"
     export OPENAI_API_KEY="omniroute"
     export WEBUI_SECRET_KEY="${WEBUI_SECRET_KEY:-opencode_webui_jwt_secret_2026}"
     export ENABLE_OLLAMA_API="${ENABLE_OLLAMA_API:-false}"

@@ -89,17 +89,24 @@ async def omniroute_main_route(request: Request, path: str = ""):
             
     return res
 
-# ── 2. OpenAI & Gemini Compatibility APIs ─────────────────────────────────────
+# ── 2. OpenAI & Gemini Compatibility APIs (Dedicated API Port 20129) ──────────
 @router.api_route("/v1", methods=["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"])
 @router.api_route("/v1/{path:path}", methods=["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"])
 async def omniroute_v1_api(request: Request, path: str = ""):
-    target = f"http://127.0.0.1:{OMNIROUTE_PORT}/v1/{path}" if path else f"http://127.0.0.1:{OMNIROUTE_PORT}/v1"
-    return await proxy_http_request(target, request, default_prefix="/omniroute")
+    target = f"http://127.0.0.1:{OMNIROUTE_API_PORT}/v1/{path}" if path else f"http://127.0.0.1:{OMNIROUTE_API_PORT}/v1"
+    return await proxy_http_request(target, request, default_prefix="")
 
 @router.api_route("/v1beta/{path:path}", methods=["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"])
 async def omniroute_v1beta_api(request: Request, path: str = ""):
-    target = f"http://127.0.0.1:{OMNIROUTE_PORT}/v1beta/{path}"
-    return await proxy_http_request(target, request, default_prefix="/omniroute")
+    target = f"http://127.0.0.1:{OMNIROUTE_API_PORT}/v1beta/{path}"
+    return await proxy_http_request(target, request, default_prefix="")
+
+# ── 3. OmniRoute Live Monitoring WebSocket (Dedicated WS Port 20132) ──────────
+@router.websocket("/omniroute/live-ws")
+@router.websocket("/omniroute/live-ws/{path:path}")
+async def omniroute_live_ws(websocket: Request, path: str = ""):
+    target_ws = f"ws://127.0.0.1:{OMNIROUTE_WS_PORT}/live-ws/{path}" if path else f"ws://127.0.0.1:{OMNIROUTE_WS_PORT}/live-ws"
+    await proxy_websocket_stream(websocket, target_ws)
 
 # ── 3. Next.js Static Asset Routing ──────────────────────────────────────────
 @router.api_route("/_next/{path:path}", methods=["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"])

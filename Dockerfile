@@ -24,6 +24,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     g++ \
     sqlite3 \
     libsqlite3-dev \
+    redis-server \
  && rm -rf /var/lib/apt/lists/*
 
 # 2. Add Official Jellyfin APT Repository & Install Jellyfin Server, Web UI, and FFmpeg
@@ -44,12 +45,14 @@ RUN python3 -c "from sentence_transformers import SentenceTransformer; SentenceT
 RUN curl -fsSL https://nodejs.org/dist/v22.22.2/node-v22.22.2-linux-x64.tar.gz \
     | tar -xz -C /usr/local --strip-components=1
 
-# 5. Clone and Prepare OmniRoute AI Gateway (fast install, defer build to runtime dev server for instant Docker builds)
+# 5. Clone and Build OmniRoute AI Gateway (with OMNIROUTE_BASE_PATH=/omniroute)
 WORKDIR /omniroute
 ENV NEXT_TELEMETRY_DISABLED=1
 ENV OMNIROUTE_USE_TURBOPACK=0
-ENV NODE_OPTIONS="--max-old-space-size=2048"
+ENV NODE_OPTIONS="--max-old-space-size=2560"
 ENV DISABLE_ESLINT_PLUGIN=true
+ENV OMNIROUTE_BASE_PATH="/omniroute"
+ENV NEXT_PUBLIC_BASE_PATH="/omniroute"
 
 COPY fix_omniroute.py /fix_omniroute.py
 
@@ -57,7 +60,7 @@ RUN git clone --depth 1 https://github.com/diegosouzapw/OmniRoute.git /omniroute
  && python3 /fix_omniroute.py /omniroute \
  && npm install --legacy-peer-deps --no-audit --no-fund --prefer-offline \
  && npm rebuild better-sqlite3 --build-from-source \
- && NEXT_TELEMETRY_DISABLED=1 OMNIROUTE_USE_TURBOPACK=0 NODE_OPTIONS="--max-old-space-size=2560" npm run build || true
+ && OMNIROUTE_BASE_PATH="/omniroute" NEXT_PUBLIC_BASE_PATH="/omniroute" NEXT_TELEMETRY_DISABLED=1 OMNIROUTE_USE_TURBOPACK=0 NODE_OPTIONS="--max-old-space-size=2560" npm run build || true
 
 RUN mkdir -p /root/.cache /data/cache /data/omniroute /data/open-webui
 RUN chmod -R 777 /root/.cache /data/cache /omniroute
