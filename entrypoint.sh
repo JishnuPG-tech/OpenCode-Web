@@ -52,16 +52,16 @@ export PORT=20128
 export API_PORT=20129
 export LIVE_WS_PORT=20132
 export HOSTNAME="127.0.0.1"
-# Override DATA_DIR to use local ext4 instead of FUSE /data mount (avoids SQLite I/O errors)
+# Override DATA_DIR to local ext4 to avoid SQLite FUSE I/O errors on HF /data
 export DATA_DIR="/root/.omniroute"
 export REDIS_URL="redis://127.0.0.1:6379"
 export OMNIROUTE_BASE_PATH="/omniroute"
 export NEXT_PUBLIC_OMNIROUTE_BASE_PATH="/omniroute"
 export NEXT_PUBLIC_BASE_URL="${WEBUI_URL:-https://jishnupg-opencode-cli.hf.space}/omniroute"
 export LIVE_WS_ALLOWED_ORIGINS="${WEBUI_URL:-https://jishnupg-opencode-cli.hf.space}"
-export OMNIROUTE_WS_BRIDGE_SECRET="${OMNIROUTE_WS_BRIDGE_SECRET:-opencode_ws_bridge_secret_2026}"
-export JWT_SECRET="${JWT_SECRET:-opencode_jwt_secret_2026}"
-export API_KEY_SECRET="${API_KEY_SECRET:-opencode_api_key_secret_2026}"
+export OMNIROUTE_WS_BRIDGE_SECRET="${OMNIROUTE_WS_BRIDGE_SECRET:?OMNIROUTE_WS_BRIDGE_SECRET is not set in Space Secrets}"
+export JWT_SECRET="${JWT_SECRET:?JWT_SECRET is not set in Space Secrets}"
+export API_KEY_SECRET="${API_KEY_SECRET:?API_KEY_SECRET is not set in Space Secrets}"
 
 if [ -d "/omniroute" ]; then
     cd /omniroute
@@ -70,7 +70,29 @@ if [ -d "/omniroute" ]; then
     else
         npm run start -- --port 20128 &
     fi
-    echo "[INIT] OmniRoute AI Gateway started in background."
+    OMNIROUTE_PID=$!
+    echo "[INIT] OmniRoute AI Gateway PID=${OMNIROUTE_PID} — waiting for health..."
+
+    OMNIROUTE_HEALTHY=0
+    for i in $(seq 1 90); do
+        if ! kill -0 "$OMNIROUTE_PID" 2>/dev/null; then
+            echo "[ERROR] OmniRoute exited during startup (PID=${OMNIROUTE_PID}). Aborting."
+            wait "$OMNIROUTE_PID"
+            exit 1
+        fi
+        if curl -fsS "http://127.0.0.1:20128/api/monitoring/health" >/dev/null 2>&1; then
+            echo "[HEALTH] OmniRoute dashboard healthy after ${i}s"
+            OMNIROUTE_HEALTHY=1
+            break
+        fi
+        sleep 1
+    done
+
+    if [ "$OMNIROUTE_HEALTHY" -eq 0 ]; then
+        echo "[ERROR] OmniRoute did not become healthy within 90 seconds."
+        kill "$OMNIROUTE_PID" 2>/dev/null || true
+        exit 1
+    fi
 else
     echo "[WARN] /omniroute directory not found, skipping OmniRoute startup."
 fi
@@ -108,7 +130,7 @@ if command -v open-webui >/dev/null 2>&1; then
     export WEBUI_URL="${WEBUI_URL:-https://jishnupg-opencode-cli.hf.space}"
     export OPENAI_API_BASE_URL="http://127.0.0.1:20129/v1"
     export OPENAI_API_KEY="omniroute"
-    export WEBUI_SECRET_KEY="${WEBUI_SECRET_KEY:-opencode_webui_jwt_secret_2026}"
+    export WEBUI_SECRET_KEY="${WEBUI_SECRET_KEY:?WEBUI_SECRET_KEY is not set in Space Secrets}"
     export ENABLE_OLLAMA_API="${ENABLE_OLLAMA_API:-false}"
     export ENABLE_OPENAI_API="true"
     export TOOL_SERVERS=""
@@ -120,7 +142,11 @@ if command -v open-webui >/dev/null 2>&1; then
         rm -rf /root/.open-webui 2>/dev/null || true
         ln -sf /data/open-webui /root/.open-webui
     fi
-    export CORS_ALLOW_ORIGIN="*"
+    # Persist Hugging Face model cache to /data so it survives restarts
+    export HF_HOME="/data/cache/huggingface"
+    export SENTENCE_TRANSFORMERS_HOME="/data/cache/sentence_transformers"
+    mkdir -p "$HF_HOME" "$SENTENCE_TRANSFORMERS_HOME" 2>/dev/null || true
+    export CORS_ALLOW_ORIGIN="${WEBUI_URL:-https://jishnupg-opencode-cli.hf.space}"
     export RAG_AUTO_UPDATE_INDEX="false"
     export HF_HUB_ENABLE_HF_TRANSFER="1"
     export WEBUI_AUTH="true"

@@ -3,20 +3,24 @@ OmniRoute AI Gateway Router
 ===========================
 Routes OmniRoute endpoints cleanly without interfering with Open WebUI, Jellyfin, or TG-Streamer.
 Handles:
-  - /omniroute/ (Dashboard & frontend routes)
-  - /_next/ (Next.js assets)
-  - /v1/ (OpenAI API compatibility format)
-  - /v1beta/ (Gemini API compatibility format)
-  - /authorize (OAuth authorization route)
-  - OmniRoute backend settings & management APIs (/api/providers, /api/combos, /api/settings, /api/usage, etc.)
+  - /omniroute/*          Dashboard & frontend routes     → port 20128
+  - /v1/*                 OpenAI API compatibility        → port 20129
+  - /v1beta/*             Gemini API compatibility        → port 20129
+  - /omniroute/live-ws/*  Live monitoring WebSocket       → port 20132
+  - /api/monitoring/*     OmniRoute health endpoints      → port 20128
+  - /api/providers et al  OmniRoute management APIs       → port 20128
 """
 
-import os
-import re
 import logging
-from fastapi import APIRouter, Request, Response
-from fastapi.responses import RedirectResponse, HTMLResponse, JSONResponse
-from gateway.utils import OMNIROUTE_PORT, proxy_http_request
+from fastapi import APIRouter, Request, WebSocket
+from fastapi.responses import RedirectResponse
+from gateway.utils import (
+    OMNIROUTE_PORT,
+    OMNIROUTE_API_PORT,
+    OMNIROUTE_WS_PORT,
+    proxy_http_request,
+    proxy_websocket_stream,
+)
 
 logger = logging.getLogger("OmniRouteGateway")
 router = APIRouter(tags=["OmniRoute"])
@@ -53,9 +57,15 @@ async def omniroute_v1beta_api(request: Request, path: str = ""):
 # ── 3. OmniRoute Live Monitoring WebSocket (Dedicated WS Port 20132) ──────────
 @router.websocket("/omniroute/live-ws")
 @router.websocket("/omniroute/live-ws/{path:path}")
-async def omniroute_live_ws(websocket: Request, path: str = ""):
+async def omniroute_live_ws(websocket: WebSocket, path: str = ""):
     target_ws = f"ws://127.0.0.1:{OMNIROUTE_WS_PORT}/live-ws/{path}" if path else f"ws://127.0.0.1:{OMNIROUTE_WS_PORT}/live-ws"
     await proxy_websocket_stream(websocket, target_ws)
+
+# ── 4. OmniRoute Monitoring / Health Endpoints ────────────────────────────────
+@router.api_route("/api/monitoring/{path:path}", methods=["GET", "HEAD", "OPTIONS"])
+async def omniroute_monitoring(request: Request, path: str = ""):
+    target = f"http://127.0.0.1:{OMNIROUTE_PORT}/api/monitoring/{path}"
+    return await proxy_http_request(target, request, default_prefix="")
 
 # ── 3. Next.js Static Asset Routing ──────────────────────────────────────────
 @router.api_route("/_next/{path:path}", methods=["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"])
