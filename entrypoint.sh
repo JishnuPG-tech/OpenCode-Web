@@ -14,21 +14,42 @@ mkdir -p /data/open-webui 2>/dev/null || echo "[WARN] Could not create /data/ope
 mkdir -p /data/omniroute 2>/dev/null || echo "[WARN] Could not create /data/omniroute"
 mkdir -p /data/jellyfin/data /data/jellyfin/config /data/jellyfin/cache /data/jellyfin/log /data/jellyfin/media/Movies /data/jellyfin/media/TVShows 2>/dev/null || true
 
-# Symlink OmniRoute data directory to /data/omniroute for 100% persistence
-if [ ! -L "/root/.omniroute" ]; then
-    rm -rf /root/.omniroute 2>/dev/null || true
-    ln -sf /data/omniroute /root/.omniroute
+# OmniRoute data directory setup (Local ext4 for SQLite locks + background sync to HF persistent /data mount)
+if [ -L "/root/.omniroute" ]; then
+    rm -f /root/.omniroute
+fi
+mkdir -p /root/.omniroute /data/omniroute 2>/dev/null || true
+
+# Restore existing DB and secrets from persistent volume if available
+if [ -f "/data/omniroute/storage.sqlite" ] && [ ! -f "/root/.omniroute/storage.sqlite" ]; then
+    echo "[INIT] Restoring OmniRoute SQLite database from persistent volume..."
+    cp -f /data/omniroute/storage.sqlite /root/.omniroute/storage.sqlite 2>/dev/null || true
+fi
+if [ -f "/data/omniroute/server.env" ] && [ ! -f "/root/.omniroute/server.env" ]; then
+    cp -f /data/omniroute/server.env /root/.omniroute/server.env 2>/dev/null || true
 fi
 
-# Clean up stale lock files from previous runs
-rm -f /data/omniroute/*.sqlite-wal /data/omniroute/*.sqlite-shm /data/omniroute/*.lock 2>/dev/null || true
+# Clean up stale lock files
 rm -f /root/.omniroute/*.sqlite-wal /root/.omniroute/*.sqlite-shm /root/.omniroute/*.lock 2>/dev/null || true
+
+# Background sync process to preserve OmniRoute database and secrets to /data mount
+(
+    while true; do
+        sleep 25
+        if [ -f "/root/.omniroute/storage.sqlite" ]; then
+            cp -f /root/.omniroute/storage.sqlite /data/omniroute/storage.sqlite 2>/dev/null || true
+        fi
+        if [ -f "/root/.omniroute/server.env" ]; then
+            cp -f /root/.omniroute/server.env /data/omniroute/server.env 2>/dev/null || true
+        fi
+    done
+) &
 
 # Start OmniRoute AI Gateway on Port 20128
 echo "[INIT] Starting OmniRoute AI Gateway on port 20128..."
 export PORT=20128
 export HOSTNAME="127.0.0.1"
-export DATA_DIR="/data/omniroute"
+export DATA_DIR="/root/.omniroute"
 if [ -d "/omniroute" ]; then
     cd /omniroute
     if [ -f "server.js" ]; then
