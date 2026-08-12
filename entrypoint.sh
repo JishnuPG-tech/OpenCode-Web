@@ -78,8 +78,16 @@ mkdir -p /data/omniroute/oauth /data/omniroute/credentials /data/omniroute/runti
 echo "[STORAGE] Filesystem mount inspection:"
 mount | grep -E 'hf|bucket|data|fuse|nfs' || echo "[STORAGE] /data info: $(df -h /data 2>&1 || true)"
 
+# ── Reversible OmniRoute State Reset (Archive /data/omniroute -> /data/omniroute-old once) ──
+if [ -d "/data/omniroute" ] && [ ! -d "/data/omniroute-old" ] && [ -f "/data/omniroute/storage.sqlite" ]; then
+    echo "[PERSISTENCE] Archiving old pre-encryption state /data/omniroute -> /data/omniroute-old..."
+    cp -af /data/omniroute /data/omniroute-old 2>/dev/null || true
+    rm -rf /data/omniroute/storage.sqlite* /data/omniroute/oauth /data/omniroute/credentials /data/omniroute/runtime /data/omniroute/gemini_cli /data/omniroute/config_dir 2>/dev/null || true
+    echo "[PERSISTENCE] /data/omniroute state cleared for clean baseline initialization."
+fi
+
 # Search for pre-existing non-empty database snapshot anywhere inside /data
-FOUND_DB_PATH=$(find /data -name "storage.sqlite" -type f -size +0c 2>/dev/null | head -n 1 || true)
+FOUND_DB_PATH=$(find /data/omniroute -name "storage.sqlite" -type f -size +0c 2>/dev/null | head -n 1 || true)
 
 if [ -n "$FOUND_DB_PATH" ] && [ -f "$FOUND_DB_PATH" ]; then
     _SIZE=$(wc -c < "$FOUND_DB_PATH" 2>/dev/null | tr -d ' \t\n\r' || echo "0")
