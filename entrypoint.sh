@@ -260,8 +260,10 @@ if command -v open-webui >/dev/null 2>&1; then
     fi
     # Persist Hugging Face model cache to /data so it survives restarts
     export HF_HOME="/data/cache/huggingface"
+    export HF_HUB_CACHE="/data/cache/huggingface/hub"
+    export TRANSFORMERS_CACHE="/data/cache/huggingface/transformers"
     export SENTENCE_TRANSFORMERS_HOME="/data/cache/sentence_transformers"
-    mkdir -p "$HF_HOME" "$SENTENCE_TRANSFORMERS_HOME" 2>/dev/null || true
+    mkdir -p "$HF_HOME" "$HF_HUB_CACHE" "$TRANSFORMERS_CACHE" "$SENTENCE_TRANSFORMERS_HOME" 2>/dev/null || true
     export CORS_ALLOW_ORIGIN="${WEBUI_URL:-https://jishnupg-opencode-cli.hf.space}"
     export RAG_AUTO_UPDATE_INDEX="false"
     export HF_HUB_ENABLE_HF_TRANSFER="1"
