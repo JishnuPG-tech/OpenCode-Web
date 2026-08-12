@@ -1,28 +1,28 @@
 """
-OpenCode Space — Production Gateway Main Application
-=====================================================
-Assembles Service Routers into a unified FastAPI ASGI Gateway:
-  1. Open WebUI (gateway.openwebui)
-  2. Jellyfin Media Server (gateway.jellyfin)
-  3. TG-Drive Direct Streamer (gateway.tg_stream)
+OpenCode Space — Production Gateway Main Application (Approach A)
+==================================================================
+OmniRoute is mounted as the primary root application (/), owning /dashboard/*, /api/*, /_next/*, etc.
+Open WebUI is cleanly namespace-isolated under /openwebui/.
 """
 
 import os
 import logging
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request, Response
-from fastapi.responses import HTMLResponse, FileResponse, RedirectResponse
+from fastapi.responses import RedirectResponse
 
 from gateway.utils import (
     get_http_client,
     proxy_http_request,
     WEBUI_PORT,
     OMNIROUTE_PORT,
+    OMNIROUTE_API_PORT,
     JELLYFIN_PORT,
     TG_PORT,
+    PUBLIC_HOST,
 )
 from gateway.openwebui import router as openwebui_router, fixup_webui_html
-from gateway.omniroute import router as omniroute_router, OMNIROUTE_PAGE_ROUTES
+from gateway.omniroute import router as omniroute_router
 from gateway.jellyfin import router as jellyfin_router
 from gateway.tg_stream import router as tg_stream_router
 
@@ -47,21 +47,28 @@ app.include_router(jellyfin_router)
 app.include_router(tg_stream_router)
 
 
-# ── Root Landing & Diagnostic Routes ─────────────────────────────────────────
-@app.api_route("/", methods=["GET", "HEAD"])
-async def root_redirect(request: Request):
-    return RedirectResponse(url="/openwebui/", status_code=307)
+# ── Root Direct Handler for OmniRoute Landing Page ───────────────────────────
+@app.api_route("/", methods=["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"])
+async def root_proxy(request: Request):
+    extra = {
+        "Host": PUBLIC_HOST,
+        "X-Forwarded-Host": PUBLIC_HOST,
+        "X-Forwarded-Proto": "https",
+        "X-Forwarded-Port": "443"
+    }
+    return await proxy_http_request(f"http://127.0.0.1:{OMNIROUTE_PORT}/", request, default_prefix="", extra_headers=extra)
 
 @app.api_route("/favicon.ico", methods=["GET", "HEAD"])
 async def favicon():
     return Response(content=b"", status_code=204)
 
+# ── Health & Diagnostics ──────────────────────────────────────────────────────
 @app.get("/health")
 @app.get("/debug/status")
 async def health_check():
     client = get_http_client()
     services = {
-        "omniroute_dashboard": f"http://127.0.0.1:{OMNIROUTE_PORT}/omniroute",
+        "omniroute_dashboard": f"http://127.0.0.1:{OMNIROUTE_PORT}/dashboard",
         "omniroute_api":       f"http://127.0.0.1:{OMNIROUTE_API_PORT}/v1/models",
         "openwebui":           f"http://127.0.0.1:{WEBUI_PORT}/api/config",
         "jellyfin":            f"http://127.0.0.1:{JELLYFIN_PORT}/health",
@@ -77,38 +84,43 @@ async def health_check():
     return {"gateway": "healthy", "upstreams": results}
 
 
-# ── Catch-All Referer & Subpath Fallback Router ──────────────────────────────
+# ── Catch-All Router (OmniRoute at Root /, OpenWebUI at /openwebui/) ─────────
 @app.api_route("/{path:path}", methods=["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"])
 async def route_catch_all(path: str, request: Request):
-    referer = request.headers.get("referer", "").lower()
     req_path = request.url.path.lower()
+    referer  = request.headers.get("referer", "").lower()
 
-    # High-priority OAuth callback relay -> OmniRoute
-    if req_path.startswith("/callback") or req_path.startswith("/auth/callback") or req_path.startswith("/oauth/callback"):
-        extra = {
-            "Host": PUBLIC_HOST,
-            "X-Forwarded-Host": PUBLIC_HOST,
-            "X-Forwarded-Proto": "https",
-            "X-Forwarded-Port": "443"
-        }
-        return await proxy_http_request(f"http://127.0.0.1:{OMNIROUTE_PORT}/{path}", request, default_prefix="", extra_headers=extra)
-
-    if "/jellyfin" in referer or req_path.startswith("/jellyfin"):
-        return await proxy_http_request(f"http://127.0.0.1:{JELLYFIN_PORT}/{path}", request, default_prefix="/jellyfin", extra_headers={"X-Forwarded-Prefix": "/jellyfin"})
-    elif "/tg_stream" in referer or req_path.startswith("/tg_stream"):
-        return await proxy_http_request(f"http://127.0.0.1:{TG_PORT}/{path}", request, default_prefix="/tg_stream")
-    elif "/omniroute" in referer or "_rsc" in request.query_params or req_path in OMNIROUTE_PAGE_ROUTES or any(req_path.startswith(r) for r in OMNIROUTE_PAGE_ROUTES):
-        extra = {
-            "Host": PUBLIC_HOST,
-            "X-Forwarded-Host": PUBLIC_HOST,
-            "X-Forwarded-Proto": "https",
-            "X-Forwarded-Port": "443"
-        }
-        sub_p = path.replace("omniroute/", "", 1).replace("omniroute", "", 1)
-        return await proxy_http_request(f"http://127.0.0.1:{OMNIROUTE_PORT}/{sub_p}", request, default_prefix="/omniroute", extra_headers=extra)
-    elif "/openwebui" in referer or req_path.startswith("/openwebui"):
+    # Open WebUI routes (/openwebui and /openwebui/*)
+    if req_path.startswith("/openwebui"):
         sub_p = path.replace("openwebui/", "", 1).replace("openwebui", "", 1)
         return await proxy_http_request(f"http://127.0.0.1:{WEBUI_PORT}/{sub_p}", request, default_prefix="/openwebui", html_fixup=fixup_webui_html)
 
-    # Default all remaining uncaptured root traffic to Open WebUI
-    return await proxy_http_request(f"http://127.0.0.1:{WEBUI_PORT}/{path}", request, default_prefix="/openwebui", html_fixup=fixup_webui_html)
+    # Jellyfin routes (/jellyfin and /jellyfin/*)
+    if req_path.startswith("/jellyfin") or "/jellyfin" in referer:
+        sub_p = path.replace("jellyfin/", "", 1).replace("jellyfin", "", 1)
+        return await proxy_http_request(f"http://127.0.0.1:{JELLYFIN_PORT}/{sub_p}", request, default_prefix="/jellyfin", extra_headers={"X-Forwarded-Prefix": "/jellyfin"})
+
+    # Telegram Streamer routes (/tg-stream and /tg-stream/*)
+    if req_path.startswith("/tg-stream") or req_path.startswith("/tg_stream") or "/tg" in referer:
+        sub_p = path.replace("tg-stream/", "", 1).replace("tg_stream/", "", 1)
+        return await proxy_http_request(f"http://127.0.0.1:{TG_PORT}/{sub_p}", request, default_prefix="/tg-stream")
+
+    # Handle legacy /omniroute links by stripping prefix or proxying
+    if req_path.startswith("/omniroute"):
+        sub_p = path.replace("omniroute/", "", 1).replace("omniroute", "", 1)
+        extra = {
+            "Host": PUBLIC_HOST,
+            "X-Forwarded-Host": PUBLIC_HOST,
+            "X-Forwarded-Proto": "https",
+            "X-Forwarded-Port": "443"
+        }
+        return await proxy_http_request(f"http://127.0.0.1:{OMNIROUTE_PORT}/{sub_p}", request, default_prefix="", extra_headers=extra)
+
+    # Default all root traffic (OmniRoute dashboard, /api/*, /_next/*, /dashboard/*, /login, /callback) -> OmniRoute (:20128)
+    extra = {
+        "Host": PUBLIC_HOST,
+        "X-Forwarded-Host": PUBLIC_HOST,
+        "X-Forwarded-Proto": "https",
+        "X-Forwarded-Port": "443"
+    }
+    return await proxy_http_request(f"http://127.0.0.1:{OMNIROUTE_PORT}/{path}", request, default_prefix="", extra_headers=extra)

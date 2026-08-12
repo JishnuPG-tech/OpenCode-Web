@@ -10,6 +10,14 @@ from gateway.utils import WEBUI_PORT, proxy_http_request, proxy_websocket_stream
 router = APIRouter(tags=["OpenWebUI"])
 
 def fixup_webui_html(html: str) -> str:
+    if not html:
+        return html
+    html = html.replace('href="/_app/', 'href="/openwebui/_app/')
+    html = html.replace('src="/_app/', 'src="/openwebui/_app/')
+    html = html.replace('href="/static/', 'href="/openwebui/static/')
+    html = html.replace('src="/static/', 'src="/openwebui/static/')
+    html = html.replace('href="/favicon', 'href="/openwebui/favicon')
+    html = html.replace('src="/favicon', 'src="/openwebui/favicon')
     return html
 
 @router.api_route("/openwebui", methods=["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"])
