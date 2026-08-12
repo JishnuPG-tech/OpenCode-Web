@@ -259,10 +259,15 @@ if command -v open-webui >/dev/null 2>&1; then
     export WEBSOCKET_REDIS_URL="redis://127.0.0.1:6379/1"
     export WEBUI_WORKERS=1
     # Disable local PyTorch/SentenceTransformers embedding engine to make Open WebUI lightweight & fast
+    export BYPASS_EMBEDDING_AND_RETRIEVAL="true"
+    export OFFLINE_MODE="true"
+    export HF_HUB_OFFLINE="1"
     export RAG_EMBEDDING_ENGINE=""
     export RAG_EMBEDDING_MODEL=""
     export ENABLE_RAG_HYBRID_SEARCH="false"
+    export RAG_AUTO_UPDATE="false"
     export RAG_AUTO_UPDATE_INDEX="false"
+    export ENABLE_VERSION_UPDATE_CHECK="false"
     export TOOL_SERVERS=""
     export OPENAPI_TOOL_SERVERS=""
     export PORT=8098
@@ -273,7 +278,6 @@ if command -v open-webui >/dev/null 2>&1; then
         ln -sf /data/open-webui /root/.open-webui
     fi
     export CORS_ALLOW_ORIGIN="https://jishnupg-opencode-cli.hf.space"
-    export HF_HUB_ENABLE_HF_TRANSFER="1"
     export WEBUI_AUTH="true"
     export ENABLE_SIGNUP="true"
     open-webui serve --port 8098 --workers 1 &
