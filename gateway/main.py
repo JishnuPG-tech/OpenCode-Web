@@ -48,7 +48,7 @@ app.include_router(tg_stream_router)
 
 
 # ── Root Landing & Diagnostic Routes ─────────────────────────────────────────
-@app.get("/", methods=["GET", "HEAD"])
+@app.api_route("/", methods=["GET", "HEAD"])
 async def root_redirect(request: Request):
     return RedirectResponse(url="/openwebui/", status_code=307)
 
