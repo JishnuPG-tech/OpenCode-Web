@@ -11,7 +11,7 @@ import os
 import logging
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request, Response
-from fastapi.responses import HTMLResponse, FileResponse
+from fastapi.responses import HTMLResponse, FileResponse, RedirectResponse
 
 from gateway.utils import (
     get_http_client,
@@ -48,6 +48,10 @@ app.include_router(tg_stream_router)
 
 
 # ── Root Landing & Diagnostic Routes ─────────────────────────────────────────
+@app.get("/", methods=["GET", "HEAD"])
+async def root_redirect(request: Request):
+    return RedirectResponse(url="/openwebui/", status_code=307)
+
 @app.api_route("/favicon.ico", methods=["GET", "HEAD"])
 async def favicon():
     return Response(content=b"", status_code=204)
@@ -90,6 +94,9 @@ async def route_catch_all(path: str, request: Request):
             "X-Forwarded-Proto": "http"
         }
         return await proxy_http_request(f"http://127.0.0.1:{OMNIROUTE_PORT}/{path}", request, default_prefix="/omniroute", extra_headers=extra)
+    elif "/openwebui" in referer or req_path.startswith("/openwebui"):
+        sub_p = path.replace("openwebui/", "", 1).replace("openwebui", "", 1)
+        return await proxy_http_request(f"http://127.0.0.1:{WEBUI_PORT}/{sub_p}", request, default_prefix="/openwebui", html_fixup=fixup_webui_html)
 
-    # Default all remaining root traffic to Open WebUI
-    return await proxy_http_request(f"http://127.0.0.1:{WEBUI_PORT}/{path}", request, html_fixup=fixup_webui_html)
+    # Default all remaining uncaptured root traffic to Open WebUI
+    return await proxy_http_request(f"http://127.0.0.1:{WEBUI_PORT}/{path}", request, default_prefix="/openwebui", html_fixup=fixup_webui_html)
