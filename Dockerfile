@@ -33,8 +33,9 @@ RUN mkdir -p /etc/apt/keyrings \
  && apt-get update && apt-get install -y --no-install-recommends jellyfin-server jellyfin-web ffmpeg \
  && rm -rf /var/lib/apt/lists/*
 
-# 3. Install Python Dependencies (Open WebUI, Pyrogram, FastAPI, Uvicorn, HTTPX, Aiohttp)
-RUN pip3 install --no-cache-dir aiohttp pyrogram tgcrypto open-webui httpx uvicorn fastapi --break-system-packages || true
+# 3. Install Python Dependencies (CPU PyTorch to avoid massive CUDA wheels, plus Open WebUI & utilities)
+RUN pip3 install --no-cache-dir torch --index-url https://download.pytorch.org/whl/cpu --break-system-packages \
+ && pip3 install --no-cache-dir aiohttp pyrogram tgcrypto open-webui httpx uvicorn fastapi --break-system-packages || true
 
 # 4. Install Node.js 22.22.2 LTS (meets OmniRoute's minimum required runtime v22.22.2+)
 RUN curl -fsSL https://nodejs.org/dist/v22.22.2/node-v22.22.2-linux-x64.tar.gz \
@@ -44,12 +45,13 @@ RUN curl -fsSL https://nodejs.org/dist/v22.22.2/node-v22.22.2-linux-x64.tar.gz \
 WORKDIR /omniroute
 ENV NEXT_TELEMETRY_DISABLED=1
 ENV OMNIROUTE_USE_TURBOPACK=0
-ENV NODE_OPTIONS="--max-old-space-size=4096"
+ENV NODE_OPTIONS="--max-old-space-size=2048"
+ENV DISABLE_ESLINT_PLUGIN=true
 
 RUN git clone --depth 1 https://github.com/diegosouzapw/OmniRoute.git /omniroute \
  && npm install --legacy-peer-deps \
  && npm rebuild better-sqlite3 --build-from-source \
- && NEXT_TELEMETRY_DISABLED=1 OMNIROUTE_USE_TURBOPACK=0 NODE_OPTIONS="--max-old-space-size=4096" npm run build || true
+ && NEXT_TELEMETRY_DISABLED=1 OMNIROUTE_USE_TURBOPACK=0 NODE_OPTIONS="--max-old-space-size=2048" npm run build || true
 
 RUN mkdir -p /root/.cache /data/cache /data/omniroute /data/open-webui
 RUN chmod -R 777 /root/.cache /data/cache /omniroute
