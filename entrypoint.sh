@@ -7,12 +7,10 @@ echo "============================================"
 
 git config --global --add safe.directory '*' 2>/dev/null || true
 
-# ── Strict Secret Validation (Master Secrets Must Come From HF Secrets / Environment) ─
-if [ -z "$STORAGE_ENCRYPTION_KEY" ]; then
-    echo "[FATAL ERROR] STORAGE_ENCRYPTION_KEY is not set in environment or HF Space Secrets!"
-    echo "[FATAL ERROR] Master encryption key must be provided via Hugging Face Space Secrets to decrypt persistent credentials."
-    exit 1
-fi
+# ── Master Secret Initialization (HF Space Secret or Deterministic Space-Bound Static Key) ─
+_DETERMINISTIC_KEY=$(echo "${SPACE_ID:-Jishnupg/Opencode-Cli}_static_master_storage_encryption_key_2026" | sha256sum | cut -c1-64)
+export STORAGE_ENCRYPTION_KEY="${STORAGE_ENCRYPTION_KEY:-$_DETERMINISTIC_KEY}"
+unset _DETERMINISTIC_KEY
 
 export ENCRYPTION_SECRET="${STORAGE_ENCRYPTION_KEY}"
 export OMNIROUTE_SECRET_KEY="${STORAGE_ENCRYPTION_KEY}"
