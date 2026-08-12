@@ -156,12 +156,47 @@ for p_route in OMNIROUTE_PAGE_ROUTES:
 
 
 # ── 5. Specific OmniRoute Backend Management & Auth APIs ──────────────────────
-# Only capture specific OAuth/CLI credential paths on root /api/
-# All other /api/* requests (like /api/config, /api/sync, /api/v1) belong strictly to Open WebUI
 OMNIROUTE_API_PREFIXES = (
+    "/api/interception-rules",
+    "/api/discovery-alias",
+    "/api/provider-param-filters",
     "/api/cloud-agent-credentials",
     "/api/cli-access-tokens",
     "/api/oauth",
+    "/api/providers",
+    "/api/combos",
+    "/api/circuit-breakers",
+    "/api/settings",
+    "/api/keys",
+    "/api/api-keys",
+    "/api/dashboard",
+    "/api/status",
+    "/api/logs",
+    "/api/audit",
+    "/api/usage",
+    "/api/system",
+    "/api/skills",
+    "/api/tunnels",
+    "/api/version-manager",
+    "/api/tools",
+    "/api/mcp",
+    "/api/a2a",
+    "/api/webhooks",
+    "/api/synced-available-models",
+    "/api/shutdown",
+    "/api/storage",
+    "/api/telemetry",
+    "/api/translator",
+    "/api/upstream-proxy",
+    "/api/credentials",
+    "/api/connections",
+    "/api/agent-bridge",
+    "/api/inspector",
+    "/api/playground",
+    "/api/quota-pools",
+    "/api/quota-groups",
+    "/api/plugins",
+    "/api/models-dev",
 )
 
 @router.api_route(
@@ -195,6 +230,12 @@ for prefix in OMNIROUTE_API_PREFIXES:
             include_in_schema=False
         )
         async def omniroute_api_handler(request: Request, path: str = ""):
+            # Smart check: if Referer indicates Open WebUI (e.g. /openwebui/), pass to Open WebUI
+            referer = request.headers.get("referer", "").lower()
+            if "/openwebui" in referer and s_path not in ("cloud-agent-credentials", "cli-access-tokens", "oauth"):
+                target = f"http://127.0.0.1:{WEBUI_PORT}/api/{s_path}/{path}" if path else f"http://127.0.0.1:{WEBUI_PORT}/api/{s_path}"
+                return await proxy_http_request(target, request, default_prefix="/openwebui")
+
             extra = {
                 "Host": PUBLIC_HOST,
                 "X-Forwarded-Host": PUBLIC_HOST,
