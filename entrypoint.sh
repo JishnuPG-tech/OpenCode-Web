@@ -89,8 +89,13 @@ fi
 # Continuous sync function (consolidates live ext4 DB -> persistent bucket snapshot)
 sync_omniroute_db() {
     if [ -f "/root/.omniroute/storage.sqlite" ] && [ -s "/root/.omniroute/storage.sqlite" ]; then
-        mkdir -p /data/omniroute 2>/dev/null || true
         TARGET_SNAP="/data/omniroute/storage.sqlite"
+        if [ -d "/data/omniroute/storage.sqlite" ]; then
+            TARGET_SNAP="/data/omniroute/storage.sqlite/storage.sqlite"
+        else
+            mkdir -p /data/omniroute 2>/dev/null || true
+        fi
+
         if command -v sqlite3 >/dev/null 2>&1; then
             sqlite3 /root/.omniroute/storage.sqlite ".backup ${TARGET_SNAP}" 2>/dev/null || cp -f /root/.omniroute/storage.sqlite "${TARGET_SNAP}" 2>/dev/null || true
         else
@@ -272,14 +277,18 @@ if command -v open-webui >/dev/null 2>&1; then
     export WEBSOCKET_MANAGER="redis"
     export WEBSOCKET_REDIS_URL="redis://127.0.0.1:6379/1"
     export WEBUI_WORKERS=1
-    # Disable local PyTorch/SentenceTransformers embedding engine to make Open WebUI lightweight & fast
+    # Disable local PyTorch/SentenceTransformers embedding engine to make Open WebUI lightweight & instant
     export BYPASS_EMBEDDING_AND_RETRIEVAL="true"
     export RAG_EMBEDDING_ENGINE=""
     export RAG_EMBEDDING_MODEL=""
+    export RAG_RERANKING_MODEL=""
     export ENABLE_RAG_HYBRID_SEARCH="false"
+    export ENABLE_RAG_LOCAL_WEB_FETCH="false"
     export RAG_AUTO_UPDATE="false"
     export RAG_AUTO_UPDATE_INDEX="false"
     export ENABLE_VERSION_UPDATE_CHECK="false"
+    export HF_HUB_OFFLINE="1"
+    export TRANSFORMERS_OFFLINE="1"
     export TOOL_SERVERS=""
     export OPENAPI_TOOL_SERVERS=""
     export PORT=8098
