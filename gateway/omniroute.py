@@ -34,7 +34,8 @@ async def omniroute_main_route(request: Request, path: str = ""):
         "X-Forwarded-Host": f"127.0.0.1:{OMNIROUTE_PORT}",
         "X-Forwarded-Proto": "http"
     }
-    target = f"http://127.0.0.1:{OMNIROUTE_PORT}/omniroute/{path}" if path else f"http://127.0.0.1:{OMNIROUTE_PORT}/omniroute"
+    # Strip /omniroute prefix when proxying to OmniRoute backend on port 20128
+    target = f"http://127.0.0.1:{OMNIROUTE_PORT}/{path}" if path else f"http://127.0.0.1:{OMNIROUTE_PORT}/"
     return await proxy_http_request(
         target,
         request,

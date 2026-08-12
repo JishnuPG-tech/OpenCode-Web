@@ -83,6 +83,13 @@ async def route_catch_all(path: str, request: Request):
         return await proxy_http_request(f"http://127.0.0.1:{JELLYFIN_PORT}/{path}", request, default_prefix="/jellyfin", extra_headers={"X-Forwarded-Prefix": "/jellyfin"})
     elif "/tg_stream" in referer or req_path.startswith("/tg_stream"):
         return await proxy_http_request(f"http://127.0.0.1:{TG_PORT}/{path}", request, default_prefix="/tg_stream")
+    elif "/omniroute" in referer or "_rsc" in request.query_params or req_path in ("/dashboard", "/status", "/settings", "/combos", "/providers", "/logs", "/api-keys"):
+        extra = {
+            "Host": f"127.0.0.1:{OMNIROUTE_PORT}",
+            "X-Forwarded-Host": f"127.0.0.1:{OMNIROUTE_PORT}",
+            "X-Forwarded-Proto": "http"
+        }
+        return await proxy_http_request(f"http://127.0.0.1:{OMNIROUTE_PORT}/{path}", request, default_prefix="/omniroute", extra_headers=extra)
 
-    # Default all root traffic to Open WebUI!
+    # Default all remaining root traffic to Open WebUI
     return await proxy_http_request(f"http://127.0.0.1:{WEBUI_PORT}/{path}", request, html_fixup=fixup_webui_html)
