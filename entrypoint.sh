@@ -36,6 +36,8 @@ export JWT_SECRET="${JWT_SECRET:-$(echo "opencode_jwt_secret_hf_space_key_2026" 
 export API_KEY_SECRET="${API_KEY_SECRET:-$(echo "opencode_api_key_secret_hf_space_key_2026" | sha256sum | cut -c1-64)}"
 export OMNIROUTE_WS_BRIDGE_SECRET="${OMNIROUTE_WS_BRIDGE_SECRET:-$(echo "ws_bridge_${JWT_SECRET}" | sha256sum | cut -c1-48)}"
 export WEBUI_SECRET_KEY="${WEBUI_SECRET_KEY:-$(echo "owui_${JWT_SECRET}" | sha256sum | cut -c1-56)}"
+export ENCRYPTION_SECRET="${ENCRYPTION_SECRET:-${JWT_SECRET}}"
+export OMNIROUTE_SECRET_KEY="${OMNIROUTE_SECRET_KEY:-${JWT_SECRET}}"
 
 mkdir -p /data/omniroute 2>/dev/null || true
 if [ ! -f "/data/omniroute/server.env" ]; then
@@ -45,6 +47,8 @@ JWT_SECRET="${JWT_SECRET}"
 API_KEY_SECRET="${API_KEY_SECRET}"
 OMNIROUTE_WS_BRIDGE_SECRET="${OMNIROUTE_WS_BRIDGE_SECRET}"
 WEBUI_SECRET_KEY="${WEBUI_SECRET_KEY}"
+ENCRYPTION_SECRET="${ENCRYPTION_SECRET}"
+OMNIROUTE_SECRET_KEY="${OMNIROUTE_SECRET_KEY}"
 EOF
 fi
 
