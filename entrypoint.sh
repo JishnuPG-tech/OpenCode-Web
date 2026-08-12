@@ -49,46 +49,49 @@ mkdir -p /data/omniroute 2>/dev/null || echo "[WARN] Could not create /data/omni
 mkdir -p /data/jellyfin/data /data/jellyfin/config /data/jellyfin/cache /data/jellyfin/log \
           /data/jellyfin/media/Movies /data/jellyfin/media/TVShows 2>/dev/null || true
 
-# ── OmniRoute: Local ext4 active DB + backup sync to HF /data ─────────────────
-if [ -L "/root/.omniroute" ]; then rm -f /root/.omniroute; fi
-mkdir -p /root/.omniroute 2>/dev/null || true
+# ── OmniRoute Database Restoration & Persistent Synchronization ────────────────
+mkdir -p /root/.omniroute /data/omniroute 2>/dev/null || true
 
-# Restore DB snapshot from persistent volume if a non-empty DB exists in /data
 _RESTORED=0
-for _DB_CANDIDATE in \
-    "/data/omniroute/storage.sqlite" \
-    "/data/omniroute.sqlite" \
-    "/data/storage.sqlite" \
-    "/data/omniroute/db.sqlite" \
-    "/data/omniroute/omniroute.db" \
-    "/data/db.sqlite"; do
-    if [ -f "$_DB_CANDIDATE" ] && [ -s "$_DB_CANDIDATE" ]; then
-        echo "[INIT] Restoring OmniRoute database from ${_DB_CANDIDATE}..."
-        cp -f "$_DB_CANDIDATE" /root/.omniroute/storage.sqlite 2>/dev/null || true
-        _RESTORED=1
-        if command -v sqlite3 >/dev/null 2>&1; then
-            CHK=$(sqlite3 /root/.omniroute/storage.sqlite "PRAGMA quick_check;" 2>/dev/null || echo "error")
-            echo "[INIT] SQLite integrity check for ${_DB_CANDIDATE}: ${CHK}"
+if [ -d "/data/omniroute" ] && [ -f "/data/omniroute/storage.sqlite" ] && [ -s "/data/omniroute/storage.sqlite" ]; then
+    echo "[INIT] Restoring persistent OmniRoute database snapshot from /data/omniroute..."
+    cp -af /data/omniroute/storage.sqlite* /root/.omniroute/ 2>/dev/null || cp -f /data/omniroute/storage.sqlite /root/.omniroute/storage.sqlite 2>/dev/null || true
+    _RESTORED=1
+else
+    for _DB_CANDIDATE in "/data/omniroute.sqlite" "/data/storage.sqlite" "/data/db.sqlite"; do
+        if [ -f "$_DB_CANDIDATE" ] && [ -s "$_DB_CANDIDATE" ]; then
+            echo "[INIT] Restoring OmniRoute database from ${_DB_CANDIDATE}..."
+            cp -f "$_DB_CANDIDATE" /root/.omniroute/storage.sqlite 2>/dev/null || true
+            _RESTORED=1
+            break
         fi
-        break
-    fi
-done
+    done
+fi
+
 if [ "$_RESTORED" -eq 0 ]; then
     echo "[INIT] No pre-existing database snapshot found in /data. Starting with fresh DB."
 fi
 unset _DB_CANDIDATE _RESTORED
 
-# Clean stale lock files
-rm -f /root/.omniroute/*.sqlite-wal /root/.omniroute/*.sqlite-shm /root/.omniroute/*.lock 2>/dev/null || true
+# Continuous synchronization function (copies sqlite DB + WAL + SHM files)
+sync_omniroute_db() {
+    if [ -f "/root/.omniroute/storage.sqlite" ]; then
+        mkdir -p /data/omniroute 2>/dev/null || true
+        cp -af /root/.omniroute/storage.sqlite* /data/omniroute/ 2>/dev/null || true
+    fi
+}
 
-# SQLite-aware consistent snapshot backup every 60 seconds
+# Sync immediately at startup
+sync_omniroute_db
+
+# Flush to persistent storage on container shutdown
+trap sync_omniroute_db EXIT INT TERM
+
+# High-frequency background sync every 15 seconds
 (
     while true; do
-        sleep 60
-        if [ -f "/root/.omniroute/storage.sqlite" ] && command -v sqlite3 >/dev/null 2>&1; then
-            mkdir -p /data/omniroute 2>/dev/null || true
-            sqlite3 /root/.omniroute/storage.sqlite ".backup /data/omniroute/storage.sqlite" 2>/dev/null || true
-        fi
+        sleep 15
+        sync_omniroute_db
     done
 ) &
 
