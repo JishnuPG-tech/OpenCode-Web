@@ -34,8 +34,8 @@ RUN mkdir -p /etc/apt/keyrings \
 # Install aiohttp, pyrogram, tgcrypto, and Open WebUI
 RUN pip3 install --no-cache-dir aiohttp pyrogram tgcrypto open-webui --break-system-packages || true
 
-# Install Node.js 22 LTS (recommended for OmniRoute runtime)
-RUN curl -fsSL https://nodejs.org/dist/v22.14.0/node-v22.14.0-linux-x64.tar.gz \
+# Install Node.js 22.22.2 LTS (meets OmniRoute's minimum required runtime v22.22.2+)
+RUN curl -fsSL https://nodejs.org/dist/v22.22.2/node-v22.22.2-linux-x64.tar.gz \
     | tar -xz -C /usr/local --strip-components=1
 
 # Install OmniRoute globally, repair runtime binaries (better-sqlite3), and ensure Next.js cache dirs are writable
