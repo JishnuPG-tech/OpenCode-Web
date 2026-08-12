@@ -69,13 +69,15 @@ mkdir -p /root/.omniroute /data/omniroute 2>/dev/null || true
 
 # Restore DB snapshot from persistent volume if it exists
 if [ -f "/data/omniroute/storage.sqlite" ] && [ -s "/data/omniroute/storage.sqlite" ]; then
-    echo "[INIT] Restoring persistent OmniRoute database from /data/omniroute/storage.sqlite..."
+    _SIZE=$(wc -c < /data/omniroute/storage.sqlite 2>/dev/null || echo "0")
+    echo "[PERSISTENCE] Found persistent snapshot: /data/omniroute/storage.sqlite (${_SIZE} bytes)"
     cp -f /data/omniroute/storage.sqlite /root/.omniroute/storage.sqlite 2>/dev/null || true
     if [ -f "/data/omniroute/storage.sqlite-wal" ]; then
         cp -f /data/omniroute/storage.sqlite-wal /root/.omniroute/storage.sqlite-wal 2>/dev/null || true
     fi
+    echo "[PERSISTENCE] Restored persistent OmniRoute database successfully."
 else
-    echo "[INIT] No pre-existing database found in /data/omniroute. OmniRoute will start with fresh DB."
+    echo "[PERSISTENCE] No pre-existing database found in /data/omniroute. OmniRoute will start with fresh DB."
 fi
 
 # Continuous sync function (flushes local ext4 DB -> persistent /data)
@@ -86,6 +88,8 @@ sync_omniroute_db() {
         if [ -f "/root/.omniroute/storage.sqlite-wal" ]; then
             cp -f /root/.omniroute/storage.sqlite-wal /data/omniroute/storage.sqlite-wal 2>/dev/null || true
         fi
+        _SIZE=$(wc -c < /data/omniroute/storage.sqlite 2>/dev/null || echo "0")
+        echo "[PERSISTENCE] Snapshot sync complete: /root/.omniroute/storage.sqlite -> /data/omniroute/storage.sqlite (${_SIZE} bytes)"
     fi
 }
 
@@ -203,10 +207,7 @@ if [ -d "/omniroute" ]; then
         if curl -fsS "http://127.0.0.1:20128/api/monitoring/health" >/dev/null 2>&1; then
             echo "[HEALTH] OmniRoute dashboard healthy after ${i}s"
             OMNIROUTE_HEALTHY=1
-            if [ -f "/root/.omniroute/storage.sqlite" ] && command -v sqlite3 >/dev/null 2>&1; then
-                mkdir -p /data/omniroute 2>/dev/null || true
-                sqlite3 /root/.omniroute/storage.sqlite ".backup /data/omniroute/storage.sqlite" 2>/dev/null || true
-            fi
+            sync_omniroute_db
             break
         fi
         sleep 1

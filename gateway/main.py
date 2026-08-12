@@ -108,7 +108,7 @@ async def route_catch_all(path: str, request: Request):
     # Context-aware Open WebUI detection
     is_owui_path = req_path.startswith("/openwebui") or req_path.startswith("/_app")
     if not is_owui_path and (has_owui_scope or "/openwebui" in referer):
-        if req_path in ("/api/config", "/api/version") or req_path.startswith("/api/v1/") or req_path.startswith("/ws/") or req_path.startswith("/socket.io"):
+        if req_path in ("/api/config", "/api/version", "/manifest.json", "/favicon.ico") or req_path.startswith(("/api/v1/", "/ws/", "/socket.io/", "/static/", "/assets/")):
             is_owui_path = True
 
     # Open WebUI routing
