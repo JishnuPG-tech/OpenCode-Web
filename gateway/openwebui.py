@@ -20,18 +20,20 @@ def fixup_webui_html(html: str) -> str:
     html = html.replace('src="/favicon', 'src="/openwebui/favicon')
     return html
 
-@router.api_route("/openwebui", methods=["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"])
-@router.api_route("/openwebui/{path:path}", methods=["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"])
+@router.api_route("/openwebui", methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"])
+@router.api_route("/openwebui/{path:path}", methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"])
 async def webui_prefix_proxy(request: Request, path: str = ""):
-    target = f"http://127.0.0.1:{WEBUI_PORT}/{path}" if path else f"http://127.0.0.1:{WEBUI_PORT}/"
-    return await proxy_http_request(
+    sub_path = path.lstrip("/")
+    target = f"http://127.0.0.1:{WEBUI_PORT}/{sub_path}" if sub_path else f"http://127.0.0.1:{WEBUI_PORT}/"
+    resp = await proxy_http_request(
         target,
         request,
         default_prefix="/openwebui",
         html_fixup=fixup_webui_html
     )
+    resp.set_cookie("OWUI_SCOPE", "1", path="/", samesite="lax")
+    return resp
 
-@router.api_route("/sw.js", methods=["GET", "HEAD"])
 @router.api_route("/openwebui/sw.js", methods=["GET", "HEAD"])
 async def webui_sw(request: Request):
     target = f"http://127.0.0.1:{WEBUI_PORT}/sw.js"
@@ -41,18 +43,10 @@ async def webui_sw(request: Request):
         return Response(content=sw_code, status_code=200, media_type="application/javascript")
     return res
 
-@router.websocket("/ws")
-@router.websocket("/ws/{path:path}")
-@router.websocket("/ws/socket.io")
-@router.websocket("/ws/socket.io/{path:path}")
-@router.websocket("/socket.io")
-@router.websocket("/socket.io/{path:path}")
 @router.websocket("/openwebui/ws")
 @router.websocket("/openwebui/ws/{path:path}")
 @router.websocket("/openwebui/ws/socket.io")
 @router.websocket("/openwebui/ws/socket.io/{path:path}")
-@router.websocket("/openwebui/socket.io")
-@router.websocket("/openwebui/socket.io/{path:path}")
 async def webui_ws_route(websocket: WebSocket, path: str = ""):
     req_path = websocket.scope.get("path", "")
     if "socket.io" in req_path:
@@ -64,10 +58,3 @@ async def webui_ws_route(websocket: WebSocket, path: str = ""):
         if path:
             target = f"{target}/{path}"
     await proxy_websocket_stream(websocket, target)
-
-# SvelteKit Asset Routing
-@router.api_route("/_app/{path:path}", methods=["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"])
-@router.api_route("/openwebui/_app/{path:path}", methods=["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"])
-async def webui_assets(request: Request, path: str = ""):
-    target = f"http://127.0.0.1:{WEBUI_PORT}/_app/{path}"
-    return await proxy_http_request(target, request, default_prefix="/openwebui")
