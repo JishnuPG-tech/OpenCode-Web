@@ -258,25 +258,21 @@ if command -v open-webui >/dev/null 2>&1; then
     export WEBSOCKET_MANAGER="redis"
     export WEBSOCKET_REDIS_URL="redis://127.0.0.1:6379/1"
     export WEBUI_WORKERS=1
-    export RAG_EMBEDDING_MODEL="sentence-transformers/all-MiniLM-L6-v2"
-    export RAG_TOP_K="3"
+    # Disable local PyTorch/SentenceTransformers embedding engine to make Open WebUI lightweight & fast
+    export RAG_EMBEDDING_ENGINE=""
+    export RAG_EMBEDDING_MODEL=""
+    export ENABLE_RAG_HYBRID_SEARCH="false"
+    export RAG_AUTO_UPDATE_INDEX="false"
     export TOOL_SERVERS=""
     export OPENAPI_TOOL_SERVERS=""
     export PORT=8098
     export DATA_DIR="/data/open-webui"
-    mkdir -p /root/.cache /data/cache /data/open-webui /data/open-webui/cache/embedding/models 2>/dev/null || true
+    mkdir -p /root/.cache /data/cache /data/open-webui 2>/dev/null || true
     if [ ! -L "/root/.open-webui" ]; then
         rm -rf /root/.open-webui 2>/dev/null || true
         ln -sf /data/open-webui /root/.open-webui
     fi
-    # Persist Hugging Face model cache to /data so it survives restarts
-    export HF_HOME="/data/cache/huggingface"
-    export HF_HUB_CACHE="/data/cache/huggingface/hub"
-    export TRANSFORMERS_CACHE="/data/cache/huggingface/transformers"
-    export SENTENCE_TRANSFORMERS_HOME="/data/open-webui/cache/embedding/models"
-    mkdir -p "$HF_HOME" "$HF_HUB_CACHE" "$TRANSFORMERS_CACHE" "$SENTENCE_TRANSFORMERS_HOME" 2>/dev/null || true
     export CORS_ALLOW_ORIGIN="https://jishnupg-opencode-cli.hf.space"
-    export RAG_AUTO_UPDATE_INDEX="false"
     export HF_HUB_ENABLE_HF_TRANSFER="1"
     export WEBUI_AUTH="true"
     export ENABLE_SIGNUP="true"
