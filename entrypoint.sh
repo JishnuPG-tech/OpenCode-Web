@@ -47,20 +47,6 @@ else
 fi
 sleep 3
 
-# Remove stale config that may have wrong model format
-python3 -c "
-import json, os
-p = '/data/config/opencode/opencode.json'
-stale_models = ['big-pickle', 'mimo-v2.5-free', 'opencode/mimo-v2.5-free', 'omniroute/auto-best-coding']
-try:
-    d = json.load(open(p)) if os.path.exists(p) else {}
-    if d.get('model') in stale_models:
-        print(f'[CONFIG] Removing stale model {d[\"model\"]!r}, will regenerate')
-        del d['model']
-        json.dump(d, open(p, 'w'), indent=2)
-except Exception as e:
-    print(f'[CONFIG] Error normalizing: {e}')
-" 2>/dev/null || true
 
 # Start OmniRoute AI Gateway in background
 echo "[INIT] Starting OmniRoute AI Gateway on port 20128..."
@@ -171,115 +157,16 @@ else
     echo "[WARN] open-webui binary not found, skipping."
 fi
 
-python3 -c "
-import json, os
-p = '/data/config/opencode/opencode.json'
-try:
-    d = json.load(open(p)) if os.path.exists(p) else {}
-except Exception:
-    d = {}
-d['\$schema'] = 'https://opencode.ai/config.json'
-d['server'] = {'port': 4097, 'hostname': '127.0.0.1'}
-d['provider'] = d.get('provider', {})
-d['provider']['omniroute'] = {
-    'name': 'OmniRoute Gateway',
-    'endpoint': 'http://127.0.0.1:20128/v1',
-    'apiKey': 'omniroute'
-}
-if d.get('model') in [None, '', 'opencode/big-pickle', 'big-pickle', 'mimo-v2.5-free', 'opencode/mimo-v2.5-free']:
-    d['model'] = 'omniroute/auto-best-coding'
-json.dump(d, open(p, 'w'), indent=2)
-print('[CONFIG] Wrote config with model:', d.get('model'))
-" 2>/dev/null || true
-
 echo "[DISK] /data usage:"
 df -h /data 2>/dev/null || echo "[WARN] Could not check /data disk space"
 
-# Check existing database
-echo "[DB] Checking database..."
-DB_PATH="/data/share/opencode/opencode.db"
-if [ -f "$DB_PATH" ]; then
-    echo "[DB] Found database at $DB_PATH ($(du -h "$DB_PATH" | cut -f1))"
-else
-    echo "[DB] No database found"
-fi
-
 # Remove stale SQLite WAL/lock files to prevent "database is locked" on startup
-DB_PATH="/data/share/opencode/opencode.db"
-if [ -f "${DB_PATH}-wal" ] || [ -f "${DB_PATH}-shm" ] || [ -f "${DB_PATH}.lock" ]; then
-    echo "[DB] Removing stale SQLite lock/WAL files to prevent startup crash..."
-    rm -f "${DB_PATH}-wal" "${DB_PATH}-shm" "${DB_PATH}.lock" 2>/dev/null || true
-fi
 rm -f /data/omniroute/*.sqlite-wal /data/omniroute/*.sqlite-shm /data/omniroute/*.lock 2>/dev/null || true
 rm -f /root/.omniroute/*.sqlite-wal /root/.omniroute/*.sqlite-shm /root/.omniroute/*.lock 2>/dev/null || true
-
-# Start the SQLite self-healing daemon in the background
-echo "[INIT] Starting self-healing daemon..."
-python3 /cleaner.py &
-sleep 1
-
-# Always ensure /projects/default exists
-mkdir -p /projects/default
-
-# Navigate to the default projects directory
-cd /projects/default
-
-# If GITHUB_REPO is not set, use the default OpenCode Drive repo
-GITHUB_REPO="${GITHUB_REPO:-https://github.com/JishnuPG-tech/OpenCode-Drive.git}"
-
-# Check current state
-HAS_GIT=$(test -d ".git" && echo "yes" || echo "no")
-HAS_REMOTE=$(git remote -v 2>/dev/null | grep -c origin || echo "0")
-IS_EMPTY=$(test -z "$(ls -A . 2>/dev/null | grep -v '^\.')" && echo "yes" || echo "no")
-
-if [ "$HAS_GIT" = "no" ] && [ "$IS_EMPTY" = "yes" ]; then
-    echo "[GIT] Empty directory. Cloning $GITHUB_REPO ..."
-    git clone "$GITHUB_REPO" . 2>&1 || echo "[GIT] Clone FAILED"
-elif [ "$HAS_GIT" = "yes" ] && [ "$HAS_REMOTE" -gt "0" ]; then
-    echo "[GIT] Repo exists. Pulling latest..."
-    git pull origin HEAD 2>/dev/null || echo "[GIT] Pull failed"
-else
-    echo "[GIT] Using existing files."
-fi
-
-# Final safety: ensure a git repo exists
-if [ ! -d .git ]; then
-    echo "[GIT] No .git found. Initializing..."
-    git init
-    git config user.email 'opencode@local.com'
-    git config user.name 'OpenCode'
-    git commit --allow-empty -m 'Initial commit'
-fi
 
 echo "============================================"
 echo "=== Launching FastAPI Gateway Proxy on Port 4096 ==="
 echo "============================================"
-
-# Remove any stale DB lock files one final time before starting opencode
-rm -f /data/share/opencode/opencode.db-wal \
-       /data/share/opencode/opencode.db-shm \
-       /data/share/opencode/opencode.db.lock 2>/dev/null || true
-
-# Start OpenCode server with retry logic
-_oc_start() {
-    for attempt in 1 2 3; do
-        echo "[OPENCODE] Start attempt $attempt..."
-        opencode serve --port 4097 --hostname 127.0.0.1 &
-        OC_PID=$!
-        sleep 3
-        if kill -0 $OC_PID 2>/dev/null; then
-            echo "[OPENCODE] Server running (PID $OC_PID)"
-            return 0
-        fi
-        echo "[OPENCODE] Attempt $attempt failed, waiting 2s before retry..."
-        rm -f /data/share/opencode/opencode.db-wal \
-               /data/share/opencode/opencode.db-shm \
-               /data/share/opencode/opencode.db.lock 2>/dev/null || true
-        sleep 2
-    done
-    echo "[OPENCODE] All start attempts failed"
-}
-_oc_start
 
 cd /
 exec python3 -m uvicorn proxy:app --host 0.0.0.0 --port 4096

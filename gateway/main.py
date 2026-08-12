@@ -1,12 +1,11 @@
 """
 OpenCode Space — Production Gateway Main Application
 =====================================================
-Assembles 5 Modular Service Routers into a unified FastAPI ASGI Gateway:
-  1. OpenCode CLI Server (gateway.opencode)
-  2. Open WebUI (gateway.openwebui)
-  3. OmniRoute AI Gateway (gateway.omniroute)
-  4. Jellyfin Media Server (gateway.jellyfin)
-  5. TG-Drive Direct Streamer (gateway.tg_stream)
+Assembles Service Routers into a unified FastAPI ASGI Gateway:
+  1. Open WebUI (gateway.openwebui)
+  2. OmniRoute AI Gateway (gateway.omniroute)
+  3. Jellyfin Media Server (gateway.jellyfin)
+  4. TG-Drive Direct Streamer (gateway.tg_stream)
 """
 
 import os
@@ -18,13 +17,11 @@ from fastapi.responses import HTMLResponse, FileResponse
 from gateway.utils import (
     get_http_client,
     proxy_http_request,
-    OPENCODE_PORT,
     WEBUI_PORT,
     OMNIROUTE_PORT,
     JELLYFIN_PORT,
     TG_PORT,
 )
-from gateway.opencode import router as opencode_router, fixup_opencode_html
 from gateway.openwebui import router as openwebui_router, fixup_webui_html
 from gateway.omniroute import router as omniroute_router, fixup_omniroute_html, omniroute_main_route
 from gateway.jellyfin import router as jellyfin_router
@@ -45,7 +42,6 @@ async def lifespan(app: FastAPI):
 app = FastAPI(title="OpenCode Space Gateway", lifespan=lifespan, docs_url=None, redoc_url=None)
 
 # Include Service Routers
-app.include_router(opencode_router)
 app.include_router(openwebui_router)
 app.include_router(omniroute_router)
 app.include_router(jellyfin_router)
@@ -62,7 +58,6 @@ async def favicon():
 async def health_check():
     client = get_http_client()
     services = {
-        "opencode":  f"http://127.0.0.1:{OPENCODE_PORT}/",
         "openwebui": f"http://127.0.0.1:{WEBUI_PORT}/",
         "omniroute": f"http://127.0.0.1:{OMNIROUTE_PORT}/",
         "jellyfin":  f"http://127.0.0.1:{JELLYFIN_PORT}/",
@@ -96,8 +91,6 @@ async def route_catch_all(path: str, request: Request):
         if subpath and subpath.startswith("/"):
             subpath = subpath[1:]
         return await omniroute_main_route(request, path=subpath)
-    elif "/server" in referer or req_path.startswith("/server") or req_path.startswith("/opencode"):
-        return await proxy_http_request(f"http://127.0.0.1:{OPENCODE_PORT}/{path}", request, default_prefix="/server", html_fixup=fixup_opencode_html)
     elif "/jellyfin" in referer or req_path.startswith("/jellyfin"):
         return await proxy_http_request(f"http://127.0.0.1:{JELLYFIN_PORT}/{path}", request, default_prefix="/jellyfin", extra_headers={"X-Forwarded-Prefix": "/jellyfin"})
     elif "/tg_stream" in referer or req_path.startswith("/tg_stream"):

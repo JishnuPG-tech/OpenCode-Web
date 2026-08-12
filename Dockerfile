@@ -45,14 +45,9 @@ RUN npm install -g omniroute \
  && mkdir -p "${OMNIROUTE_PKG}/.next/cache" "${OMNIROUTE_PKG}/.build/next/cache" /root/.cache /data/cache /data/omniroute \
  && chmod -R 777 "${OMNIROUTE_PKG}" /root/.cache /data/cache /data/omniroute
 
-# Download opencode binary
-RUN curl -fsSL "https://github.com/anomalyco/opencode/releases/download/v${OPENCODE_VERSION}/opencode-linux-x64.tar.gz" \
-    | tar -xz -C /usr/local/bin opencode
-
 # Working directory for projects
 RUN mkdir -p /projects/default
 
-COPY cleaner.py /cleaner.py
 COPY entrypoint.sh /entrypoint.sh
 COPY nginx.conf /nginx.conf
 COPY proxy.py /proxy.py
