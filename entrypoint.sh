@@ -53,15 +53,30 @@ mkdir -p /data/jellyfin/data /data/jellyfin/config /data/jellyfin/cache /data/je
 if [ -L "/root/.omniroute" ]; then rm -f /root/.omniroute; fi
 mkdir -p /root/.omniroute 2>/dev/null || true
 
-# Restore DB snapshot from persistent volume if no active DB exists
-if [ -f "/data/omniroute/storage.sqlite" ] && [ ! -f "/root/.omniroute/storage.sqlite" ]; then
-    echo "[INIT] Restoring OmniRoute SQLite snapshot from persistent volume..."
-    cp -f /data/omniroute/storage.sqlite /root/.omniroute/storage.sqlite 2>/dev/null || true
-    if command -v sqlite3 >/dev/null 2>&1; then
-        CHK=$(sqlite3 /root/.omniroute/storage.sqlite "PRAGMA quick_check;" 2>/dev/null || echo "error")
-        echo "[INIT] SQLite integrity check: ${CHK}"
+# Restore DB snapshot from persistent volume if a non-empty DB exists in /data
+_RESTORED=0
+for _DB_CANDIDATE in \
+    "/data/omniroute/storage.sqlite" \
+    "/data/omniroute.sqlite" \
+    "/data/storage.sqlite" \
+    "/data/omniroute/db.sqlite" \
+    "/data/omniroute/omniroute.db" \
+    "/data/db.sqlite"; do
+    if [ -f "$_DB_CANDIDATE" ] && [ -s "$_DB_CANDIDATE" ]; then
+        echo "[INIT] Restoring OmniRoute database from ${_DB_CANDIDATE}..."
+        cp -f "$_DB_CANDIDATE" /root/.omniroute/storage.sqlite 2>/dev/null || true
+        _RESTORED=1
+        if command -v sqlite3 >/dev/null 2>&1; then
+            CHK=$(sqlite3 /root/.omniroute/storage.sqlite "PRAGMA quick_check;" 2>/dev/null || echo "error")
+            echo "[INIT] SQLite integrity check for ${_DB_CANDIDATE}: ${CHK}"
+        fi
+        break
     fi
+done
+if [ "$_RESTORED" -eq 0 ]; then
+    echo "[INIT] No pre-existing database snapshot found in /data. Starting with fresh DB."
 fi
+unset _DB_CANDIDATE _RESTORED
 
 # Clean stale lock files
 rm -f /root/.omniroute/*.sqlite-wal /root/.omniroute/*.sqlite-shm /root/.omniroute/*.lock 2>/dev/null || true
