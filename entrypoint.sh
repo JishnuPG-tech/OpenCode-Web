@@ -95,6 +95,11 @@ export NEXT_PUBLIC_OMNIROUTE_BASE_PATH="/omniroute"
 export NEXT_PUBLIC_BASE_URL="${WEBUI_URL:-https://jishnupg-opencode-cli.hf.space}/omniroute"
 export LIVE_WS_ALLOWED_ORIGINS="${WEBUI_URL:-https://jishnupg-opencode-cli.hf.space}"
 
+# Default admin credentials for OmniRoute
+export INITIAL_PASSWORD="${INITIAL_PASSWORD:-admin}"
+export ADMIN_PASSWORD="${ADMIN_PASSWORD:-admin}"
+export OMNIROUTE_INITIAL_PASSWORD="${OMNIROUTE_INITIAL_PASSWORD:-admin}"
+
 # Required secrets — crash early with a clear message if missing
 export JWT_SECRET="${JWT_SECRET:?JWT_SECRET is not set. Add it to /data/.env or Space Secrets.}"
 export API_KEY_SECRET="${API_KEY_SECRET:?API_KEY_SECRET is not set. Add it to /data/.env or Space Secrets.}"

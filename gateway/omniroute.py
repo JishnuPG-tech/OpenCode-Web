@@ -86,14 +86,83 @@ async def omniroute_assets(request: Request, path: str = ""):
             return alt_res
     return res
 
-# ── 4. OAuth & Health Endpoints ──────────────────────────────────────────────
-@router.api_route("/authorize", methods=["GET", "POST", "OPTIONS"])
-async def omniroute_authorize(request: Request):
-    target = f"http://127.0.0.1:{OMNIROUTE_PORT}/authorize"
-    return await proxy_http_request(target, request, default_prefix="/omniroute")
+# ── 4. OmniRoute Page Routes (Captured both at root and /omniroute/) ──────────
+OMNIROUTE_PAGE_ROUTES = (
+    "/forgot-password",
+    "/reset-password",
+    "/change-password",
+    "/login",
+    "/register",
+    "/dashboard",
+    "/status",
+    "/settings",
+    "/combos",
+    "/providers",
+    "/logs",
+    "/api-keys",
+    "/users",
+    "/analytics",
+    "/models",
+    "/usage",
+    "/skills",
+    "/mcp",
+    "/plugins",
+    "/webhooks",
+    "/storage",
+    "/sync",
+    "/version-manager",
+    "/inspect",
+    "/account",
+    "/profile",
+    "/authorize",
+    "/setup",
+    "/initial-setup",
+)
 
-# ── 5. Specific OmniRoute Backend Management APIs ─────────────────────────────
+for p_route in OMNIROUTE_PAGE_ROUTES:
+    def _create_page_route(page_path: str):
+        @router.api_route(
+            page_path,
+            methods=["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"],
+            include_in_schema=False
+        )
+        @router.api_route(
+            f"{page_path}/{{path:path}}",
+            methods=["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"],
+            include_in_schema=False
+        )
+        async def omniroute_page_handler(request: Request, path: str = ""):
+            extra = {
+                "Host": f"127.0.0.1:{OMNIROUTE_PORT}",
+                "X-Forwarded-Host": f"127.0.0.1:{OMNIROUTE_PORT}",
+                "X-Forwarded-Proto": "http"
+            }
+            target_path = f"{page_path}/{path}" if path else page_path
+            target = f"http://127.0.0.1:{OMNIROUTE_PORT}{target_path}"
+            return await proxy_http_request(target, request, default_prefix="/omniroute", extra_headers=extra)
+        return omniroute_page_handler
+
+    _create_page_route(p_route)
+
+
+# ── 5. Specific OmniRoute Backend Management & Auth APIs ──────────────────────
 OMNIROUTE_API_PREFIXES = (
+    "/api/auth",
+    "/api/user",
+    "/api/users",
+    "/api/setup",
+    "/api/initial-setup",
+    "/api/account",
+    "/api/profile",
+    "/api/reset-password",
+    "/api/forgot-password",
+    "/api/keys",
+    "/api/api-keys",
+    "/api/dashboard",
+    "/api/status",
+    "/api/health",
+    "/api/logs",
+    "/api/audit",
     "/api/providers",
     "/api/combos",
     "/api/circuit-breakers",
@@ -117,7 +186,7 @@ OMNIROUTE_API_PREFIXES = (
     "/api/upstream-proxy",
 )
 
-# Dynamically register explicit route handlers for OmniRoute management APIs
+# Dynamically register explicit route handlers for OmniRoute management & auth APIs
 # This prevents capturing non-OmniRoute routes (such as Open WebUI's /api/config or /api/v1)
 for prefix in OMNIROUTE_API_PREFIXES:
     sub_path = prefix.replace("/api/", "")
@@ -140,4 +209,5 @@ for prefix in OMNIROUTE_API_PREFIXES:
         return omniroute_api_handler
 
     _create_route(sub_path)
+
 

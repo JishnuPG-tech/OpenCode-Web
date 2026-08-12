@@ -22,7 +22,7 @@ from gateway.utils import (
     TG_PORT,
 )
 from gateway.openwebui import router as openwebui_router, fixup_webui_html
-from gateway.omniroute import router as omniroute_router
+from gateway.omniroute import router as omniroute_router, OMNIROUTE_PAGE_ROUTES
 from gateway.jellyfin import router as jellyfin_router
 from gateway.tg_stream import router as tg_stream_router
 
@@ -83,7 +83,7 @@ async def route_catch_all(path: str, request: Request):
         return await proxy_http_request(f"http://127.0.0.1:{JELLYFIN_PORT}/{path}", request, default_prefix="/jellyfin", extra_headers={"X-Forwarded-Prefix": "/jellyfin"})
     elif "/tg_stream" in referer or req_path.startswith("/tg_stream"):
         return await proxy_http_request(f"http://127.0.0.1:{TG_PORT}/{path}", request, default_prefix="/tg_stream")
-    elif "/omniroute" in referer or "_rsc" in request.query_params or req_path in ("/dashboard", "/status", "/settings", "/combos", "/providers", "/logs", "/api-keys"):
+    elif "/omniroute" in referer or "_rsc" in request.query_params or req_path in OMNIROUTE_PAGE_ROUTES or any(req_path.startswith(r) for r in OMNIROUTE_PAGE_ROUTES):
         extra = {
             "Host": f"127.0.0.1:{OMNIROUTE_PORT}",
             "X-Forwarded-Host": f"127.0.0.1:{OMNIROUTE_PORT}",
