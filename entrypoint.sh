@@ -207,8 +207,11 @@ export ALLOW_HEADLESS_OAUTH="true"
 export ENABLE_HEADLESS_OAUTH="true"
 export OMNIROUTE_ALLOW_BROWSER_OAUTH="true"
 export OMNIROUTE_ENABLE_REMOTE_OAUTH="true"
-export OAUTH_CALLBACK_URL="${WEBUI_URL:-https://jishnupg-opencode-cli.hf.space}/api/cloud-agent-credentials/callback"
-export NEXT_PUBLIC_OAUTH_CALLBACK_URL="${WEBUI_URL:-https://jishnupg-opencode-cli.hf.space}/api/cloud-agent-credentials/callback"
+export OAUTH_CALLBACK_URL="https://jishnupg-opencode-cli.hf.space/callback"
+export NEXT_PUBLIC_OAUTH_CALLBACK_URL="https://jishnupg-opencode-cli.hf.space/callback"
+export REDIRECT_URI="https://jishnupg-opencode-cli.hf.space/callback"
+export ANTIGRAVITY_OAUTH_REDIRECT_URI="https://jishnupg-opencode-cli.hf.space/callback"
+export ANTIGRAVITY_REDIRECT_URI="https://jishnupg-opencode-cli.hf.space/callback"
 
 # Admin credentials for OmniRoute (loaded directly from HF Space Secret INITIAL_PASSWORD)
 _PASS="${INITIAL_PASSWORD:-admin}"
