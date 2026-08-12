@@ -8,9 +8,18 @@ echo "============================================"
 git config --global --add safe.directory '*' 2>/dev/null || true
 
 # ── Load secrets from data bucket (before :? validation runs) ─────────────────
-# Check candidate locations in order of preference.
-# Format: KEY=value lines, one per line. Lines starting with # are ignored.
-for _ENV_FILE in "/data/.env" "/data/secrets.env" "/data/secrets" "/data/config/.env"; do
+# Load ALL matching env files so partial secret files can be combined.
+# Checks both /data/ root and /data/omniroute/ (where persistent config is stored).
+for _ENV_FILE in \
+    "/data/.env" \
+    "/data/secrets.env" \
+    "/data/secrets" \
+    "/data/config/.env" \
+    "/data/omniroute/.env" \
+    "/data/omniroute/secrets.env" \
+    "/data/omniroute/secrets" \
+    "/data/omniroute/.secrets" \
+    "/data/omniroute/server.env"; do
     if [ -f "$_ENV_FILE" ]; then
         echo "[INIT] Loading secrets from ${_ENV_FILE}..."
         set -a
@@ -18,10 +27,20 @@ for _ENV_FILE in "/data/.env" "/data/secrets.env" "/data/secrets" "/data/config/
         . "$_ENV_FILE"
         set +a
         echo "[INIT] Secrets loaded from ${_ENV_FILE}"
-        break
     fi
 done
 unset _ENV_FILE
+
+# Debug: show which required secrets are still missing (without printing values)
+for _VAR in JWT_SECRET API_KEY_SECRET OMNIROUTE_WS_BRIDGE_SECRET WEBUI_SECRET_KEY; do
+    eval _VAL=\$$_VAR
+    if [ -z "$_VAL" ]; then
+        echo "[WARN] ${_VAR} is not set after loading env files"
+    else
+        echo "[INIT] ${_VAR} is set (${#_VAL} chars)"
+    fi
+done
+unset _VAR _VAL
 
 # /data is the persistent HF dataset bucket mount
 echo "[INIT] Setting up /data directories..."
