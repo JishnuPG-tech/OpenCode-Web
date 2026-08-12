@@ -8,12 +8,13 @@ Open WebUI is cleanly namespace-isolated under /openwebui/.
 import os
 import logging
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, Request, Response
+from fastapi import FastAPI, Request, Response, WebSocket
 from fastapi.responses import RedirectResponse
 
 from gateway.utils import (
     get_http_client,
     proxy_http_request,
+    proxy_websocket_stream,
     WEBUI_PORT,
     OMNIROUTE_PORT,
     OMNIROUTE_API_PORT,
