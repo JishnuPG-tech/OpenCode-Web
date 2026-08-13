@@ -415,7 +415,7 @@ for path in ['/root/.open-webui/webui.db', '/root/.open-webui/data/webui.db', '/
         fi
 
         export WEBUI_URL="${WEBUI_URL:-https://jishnupg-opencode-cli.hf.space}"
-        export OPENAI_API_BASE_URL="http://127.0.0.1:20129/v1"
+        export OPENAI_API_BASE_URL="${OPENAI_API_BASE_URL:-http://127.0.0.1:8000/v1}"
         export OPENAI_API_KEY="omniroute"
         export WEBUI_SECRET_KEY="$WEBUI_SECRET_KEY"
         export ENABLE_OLLAMA_API="${ENABLE_OLLAMA_API:-false}"

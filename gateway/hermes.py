@@ -2,13 +2,14 @@
 Hermes Agent Router for FastAPI Gateway
 ========================================
 Proxies Hermes Agent endpoints to internal server on 127.0.0.1:8642:
-  - /hermes/v1/*     -> 8642 (OpenAI-compatible agent API)
-  - /hermes/health   -> 8642 (health check)
-  - /hermes/         -> 8642 (Hermes root / status)
+  - /hermes/v1/models          -> 8642 (OpenAI-compatible models catalog)
+  - /hermes/v1/chat/completions -> 8642 (OpenAI-compatible agent completions)
+  - /hermes/health             -> 8642 (health check)
+  - /hermes, /hermes/v1         -> JSON status & discovery response
 """
 
 import logging
-from fastapi import APIRouter, Request, Response
+from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
 from gateway.utils import proxy_http_request
 
@@ -20,18 +21,31 @@ HERMES_PORT = 8642
 
 @router.api_route("/hermes", methods=["GET", "HEAD"])
 @router.api_route("/hermes/", methods=["GET", "HEAD"])
-async def hermes_root(request: Request):
-    try:
-        return await proxy_http_request(
-            f"http://127.0.0.1:{HERMES_PORT}/",
-            request,
-            default_prefix="/hermes",
-        )
-    except Exception:
-        return JSONResponse(
-            content={"service": "hermes-agent", "status": "starting"},
-            status_code=503,
-        )
+@router.api_route("/hermes/v1", methods=["GET", "HEAD"])
+@router.api_route("/hermes/v1/", methods=["GET", "HEAD"])
+async def hermes_status(request: Request):
+    """Return friendly JSON status for root Hermes API endpoints."""
+    return JSONResponse(
+        content={
+            "service": "Hermes Agent Framework",
+            "status": "online",
+            "llm_backend": "OmniRoute AI Gateway (:20129)",
+            "api_endpoint": "https://jishnupg-opencode-cli.hf.space/hermes/v1",
+            "endpoints": [
+                "/hermes/v1/models",
+                "/hermes/v1/chat/completions",
+                "/hermes/health",
+            ],
+            "capabilities": [
+                "web_search",
+                "web_extract",
+                "browser_automation",
+                "persistent_memory",
+                "self_improving_skills",
+            ],
+        },
+        status_code=200,
+    )
 
 
 @router.api_route(
@@ -46,3 +60,4 @@ async def hermes_proxy(path: str, request: Request):
         request,
         default_prefix="/hermes",
     )
+
