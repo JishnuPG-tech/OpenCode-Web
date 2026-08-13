@@ -69,6 +69,51 @@ else
     echo "[PERSISTENCE] No snapshot found at ${PERSIST_DB}. Initializing fresh OmniRoute database."
 fi
 
+# ── One-time targeted cleanup: remove credential rows that fail to decrypt ────
+# These two specific rows were encrypted under a STORAGE_ENCRYPTION_KEY that no
+# longer matches the active one and are permanently unreadable. Rather than wipe
+# the whole DB, delete only these rows so the user can re-add the connection.
+# Safe to leave in permanently: this is a no-op once the rows are gone.
+if [ -f "$RUNTIME_DB" ] && command -v python3 >/dev/null 2>&1; then
+    python3 - "$RUNTIME_DB" <<'PYEOF' 2>&1 || true
+import sqlite3, sys
+db_path = sys.argv[1]
+BROKEN_PREFIXES = (
+    "enc:v1:c8b287e6f9ea4dc7a3d5ccd",
+    "enc:v1:003964800c0b7803fa74504",
+)
+try:
+    conn = sqlite3.connect(db_path)
+    cur = conn.cursor()
+    cur.execute("SELECT name FROM sqlite_master WHERE type='table';")
+    tables = [r[0] for r in cur.fetchall()]
+    deleted_total = 0
+    for table in tables:
+        cur.execute(f"PRAGMA table_info({table});")
+        cols = [c[1] for c in cur.fetchall()]
+        text_cols = [c for c in cols if c.lower() in
+                     ("encrypted_value", "value", "token", "credential",
+                      "access_token", "refresh_token", "data", "secret")]
+        for col in text_cols:
+            for prefix in BROKEN_PREFIXES:
+                try:
+                    cur.execute(f"DELETE FROM {table} WHERE {col} LIKE ?", (prefix + "%",))
+                    if cur.rowcount > 0:
+                        print(f"[CLEANUP] Deleted {cur.rowcount} row(s) from {table}.{col} matching {prefix[:20]}...")
+                        deleted_total += cur.rowcount
+                except sqlite3.OperationalError:
+                    pass
+    conn.commit()
+    conn.close()
+    if deleted_total:
+        print(f"[CLEANUP] Removed {deleted_total} unrecoverable credential row(s) total.")
+    else:
+        print("[CLEANUP] No matching broken credential rows found (already clean).")
+except Exception as e:
+    print(f"[CLEANUP] Skipped due to error: {e}")
+PYEOF
+fi
+
 # Restore supplementary state directories (oauth, credentials, runtime, gemini_cli, config_dir)
 for _ITEM in oauth credentials runtime gemini_cli config_dir; do
     if [ -d "${PERSIST_DIR}/${_ITEM}" ]; then
