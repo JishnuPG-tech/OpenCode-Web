@@ -91,6 +91,10 @@ db_path = sys.argv[1]
 BROKEN_PREFIXES = (
     "enc:v1:c8b287e6f9ea4dc7a3d5ccd",
     "enc:v1:003964800c0b7803fa74504",
+    "enc:v1:8d5ca7d6f541555ed9692a7",
+    "enc:v1:d905a9b8be117264d2caaee",
+    "enc:v1:076a2b5e61f84d7dbd9d418",
+    "enc:v1:ae5a4040c5f73dd42429d7c",
 )
 try:
     conn = sqlite3.connect(db_path)
