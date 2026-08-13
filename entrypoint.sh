@@ -414,7 +414,7 @@ if command -v open-webui >/dev/null 2>&1; then
         export OPENAPI_TOOL_SERVERS=""
         export PORT=8098
         export DATA_DIR="/data/open-webui"
-        export DATABASE_URL="sqlite:////data/open-webui/webui.db"
+        unset DATABASE_URL 2>/dev/null || true
         export WEBUI_AUTH="true"
         export ENABLE_SIGNUP="true"
         mkdir -p /root/.cache /data/cache /data/open-webui /root/.open-webui 2>/dev/null || true
@@ -430,23 +430,6 @@ if command -v open-webui >/dev/null 2>&1; then
             sleep 1
         done
     fi
-
-    export WEBUI_URL="http://127.0.0.1:8098"
-    export OPENAI_API_BASE_URL="http://127.0.0.1:8000/v1"
-    export OPENAI_API_KEY="omniroute"
-    export WEBUI_SECRET_KEY="opencode_webui_jwt_secret_2026"
-    export ENABLE_OLLAMA_API="false"
-    export ENABLE_OPENAI_API="true"
-    export TOOL_SERVERS=""
-    export OPENAPI_TOOL_SERVERS=""
-    export PORT=8098
-    export DATA_DIR="/root/.open-webui"
-    export CORS_ALLOW_ORIGIN="*"
-    export WEBUI_AUTH="true"
-    export ENABLE_SIGNUP="true"
-    unset REDIS_URL
-    open-webui serve --port 8098 > /data/cache/openwebui.log 2>&1 &
-    WEBUI_PID=$!
 fi
 
 # Start Periodic 15s Database Persistence Backup Daemon
