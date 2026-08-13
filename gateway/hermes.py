@@ -8,6 +8,7 @@ Proxies Hermes Agent endpoints to internal server on 127.0.0.1:8642:
   - /hermes, /hermes/v1         -> JSON status & discovery response
 """
 
+import os
 import logging
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
@@ -17,6 +18,14 @@ logger = logging.getLogger("GatewayHermes")
 router = APIRouter(tags=["hermes"])
 
 HERMES_PORT = 8642
+API_SERVER_KEY = (
+    os.getenv("API_SERVER_KEY")
+    or os.getenv("HERMES_GATEWAY_API_KEY")
+    or os.getenv("HERMES_API_KEY_SECRET")
+    or os.getenv("API_KEY_SECRET")
+    or os.getenv("INITIAL_PASSWORD")
+    or "hermes_secret_key"
+)
 
 
 @router.api_route("/hermes", methods=["GET", "HEAD"])
@@ -55,9 +64,12 @@ async def hermes_status(request: Request):
 async def hermes_proxy(path: str, request: Request):
     upstream = f"http://127.0.0.1:{HERMES_PORT}/{path}"
     logger.info(f"[HERMES] /{path} -> :{HERMES_PORT}")
+    extra_headers = {"authorization": f"Bearer {API_SERVER_KEY}"}
     return await proxy_http_request(
         upstream,
         request,
         default_prefix="/hermes",
+        extra_headers=extra_headers,
     )
+
 

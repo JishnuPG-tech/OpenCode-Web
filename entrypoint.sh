@@ -503,7 +503,7 @@ if command -v hermes >/dev/null 2>&1; then
     export HERMES_API_KEY="omniroute"
     export OPENAI_API_BASE="http://127.0.0.1:20129/v1"
     export OPENAI_API_KEY="omniroute"
-    export HERMES_MODEL="${HERMES_MODEL:-claude-sonnet-4-6}"
+    export HERMES_MODEL="${HERMES_MODEL:-default}"
     export HERMES_DATA_DIR="/root/.hermes"
     export HERMES_GATEWAY_PORT=8642
     export HERMES_PORT=8642
@@ -511,7 +511,7 @@ if command -v hermes >/dev/null 2>&1; then
     export API_SERVER_ENABLED=true
     export API_SERVER_PORT=8642
     export API_SERVER_HOST=127.0.0.1
-    export API_SERVER_KEY="${HERMES_GATEWAY_API_KEY:-${HERMES_API_KEY_SECRET:-hermes_secret_key}}"
+    export API_SERVER_KEY="${HERMES_GATEWAY_API_KEY:-${HERMES_API_KEY_SECRET:-${API_KEY_SECRET:-${INITIAL_PASSWORD:-hermes_secret_key}}}}"
     export HERMES_GATEWAY_API_KEY="${API_SERVER_KEY}"
     export HERMES_GATEWAY_ENABLED=true
 
@@ -523,7 +523,7 @@ API_SERVER_HOST=127.0.0.1
 API_SERVER_KEY=${API_SERVER_KEY}
 OPENAI_API_BASE=http://127.0.0.1:20129/v1
 OPENAI_API_KEY=omniroute
-DEFAULT_MODEL=${HERMES_MODEL:-claude-sonnet-4-6}
+DEFAULT_MODEL=${HERMES_MODEL}
 TELEGRAM_ENABLED=${TELEGRAM_BOT_TOKEN:+true}
 TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
 TELEGRAM_ALLOW_ALL_USERS=true
@@ -535,7 +535,7 @@ HERMES_ENV
 {
   "api_base_url": "http://127.0.0.1:20129/v1",
   "api_key": "omniroute",
-  "model": "${HERMES_MODEL:-claude-sonnet-4-6}",
+  "model": "${HERMES_MODEL}",
   "data_dir": "/root/.hermes",
   "api_server": {
     "enabled": true,
@@ -561,7 +561,7 @@ HERMES_ENV
   }
 }
 HERMES_CFG
-    echo "[HERMES] Config & .env written: OmniRoute -> http://127.0.0.1:20129/v1, model=${HERMES_MODEL:-claude-sonnet-4-6}, API_SERVER_PORT=8642"
+    echo "[HERMES] Config & .env written: OmniRoute -> http://127.0.0.1:20129/v1, model=${HERMES_MODEL}, API_SERVER_PORT=8642"
 
     # Configure Telegram bot integration if token is provided
     if [ -n "$TELEGRAM_BOT_TOKEN" ]; then
