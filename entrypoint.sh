@@ -47,9 +47,9 @@ fi
 
 # Step 5: Start Nginx Edge Server on Public Port 4096
 echo "[BOOT] Nginx starting..."
-NGINX_START_TIME=$(date +%s)
-nginx -t
-nginx &
+rm -f /etc/nginx/sites-enabled/default /etc/nginx/sites-available/default 2>/dev/null || true
+nginx -t -c /nginx.conf
+nginx -g 'daemon off;' -c /nginx.conf &
 NGINX_PID=$!
 
 # Step 6: Wait for Nginx /health/live on Port 4096 to return HTTP 200
@@ -134,7 +134,7 @@ while true; do
 
     if [ -n "$NGINX_PID" ] && ! kill -0 $NGINX_PID 2>/dev/null; then
         echo "[CRITICAL] Nginx process died! Restarting..."
-        nginx &
+        nginx -g 'daemon off;' -c /nginx.conf &
         NGINX_PID=$!
     fi
 
