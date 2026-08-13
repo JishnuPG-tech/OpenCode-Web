@@ -1,12 +1,3 @@
----
-title: Opencode CLI
-emoji: 🖥️
-colorFrom: green
-colorTo: blue
-sdk: docker
-app_port: 4096
-pinned: false
----
 
 <div align="center">
 
