@@ -334,6 +334,9 @@ fi
 if command -v open-webui >/dev/null 2>&1; then
     echo "[HEALTH] Open WebUI starting in background on port 8098..."
     mkdir -p /root/.open-webui /data/open-webui /data/cache 2>/dev/null || true
+    if [ -f "/data/open-webui/webui.db" ] && ! [ -s "/data/open-webui/webui.db" ]; then
+        rm -f /data/open-webui/webui.db 2>/dev/null || true
+    fi
     if [ -f "/data/open-webui/webui.db" ] && [ -s "/data/open-webui/webui.db" ]; then
         python3 -c "
 import sqlite3, os
