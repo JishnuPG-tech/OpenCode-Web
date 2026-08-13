@@ -22,6 +22,7 @@ from gateway.utils import (
     JELLYFIN_PORT,
     TG_PORT,
     OMNIROUTE_PORT,
+    PUBLIC_HOST,
 )
 from gateway.openwebui import router as openwebui_router, fixup_webui_html
 from gateway.omniroute import router as omniroute_router, omniroute_main_route

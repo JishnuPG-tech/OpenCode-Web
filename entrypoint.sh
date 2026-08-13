@@ -1,6 +1,15 @@
 #!/bin/sh
 set -e
 
+START_TIME=$(date +%s)
+get_elapsed() {
+    if [ -n "$START_TIME" ]; then
+        python3 -c "import time; print(f'{time.time() - $START_TIME:.2f}s')" 2>/dev/null || echo "0.0s"
+    else
+        echo "0.0s"
+    fi
+}
+
 echo "============================================"
 echo "=== OpenCode Space Container Starting ==="
 echo "Time: $(date)"
