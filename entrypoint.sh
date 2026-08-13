@@ -198,7 +198,7 @@ trap sync_omniroute_db EXIT INT TERM
 echo "[BOOT] FastAPI starting: $(get_elapsed)"
 cd /
 python3 -m uvicorn proxy:app --host 127.0.0.1 --port 8000 --workers 2 &
-GATEWAY_PID=$!
+FASTAPI_PID=$!
 
 # Step 4: Wait for FastAPI /health/live to return HTTP 200
 FASTAPI_READY=0
@@ -348,9 +348,9 @@ fi
 echo "[BOOT] All services dispatched. Process Supervisor active."
 
 while true; do
-    if ! kill -0 $FASTAPI_PID 2>/dev/null; then
+    if [ -n "$FASTAPI_PID" ] && ! kill -0 $FASTAPI_PID 2>/dev/null; then
         echo "[CRITICAL] FastAPI Gateway process died! Restarting..."
-        python3 -m uvicorn gateway.main:app --host 127.0.0.1 --port 8000 --workers 2 > /data/cache/fastapi_gateway.log 2>&1 &
+        python3 -m uvicorn proxy:app --host 127.0.0.1 --port 8000 --workers 2 > /data/cache/fastapi_gateway.log 2>&1 &
         FASTAPI_PID=$!
     fi
 
