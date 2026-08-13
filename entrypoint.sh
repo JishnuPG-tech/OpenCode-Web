@@ -441,10 +441,38 @@ echo "============================================"
 
 if command -v nginx >/dev/null 2>&1; then
     nginx -t 2>&1 || echo "[WARN] NGINX configuration test warning"
-    exec nginx -g 'daemon off;'
+    nginx -g 'daemon off;' &
+    NGINX_PID=$!
+    echo "[INIT] NGINX started in background (PID=${NGINX_PID}). Waiting for health on port 4096..."
+    for i in $(seq 1 30); do
+        if curl -fsS "http://127.0.0.1:4096/health/live" >/dev/null 2>&1; then
+            echo "[HEALTH] NGINX edge proxy healthy on public port 4096 after ${i}s"
+            break
+        fi
+        if ! kill -0 "$NGINX_PID" 2>/dev/null; then
+            echo "[ERROR] NGINX process (PID=${NGINX_PID}) exited prematurely"
+            break
+        fi
+        sleep 1
+    done
+    wait "$NGINX_PID"
 elif [ -f "/usr/sbin/nginx" ]; then
     /usr/sbin/nginx -t 2>&1 || echo "[WARN] NGINX configuration test warning"
-    exec /usr/sbin/nginx -g 'daemon off;'
+    /usr/sbin/nginx -g 'daemon off;' &
+    NGINX_PID=$!
+    echo "[INIT] NGINX started in background (PID=${NGINX_PID}). Waiting for health on port 4096..."
+    for i in $(seq 1 30); do
+        if curl -fsS "http://127.0.0.1:4096/health/live" >/dev/null 2>&1; then
+            echo "[HEALTH] NGINX edge proxy healthy on public port 4096 after ${i}s"
+            break
+        fi
+        if ! kill -0 "$NGINX_PID" 2>/dev/null; then
+            echo "[ERROR] NGINX process (PID=${NGINX_PID}) exited prematurely"
+            break
+        fi
+        sleep 1
+    done
+    wait "$NGINX_PID"
 else
     echo "[WARN] NGINX binary not found. Binding FastAPI Gateway directly to public port 4096 as fallback..."
     kill "$GATEWAY_PID" 2>/dev/null || true
