@@ -378,10 +378,7 @@ except Exception as err:
     export TOOL_SERVERS=""
     export OPENAPI_TOOL_SERVERS=""
     export PORT=8098
-    export DATA_DIR="/data/open-webui"
-    mkdir -p /data/open-webui /data/open-webui/static /data/cache 2>/dev/null || true
-    rm -rf /root/.open-webui 2>/dev/null || true
-    ln -s /data/open-webui /root/.open-webui 2>/dev/null || true
+    export DATA_DIR="/root/.open-webui"
     export CORS_ALLOW_ORIGIN="*"
     export WEBUI_AUTH="true"
     export ENABLE_SIGNUP="true"
