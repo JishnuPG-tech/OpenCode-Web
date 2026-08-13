@@ -363,7 +363,6 @@ if command -v open-webui >/dev/null 2>&1; then
     export OPENAPI_TOOL_SERVERS=""
     export PORT=8098
     export DATA_DIR="/root/.open-webui"
-    export DATABASE_URL="sqlite:////data/open-webui/webui.db"
     export CORS_ALLOW_ORIGIN="*"
     export WEBUI_AUTH="true"
     export ENABLE_SIGNUP="true"
