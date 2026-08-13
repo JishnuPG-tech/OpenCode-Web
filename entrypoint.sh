@@ -452,8 +452,49 @@ fi
                 echo "[PERSISTENCE] Open WebUI DB snapshot OK: ${_WEBUI_DB_SIZE} bytes synced from ${_DB} to /data/open-webui/webui.db"
             fi
         done
+        # Sync Hermes persistent memory
+        if [ -d "/root/.hermes" ]; then
+            mkdir -p /data/hermes 2>/dev/null || true
+            cp -rf /root/.hermes/. /data/hermes/ 2>/dev/null || true
+        fi
     done
 ) &
+
+# Step 12: Start Hermes Agent in Background (Port 8642)
+if command -v hermes >/dev/null 2>&1; then
+    echo "[HEALTH] Hermes Agent starting in background on port 8642..."
+    mkdir -p /data/hermes /root/.hermes 2>/dev/null || true
+    # Restore persistent Hermes memory from /data volume
+    if [ -d "/data/hermes" ] && [ "$(ls -A /data/hermes 2>/dev/null)" ]; then
+        cp -rf /data/hermes/. /root/.hermes/ 2>/dev/null || true
+        echo "[PERSISTENCE] Restored Hermes memory from /data/hermes"
+    fi
+    # Configure Hermes to use OmniRoute as its LLM backend
+    export HERMES_API_BASE_URL="http://127.0.0.1:20129/v1"
+    export HERMES_API_KEY="omniroute"
+    export HERMES_MODEL="${HERMES_MODEL:-claude-sonnet-4-6}"
+    export HERMES_DATA_DIR="/root/.hermes"
+    export HERMES_GATEWAY_PORT=8642
+    export HERMES_GATEWAY_API_KEY="${HERMES_API_KEY:-hermes_secret_key}"
+    export HERMES_GATEWAY_ENABLED=true
+    # Configure Telegram bot integration if token is provided
+    if [ -n "$TELEGRAM_BOT_TOKEN" ]; then
+        export HERMES_TELEGRAM_TOKEN="$TELEGRAM_BOT_TOKEN"
+        export HERMES_TELEGRAM_ENABLED=true
+        echo "[HERMES] Telegram bot integration enabled"
+    fi
+    hermes gateway run --port 8642 > /data/cache/hermes.log 2>&1 &
+    HERMES_PID=$!
+    echo "[PROCESS] Hermes Agent: PID ${HERMES_PID}"
+    for i in $(seq 1 30); do
+        if curl -fsS "http://127.0.0.1:8642/health" >/dev/null 2>&1 || \
+           curl -fsS "http://127.0.0.1:8642/v1/models" >/dev/null 2>&1; then
+            echo "[HEALTH] Hermes Agent ready after ${i}s"
+            break
+        fi
+        sleep 1
+    done
+fi
 
 # Step 12 & 13: Keep PID 1 Alive and Monitor Child Processes
 echo "[BOOT] All services dispatched. Process Supervisor active."
@@ -475,6 +516,12 @@ while true; do
         echo "[CRITICAL] OmniRoute process died! Restarting..."
         (cd /omniroute && node server.js) > /data/omniroute/omniroute.log 2>&1 &
         OMNIROUTE_PID=$!
+    fi
+
+    if [ -n "$HERMES_PID" ] && ! kill -0 $HERMES_PID 2>/dev/null; then
+        echo "[CRITICAL] Hermes Agent process died! Restarting..."
+        hermes gateway run --port 8642 > /data/cache/hermes.log 2>&1 &
+        HERMES_PID=$!
     fi
 
     sleep 5

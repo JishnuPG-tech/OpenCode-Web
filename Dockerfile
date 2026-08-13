@@ -38,7 +38,7 @@ RUN mkdir -p /etc/apt/keyrings \
 
 # 3. Install Python dependencies (no Torch preinstall — Open WebUI manages its own deps)
 RUN pip3 install --no-cache-dir \
-    aiohttp pyrogram tgcrypto open-webui httpx uvicorn fastapi \
+    aiohttp pyrogram tgcrypto open-webui httpx uvicorn fastapi hermes-agent \
     --break-system-packages
 
 # 4. Copy prebuilt OmniRoute production runtime from Stage 1
