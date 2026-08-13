@@ -23,8 +23,9 @@ echo "[INIT] Setting up /data persistent volume directories..."
 mkdir -p /data/share/opencode /data/config/opencode /data/cache/opencode /data/state/opencode 2>/dev/null || true
 mkdir -p /data/open-webui /data/omniroute 2>/dev/null || true
 mkdir -p /data/jellyfin/data /data/jellyfin/config /data/jellyfin/cache /data/jellyfin/log /data/jellyfin/media/Movies /data/jellyfin/media/TVShows 2>/dev/null || true
-mkdir -p /root/.cache /data/cache 2>/dev/null || true
-chmod -R 777 /root/.cache /data/cache 2>/dev/null || true
+mkdir -p /data/hermes/memories /data/hermes/skills /data/hermes/sessions 2>/dev/null || true
+mkdir -p /root/.cache /data/cache /root/.hermes/memories /root/.hermes/skills 2>/dev/null || true
+chmod -R 777 /root/.cache /data/cache /data/hermes 2>/dev/null || true
 
 # ── STEP 1: Master Secret Validation ──────────────────────────────────────────
 if [ -z "$STORAGE_ENCRYPTION_KEY" ]; then
@@ -452,10 +453,13 @@ fi
                 echo "[PERSISTENCE] Open WebUI DB snapshot OK: ${_WEBUI_DB_SIZE} bytes synced from ${_DB} to /data/open-webui/webui.db"
             fi
         done
-        # Sync Hermes persistent memory
+        # Sync Hermes persistent memory, skills, sessions, SQLite DB
         if [ -d "/root/.hermes" ]; then
-            mkdir -p /data/hermes 2>/dev/null || true
-            cp -rf /root/.hermes/. /data/hermes/ 2>/dev/null || true
+            mkdir -p /data/hermes/memories /data/hermes/skills /data/hermes/sessions 2>/dev/null || true
+            rsync -a --update /root/.hermes/. /data/hermes/ 2>/dev/null || \
+                cp -rf /root/.hermes/. /data/hermes/ 2>/dev/null || true
+            _HERMES_SIZE=$(du -sh /data/hermes 2>/dev/null | cut -f1 || echo "?")
+            echo "[PERSISTENCE] Hermes snapshot OK: ${_HERMES_SIZE} synced to /data/hermes"
         fi
     done
 ) &
@@ -463,10 +467,12 @@ fi
 # Step 12: Start Hermes Agent in Background (Port 8642)
 if command -v hermes >/dev/null 2>&1; then
     echo "[HEALTH] Hermes Agent starting in background on port 8642..."
-    mkdir -p /data/hermes /root/.hermes/memories /root/.hermes/skills 2>/dev/null || true
-    # Restore persistent Hermes memory from /data volume
+    mkdir -p /data/hermes/memories /data/hermes/skills /data/hermes/sessions 2>/dev/null || true
+    chmod -R 777 /data/hermes 2>/dev/null || true
+    # Restore persistent Hermes memory from /data volume on boot
     if [ -d "/data/hermes" ] && [ "$(ls -A /data/hermes 2>/dev/null)" ]; then
-        cp -rf /data/hermes/. /root/.hermes/ 2>/dev/null || true
+        rsync -a /data/hermes/. /root/.hermes/ 2>/dev/null || \
+            cp -rf /data/hermes/. /root/.hermes/ 2>/dev/null || true
         echo "[PERSISTENCE] Restored Hermes memory from /data/hermes"
     fi
     # Configure Hermes to use OmniRoute as its LLM backend
