@@ -327,6 +327,13 @@ if command -v open-webui >/dev/null 2>&1; then
         echo "[PERSISTENCE] Restored Open WebUI database."
     fi
 
+    WEBUI_PKG_DIR=$(python3 -c "import open_webui, os; print(os.path.dirname(open_webui.__file__))" 2>/dev/null || echo "")
+    if [ -n "$WEBUI_PKG_DIR" ] && [ -d "$WEBUI_PKG_DIR/static" ]; then
+        export FRONTEND_BUILD_DIR="$WEBUI_PKG_DIR/static"
+        export STATIC_DIR="$WEBUI_PKG_DIR/static"
+        echo "[INIT] Open WebUI frontend build dir pinned to: $WEBUI_PKG_DIR/static"
+    fi
+
     export WEBUI_URL="http://127.0.0.1:8098"
     export OPENAI_API_BASE_URL="http://127.0.0.1:20129/v1"
     export OPENAI_API_KEY="omniroute"
