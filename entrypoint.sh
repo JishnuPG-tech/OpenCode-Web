@@ -338,7 +338,9 @@ if command -v open-webui >/dev/null 2>&1; then
         rm -f /data/open-webui/webui.db 2>/dev/null || true
     fi
     if [ -f "/data/open-webui/webui.db" ] && [ -s "/data/open-webui/webui.db" ]; then
+        mkdir -p /root/.open-webui/data 2>/dev/null || true
         cp -f /data/open-webui/webui.db /root/.open-webui/webui.db 2>/dev/null || true
+        cp -f /data/open-webui/webui.db /root/.open-webui/data/webui.db 2>/dev/null || true
         echo "[PERSISTENCE] Restored Open WebUI database snapshot ($(wc -c < /data/open-webui/webui.db | tr -d ' ') bytes)."
     fi
 
@@ -376,12 +378,14 @@ fi
     while true; do
         sleep 15
         sync_omniroute_db >/dev/null 2>&1 || true
-        if [ -f "/root/.open-webui/webui.db" ] && [ -s "/root/.open-webui/webui.db" ]; then
-            mkdir -p /data/open-webui 2>/dev/null || true
-            cp -f /root/.open-webui/webui.db /data/open-webui/webui.db 2>/dev/null || true
-            _WEBUI_DB_SIZE=$(wc -c < "/data/open-webui/webui.db" 2>/dev/null | tr -d ' \t\n\r' || echo "0")
-            echo "[PERSISTENCE] Open WebUI DB snapshot OK: ${_WEBUI_DB_SIZE} bytes synced to /data/open-webui/webui.db"
-        fi
+        for _DB in "/root/.open-webui/webui.db" "/root/.open-webui/data/webui.db"; do
+            if [ -f "$_DB" ] && [ -s "$_DB" ]; then
+                mkdir -p /data/open-webui 2>/dev/null || true
+                cp -f "$_DB" /data/open-webui/webui.db 2>/dev/null || true
+                _WEBUI_DB_SIZE=$(wc -c < "/data/open-webui/webui.db" 2>/dev/null | tr -d ' \t\n\r' || echo "0")
+                echo "[PERSISTENCE] Open WebUI DB snapshot OK: ${_WEBUI_DB_SIZE} bytes synced from ${_DB} to /data/open-webui/webui.db"
+            fi
+        done
     done
 ) &
 
