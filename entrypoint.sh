@@ -331,9 +331,11 @@ if command -v open-webui >/dev/null 2>&1; then
     if [ -n "$WEBUI_PKG_DIR" ] && [ -d "$WEBUI_PKG_DIR/static" ]; then
         mkdir -p /root/.open-webui/static 2>/dev/null || true
         cp -rn "$WEBUI_PKG_DIR/static/"* /root/.open-webui/static/ 2>/dev/null || true
+        export BUILD_DIR="$WEBUI_PKG_DIR/static"
         export FRONTEND_BUILD_DIR="$WEBUI_PKG_DIR/static"
-        export STATIC_DIR="$WEBUI_PKG_DIR/static"
-        echo "[INIT] Open WebUI static files populated and pinned to: $WEBUI_PKG_DIR/static"
+        export WEBUI_BUILD_DIR="$WEBUI_PKG_DIR/static"
+        export STATIC_DIR="/root/.open-webui/static"
+        echo "[INIT] Open WebUI BUILD_DIR pinned to: $WEBUI_PKG_DIR/static"
     fi
 
     export WEBUI_URL="http://127.0.0.1:8098"
