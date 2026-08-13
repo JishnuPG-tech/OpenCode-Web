@@ -238,7 +238,12 @@ done
 echo "[BOOT] Public gateway live"
 echo "[BOOT] Background services starting asynchronously..."
 
-# Step 8: Start OmniRoute AI Gateway in Background (if available)
+    # Step 8: Start Redis Server & OmniRoute AI Gateway in Background
+    if command -v redis-server >/dev/null 2>&1; then
+        echo "[INIT] Starting Redis server on port 6379..."
+        redis-server --daemonize yes 2>/dev/null || true
+    fi
+
     echo "[INIT] Starting OmniRoute AI Gateway..."
     export PORT=20128
     export API_PORT=20129
@@ -377,7 +382,7 @@ except Exception as err:
     export CORS_ALLOW_ORIGIN="*"
     export WEBUI_AUTH="true"
     export ENABLE_SIGNUP="true"
-    
+    unset REDIS_URL
     open-webui serve --port 8098 > /data/cache/openwebui.log 2>&1 &
     WEBUI_PID=$!
 fi
