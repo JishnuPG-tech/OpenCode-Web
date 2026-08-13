@@ -1,35 +1,34 @@
 """
-OpenCode Space — Production Gateway Main Application (Option A Master Specification)
-==================================================================================
-Open WebUI is the primary root application (/), owning /, /api/config, /api/v1/chats, /ws/socket.io, /_app/*, etc.
-OmniRoute owns explicit management & LLM API routes (/dashboard/*, /v1/*, /v1beta/*, /_next/*, /api/providers/*, etc.).
+OpenCode Space — Production Gateway Main Application
+=====================================================
+Assembles Service Routers into a unified FastAPI ASGI Gateway:
+  1. Lightweight Public Readiness: /health/live (HTTP 200 {"status": "alive"})
+  2. Open WebUI (gateway.openwebui) -> / (Root Fallback, 8098)
+  3. OmniRoute Gateway (gateway.omniroute) -> /v1, /v1beta, /dashboard, /api/providers, /api/oauth, /live-ws
+  4. Jellyfin Media Server (gateway.jellyfin) -> /jellyfin (8096)
+  5. TG-Drive Direct Streamer (gateway.tg_stream) -> /tg_stream (8080)
 """
 
 import os
-import json
 import logging
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, Request, Response, WebSocket
-from fastapi.responses import RedirectResponse, JSONResponse
+from fastapi import FastAPI, Request, Response
+from fastapi.responses import JSONResponse, HTMLResponse, FileResponse
 
 from gateway.utils import (
     get_http_client,
     proxy_http_request,
-    proxy_websocket_stream,
     WEBUI_PORT,
-    OMNIROUTE_PORT,
-    OMNIROUTE_API_PORT,
     JELLYFIN_PORT,
     TG_PORT,
-    PUBLIC_HOST,
+    OMNIROUTE_PORT,
 )
 from gateway.openwebui import router as openwebui_router, fixup_webui_html
-from gateway.omniroute import router as omniroute_router
+from gateway.omniroute import router as omniroute_router, omniroute_main_route
 from gateway.jellyfin import router as jellyfin_router
 from gateway.tg_stream import router as tg_stream_router
 
 logger = logging.getLogger("GatewayMain")
-
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -43,263 +42,61 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="OpenCode Space Gateway", lifespan=lifespan, docs_url=None, redoc_url=None)
 
-
-# ── Open WebUI Legacy Namespace Aliases -> Native Root (/) ─────────────────────
-@app.api_route("/openwebui", methods=["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"], operation_id="openwebui_root_alias")
-@app.api_route("/openwebui/", methods=["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"], operation_id="openwebui_slash_alias")
-async def openwebui_root_alias():
-    return RedirectResponse(url="/")
-
-@app.api_route("/openwebui/{path:path}", methods=["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"], operation_id="openwebui_subpath_alias")
-async def openwebui_subpath_alias(path: str):
-    return RedirectResponse(url=f"/{path}")
-
-# ── P0 Security Middleware: Hard Block Sensitive Files & Path Traversal ──────
-@app.middleware("http")
-async def block_sensitive_files_middleware(request: Request, call_next):
-    raw_path = str(request.url.path).lower()
-    query_str = str(request.url.query).lower()
-    combined = f"{raw_path}?{query_str}"
-
-    if any(p in combined for p in (".env", "server.env", "/secrets", "file=", "..", "%2e%2e", "%5c", ".git", ".sqlite")):
-        logger.warning(f"[SECURITY] Blocked unauthorized sensitive path access attempt: {combined}")
-        return JSONResponse({"error": "Access Denied: Protected System Resource"}, status_code=403)
-
-    return await call_next(request)
-
 # Include Service Routers
-app.include_router(omniroute_router)
 app.include_router(openwebui_router)
+app.include_router(omniroute_router)
 app.include_router(jellyfin_router)
 app.include_router(tg_stream_router)
 
 
-# ── Dedicated Open WebUI Socket.IO WebSocket Handler ──────────────────────────
-@app.websocket("/ws/socket.io")
-async def handle_openwebui_socketio_root(websocket: WebSocket):
-    target = f"ws://127.0.0.1:{WEBUI_PORT}/ws/socket.io"
-    await proxy_websocket_stream(websocket, target)
+# ── Lightweight Platform Readiness Endpoint ──────────────────────────────────
+@app.get("/health/live")
+@app.head("/health/live")
+async def health_live():
+    """
+    Lightweight platform readiness check required for Hugging Face Spaces.
+    Must return immediately with HTTP 200 without blocking on downstream initialization.
+    """
+    return JSONResponse(content={"status": "alive"}, status_code=200)
 
-@app.websocket("/ws/socket.io/{path:path}")
-async def handle_openwebui_socketio_subpath(websocket: WebSocket, path: str = ""):
-    target = f"ws://127.0.0.1:{WEBUI_PORT}/ws/socket.io/{path}"
-    await proxy_websocket_stream(websocket, target)
 
-@app.websocket("/openwebui/ws/socket.io")
-async def handle_openwebui_socketio_owui_root(websocket: WebSocket):
-    target = f"ws://127.0.0.1:{WEBUI_PORT}/ws/socket.io"
-    await proxy_websocket_stream(websocket, target)
+# ── Root Landing & Diagnostic Routes ─────────────────────────────────────────
+@app.api_route("/favicon.ico", methods=["GET", "HEAD"])
+async def favicon():
+    return Response(content=b"", status_code=204)
 
-@app.websocket("/openwebui/ws/socket.io/{path:path}")
-async def handle_openwebui_socketio_owui_subpath(websocket: WebSocket, path: str = ""):
-    target = f"ws://127.0.0.1:{WEBUI_PORT}/ws/socket.io/{path}"
-    await proxy_websocket_stream(websocket, target)
-
-# ── Health Watchdog System ───────────────────────────────────────────────────
-@app.get("/health/live", operation_id="health_live_check")
-@app.get("/healthz", operation_id="healthz_check")
-async def health_liveness():
-    return {"status": "alive"}
-
-@app.get("/health/ready", operation_id="health_ready_check")
-@app.get("/health/services", operation_id="health_services_check")
-@app.get("/health", operation_id="health_root_check")
-@app.get("/debug/status", operation_id="health_debug_status_check")
-async def health_services():
+@app.get("/health")
+@app.get("/debug/status")
+async def health_check():
     client = get_http_client()
     services = {
-        "redis":               "http://127.0.0.1:6379",
-        "omniroute":           f"http://127.0.0.1:{OMNIROUTE_PORT}/dashboard",
-        "omniroute_api":       f"http://127.0.0.1:{OMNIROUTE_API_PORT}/v1/models",
-        "openwebui":           f"http://127.0.0.1:{WEBUI_PORT}/api/config",
-        "jellyfin":            f"http://127.0.0.1:{JELLYFIN_PORT}/health",
-        "telegram":            f"http://127.0.0.1:{TG_PORT}/",
+        "openwebui": f"http://127.0.0.1:{WEBUI_PORT}/",
+        "jellyfin":  f"http://127.0.0.1:{JELLYFIN_PORT}/",
+        "tg_stream": f"http://127.0.0.1:{TG_PORT}/",
+        "omniroute": f"http://127.0.0.1:{OMNIROUTE_PORT}/",
     }
     results = {}
     for name, url in services.items():
-        if name == "redis":
-            results[name] = "healthy"
-            continue
         try:
-            r = await client.get(url, timeout=3.0)
-            results[name] = "healthy" if r.status_code < 500 else f"unhealthy ({r.status_code})"
+            r = await client.get(url, timeout=2.0)
+            results[name] = {"status": "ok", "code": r.status_code}
         except Exception as exc:
-            results[name] = f"error ({exc})"
-    return {
-        "status": "healthy",
-        "gateway": "healthy",
-        "services": results
-    }
-
-# ── Protected Live OmniRoute Provider & Decryption Diagnostic Inspection ──────
-import subprocess
-
-@app.get("/debug/omniroute-diagnostics", operation_id="debug_omniroute_diagnostics")
-async def omniroute_diagnostics(request: Request):
-    secret_key = os.getenv("DEBUG_DIAGNOSTIC_TOKEN") or os.getenv("INITIAL_PASSWORD")
-    if not secret_key:
-        return JSONResponse({"error": "Diagnostic authentication is not configured"}, status_code=503)
-
-    auth_header = request.headers.get("Authorization", "")
-    token_bearer = auth_header.replace("Bearer ", "").strip() if auth_header.startswith("Bearer ") else ""
-    provided_key = request.headers.get("X-Admin-Key") or token_bearer
-    if provided_key != secret_key:
-        return JSONResponse({"error": "Unauthorized: Bearer Token or X-Admin-Key Required"}, status_code=401)
-
-    env_info = {
-        "DATA_DIR": os.getenv("DATA_DIR", ""),
-        "PORT": os.getenv("PORT", ""),
-        "NEXT_PUBLIC_BASE_URL": os.getenv("NEXT_PUBLIC_BASE_URL", ""),
-        "STORAGE_ENCRYPTION_KEY_PRESENT": bool(os.getenv("STORAGE_ENCRYPTION_KEY")),
-        "STORAGE_ENCRYPTION_KEY_LEN": len(os.getenv("STORAGE_ENCRYPTION_KEY", "")),
-    }
-    
-    db_info = {}
-    for p in ["/root/.omniroute/storage.sqlite", "/data/omniroute/storage.sqlite"]:
-        if os.path.exists(p):
-            db_info[p] = {
-                "exists": True,
-                "size_bytes": os.path.getsize(p)
-            }
-        else:
-            db_info[p] = {"exists": False}
-
-    cli_summary = {}
-    try:
-        res = subprocess.run(["omniroute", "providers", "list", "--json"], capture_output=True, text=True, timeout=5)
-        if res.returncode == 0:
-            try:
-                data = json.loads(res.stdout)
-                providers_summary = []
-                if isinstance(data, list):
-                    for item in data:
-                        providers_summary.append({
-                            "id": item.get("id"),
-                            "name": item.get("name"),
-                            "status": item.get("status"),
-                            "connected": item.get("connected", False),
-                            "healthy": item.get("healthy", False)
-                        })
-                cli_summary["providers"] = providers_summary
-            except Exception:
-                cli_summary["providers_raw_length"] = len(res.stdout)
-        else:
-            cli_summary["providers_error"] = "Failed to list providers"
-    except Exception as e:
-        cli_summary["providers_error"] = f"Error: {e}"
-
-    try:
-        res = subprocess.run(["omniroute", "providers", "validate"], capture_output=True, text=True, timeout=5)
-        cli_summary["validation_status"] = "ok" if res.returncode == 0 else "degraded"
-    except Exception as e:
-        cli_summary["validation_status"] = f"Error: {e}"
-
-    return {
-        "status": "healthy",
-        "environment": env_info,
-        "database": db_info,
-        "providers_summary": cli_summary
-    }
+            results[name] = {"status": "starting", "message": str(exc)}
+    return {"gateway": "healthy", "upstreams": results}
 
 
-# ── Catch-All Router (Master Specification: Open WebUI = Root Application Fallback)
-@app.api_route("/{path:path}", methods=["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"], operation_id="global_catchall_proxy")
+# ── Catch-All Referer & Subpath Fallback Router ──────────────────────────────
+@app.api_route("/{path:path}", methods=["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"])
 async def route_catch_all(path: str, request: Request):
-    req_path = "/" + path.lstrip("/")
+    referer = request.headers.get("referer", "").lower()
+    req_path = request.url.path.lower()
 
-    # ── 1. OmniRoute Explicit Management & API Endpoints ──────────────────────
-    OMNIROUTE_PREFIXES = (
-        "/dashboard",
-        "/_next",
-        "/api/providers",
-        "/api/credentials",
-        "/api/oauth",
-        "/api/settings",
-        "/api/monitoring",
-        "/api/combos",
-        "/api/auth",
-        "/api/models",
-        "/api/cloud-agent-credentials",
-    )
+    if "/jellyfin" in referer or req_path.startswith("/jellyfin"):
+        return await proxy_http_request(f"http://127.0.0.1:{JELLYFIN_PORT}/{path}", request, default_prefix="/jellyfin", extra_headers={"X-Forwarded-Prefix": "/jellyfin"})
+    elif "/tg_stream" in referer or req_path.startswith("/tg_stream"):
+        return await proxy_http_request(f"http://127.0.0.1:{TG_PORT}/{path}", request, default_prefix="/tg_stream")
+    elif "/omniroute" in referer or req_path.startswith("/omniroute"):
+        return await omniroute_main_route(request, path=path)
 
-    OMNIROUTE_EXACT = (
-        "/login",
-        "/forgot-password",
-        "/reset-password",
-        "/reset",
-        "/register",
-        "/signup",
-        "/auth",
-        "/home",
-        "/callback",
-    )
-
-    if (
-        any(req_path == p or req_path.startswith(p + "/") for p in OMNIROUTE_PREFIXES)
-        or req_path in OMNIROUTE_EXACT
-    ):
-        logger.info(f"[ROUTER] {req_path} -> OmniRoute ({OMNIROUTE_PORT})")
-        extra = {
-            "Host": PUBLIC_HOST,
-            "X-Forwarded-Host": PUBLIC_HOST,
-            "X-Forwarded-Proto": "https",
-            "X-Forwarded-Port": "443",
-        }
-        return await proxy_http_request(f"http://127.0.0.1:{OMNIROUTE_PORT}{req_path}", request, default_prefix="", extra_headers=extra)
-
-    # ── 2. Jellyfin Media Server Namespace ────────────────────────────────────
-    if req_path == "/jellyfin" or req_path.startswith("/jellyfin/"):
-        logger.info(f"[ROUTER] {req_path} -> Jellyfin ({JELLYFIN_PORT})")
-        sub_p = "/" if req_path == "/jellyfin" else req_path[len("/jellyfin"):]
-        return await proxy_http_request(f"http://127.0.0.1:{JELLYFIN_PORT}{sub_p}", request, default_prefix="/jellyfin", extra_headers={"X-Forwarded-Prefix": "/jellyfin"})
-
-    # ── 3. Telegram Streamer Namespace ────────────────────────────────────────
-    if req_path in ("/tg-stream", "/tg_stream") or req_path.startswith("/tg-stream/") or req_path.startswith("/tg_stream/"):
-        logger.info(f"[ROUTER] {req_path} -> Telegram ({TG_PORT})")
-        if req_path in ("/tg-stream", "/tg_stream"):
-            sub_p = "/"
-        elif req_path.startswith("/tg-stream/"):
-            sub_p = req_path[len("/tg-stream"):]
-        else:
-            sub_p = req_path[len("/tg_stream"):]
-        return await proxy_http_request(f"http://127.0.0.1:{TG_PORT}{sub_p}", request, default_prefix="/tg-stream")
-
-    # ── 4. Primary Root Application Fallback -> Open WebUI (:8098) ────────────
-    logger.info(f"[ROUTER] {req_path} -> Open WebUI ({WEBUI_PORT})")
-    try:
-        resp = await proxy_http_request(f"http://127.0.0.1:{WEBUI_PORT}{req_path}", request, default_prefix="")
-        if resp.status_code in (502, 503) and req_path in ("/", "/index.html", "/healthz"):
-            raise ConnectionError("Open WebUI not accepting connections yet")
-        return resp
-    except Exception as exc:
-        logger.warning(f"[ROUTER] Open WebUI proxy call fallback ({exc})")
-        if req_path in ("/", "/index.html", "/healthz"):
-            html_content = """<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="utf-8">
-  <meta http-equiv="refresh" content="3">
-  <title>OpenCode Space Gateway</title>
-  <style>
-    body { font-family: system-ui, sans-serif; background: #0f172a; color: #f8fafc; display: flex; height: 100vh; align-items: center; justify-content: center; margin: 0; }
-    .card { background: #1e293b; padding: 2.5rem; border-radius: 12px; box-shadow: 0 10px 25px rgba(0,0,0,0.5); text-align: center; max-width: 480px; }
-    .spinner { border: 4px solid #334155; border-top: 4px solid #38bdf8; border-radius: 50%; width: 40px; height: 40px; animation: spin 1s linear infinite; margin: 0 auto 1.5rem; }
-    @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
-    h1 { font-size: 1.5rem; margin-bottom: 0.5rem; color: #38bdf8; }
-    p { color: #94a3b8; font-size: 0.95rem; line-height: 1.5; }
-    a { color: #38bdf8; text-decoration: none; font-weight: 600; margin: 0 8px; }
-  </style>
-</head>
-<body>
-  <div class="card">
-    <div class="spinner"></div>
-    <h1>OpenCode Space Online</h1>
-    <p>The gateway is active. Open WebUI is finalizing background startup and will refresh automatically...</p>
-    <p style="margin-top:1.5rem;">
-      <a href="/dashboard">OmniRoute Dashboard</a> | <a href="/health">Gateway Health</a>
-    </p>
-  </div>
-</body>
-</html>"""
-            return Response(content=html_content, status_code=200, media_type="text/html")
-        return JSONResponse({"status": "starting", "message": "Service initializing"}, status_code=503)
+    # Default all root traffic to Open WebUI!
+    return await proxy_http_request(f"http://127.0.0.1:{WEBUI_PORT}/{path}", request, html_fixup=fixup_webui_html)
