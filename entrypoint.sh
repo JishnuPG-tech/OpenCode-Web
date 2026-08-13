@@ -65,11 +65,16 @@ BACKUP_DIR="/data/omniroute/backups"
 RUNTIME_DIR="/root/.omniroute"
 RUNTIME_DB="/root/.omniroute/storage.sqlite"
 
+PERSIST_WEBUI_DIR="/data/open-webui"
+PERSIST_WEBUI_DB="/data/open-webui/webui.db"
+RUNTIME_WEBUI_DIR="/root/.open-webui"
+RUNTIME_WEBUI_DB="/root/.open-webui/webui.db"
+
 if [ -d "$PERSIST_DB" ]; then
     rm -rf "$PERSIST_DB" 2>/dev/null || true
 fi
 
-mkdir -p "$PERSIST_DIR" "$BACKUP_DIR" "$RUNTIME_DIR" 2>/dev/null || true
+mkdir -p "$PERSIST_DIR" "$BACKUP_DIR" "$RUNTIME_DIR" "$PERSIST_WEBUI_DIR" "$RUNTIME_WEBUI_DIR" 2>/dev/null || true
 
 if [ -f "$PERSIST_DB" ] && [ -s "$PERSIST_DB" ]; then
     _INIT_SIZE=$(wc -c < "$PERSIST_DB" 2>/dev/null | tr -d ' \t\n\r' || echo "0")
@@ -85,6 +90,21 @@ if [ -f "$PERSIST_DB" ] && [ -s "$PERSIST_DB" ]; then
     else
         cp -f "$PERSIST_DB" "$RUNTIME_DB"
         echo "[PERSISTENCE] Restored persistent database into ${RUNTIME_DB}."
+    fi
+fi
+
+if [ -f "$PERSIST_WEBUI_DB" ] && [ -s "$PERSIST_WEBUI_DB" ]; then
+    _WEBUI_SIZE=$(wc -c < "$PERSIST_WEBUI_DB" 2>/dev/null | tr -d ' \t\n\r' || echo "0")
+    echo "[PERSISTENCE] Found Open WebUI snapshot at: ${PERSIST_WEBUI_DB} (${_WEBUI_SIZE} bytes)"
+    if command -v sqlite3 >/dev/null 2>&1; then
+        _WCHK=$(sqlite3 "$PERSIST_WEBUI_DB" "PRAGMA quick_check;" 2>/dev/null || echo "failed")
+        if [ "$_WCHK" = "ok" ]; then
+            cp -f "$PERSIST_WEBUI_DB" "$RUNTIME_WEBUI_DB" 2>/dev/null || true
+            echo "[PERSISTENCE] Restored persistent Open WebUI database into ${RUNTIME_WEBUI_DB} successfully."
+        fi
+    else
+        cp -f "$PERSIST_WEBUI_DB" "$RUNTIME_WEBUI_DB" 2>/dev/null || true
+        echo "[PERSISTENCE] Restored persistent Open WebUI database into ${RUNTIME_WEBUI_DB}."
     fi
 fi
 
@@ -191,12 +211,24 @@ sync_omniroute_db() {
         fi
     fi
 
-    if [ -f "/root/.open-webui/webui.db" ] && [ -s "/root/.open-webui/webui.db" ]; then
-        mkdir -p /data/open-webui 2>/dev/null || true
-        cp -f /root/.open-webui/webui.db /data/open-webui/webui.db 2>/dev/null || true
-        _WEBUI_SIZE=$(wc -c < "/data/open-webui/webui.db" 2>/dev/null | tr -d ' \t\n\r' || echo "0")
-        echo "[PERSISTENCE] Open WebUI DB snapshot OK: ${_WEBUI_SIZE} bytes synced to /data/open-webui/webui.db"
-    fi
+    # Synchronize Open WebUI database safely if active
+    for _SRC_WDB in "$PERSIST_WEBUI_DB" "$RUNTIME_WEBUI_DB" "/data/open-webui/data/webui.db"; do
+        if [ -f "$_SRC_WDB" ] && [ -s "$_SRC_WDB" ]; then
+            _R_SRC=$(python3 -c "import os; print(os.path.realpath('$_SRC_WDB'))" 2>/dev/null || echo "$_SRC_WDB")
+            _R_DST=$(python3 -c "import os; print(os.path.realpath('$PERSIST_WEBUI_DB'))" 2>/dev/null || echo "$PERSIST_WEBUI_DB")
+            
+            if [ "$_R_SRC" != "$_R_DST" ]; then
+                if command -v sqlite3 >/dev/null 2>&1; then
+                    sqlite3 "$_SRC_WDB" ".backup '$PERSIST_WEBUI_DB'" 2>/dev/null || cp -f "$_SRC_WDB" "$PERSIST_WEBUI_DB" 2>/dev/null || true
+                else
+                    cp -f "$_SRC_WDB" "$PERSIST_WEBUI_DB" 2>/dev/null || true
+                fi
+            fi
+            _WSIZE=$(wc -c < "$PERSIST_WEBUI_DB" 2>/dev/null | tr -d ' \t\n\r' || echo "0")
+            echo "[PERSISTENCE] Open WebUI DB snapshot OK: ${_WSIZE} bytes present at ${PERSIST_WEBUI_DB}"
+            break
+        fi
+    done
 }
 
 trap sync_omniroute_db EXIT INT TERM
@@ -344,15 +376,59 @@ if command -v open-webui >/dev/null 2>&1; then
         echo "[PERSISTENCE] Restored Open WebUI database snapshot ($(wc -c < /data/open-webui/webui.db | tr -d ' ') bytes)."
     fi
 
-    FOUND_BUILD_DIR=$(python3 -c "import open_webui, os; pkg=os.path.dirname(open_webui.__file__); matches=[root for root, dirs, files in os.walk(pkg) if 'index.html' in files]; print(matches[0] if matches else '')" 2>/dev/null || echo "")
-    if [ -n "$FOUND_BUILD_DIR" ] && [ -d "$FOUND_BUILD_DIR" ]; then
-        mkdir -p /root/.open-webui/static 2>/dev/null || true
-        cp -rn "$FOUND_BUILD_DIR/"* /root/.open-webui/static/ 2>/dev/null || true
-        export BUILD_DIR="$FOUND_BUILD_DIR"
-        export FRONTEND_BUILD_DIR="$FOUND_BUILD_DIR"
-        export WEBUI_BUILD_DIR="$FOUND_BUILD_DIR"
-        export STATIC_DIR="/root/.open-webui/static"
-        echo "[INIT] Open WebUI BUILD_DIR auto-located & pinned to: $FOUND_BUILD_DIR"
+    # 5. Start Open WebUI
+    echo "[INIT] Starting Open WebUI on port 8098..."
+    if command -v open-webui >/dev/null 2>&1; then
+        FOUND_BUILD_DIR=$(python3 -c "import open_webui, os; pkg=os.path.dirname(open_webui.__file__); matches=[root for root, dirs, files in os.walk(pkg) if 'index.html' in files]; print(matches[0] if matches else '')" 2>/dev/null || echo "")
+        if [ -n "$FOUND_BUILD_DIR" ] && [ -d "$FOUND_BUILD_DIR" ]; then
+            mkdir -p /root/.open-webui/static 2>/dev/null || true
+            cp -rn "$FOUND_BUILD_DIR/"* /root/.open-webui/static/ 2>/dev/null || true
+            export BUILD_DIR="$FOUND_BUILD_DIR"
+            export FRONTEND_BUILD_DIR="$FOUND_BUILD_DIR"
+            export WEBUI_BUILD_DIR="$FOUND_BUILD_DIR"
+            export STATIC_DIR="/root/.open-webui/static"
+            echo "[INIT] Open WebUI BUILD_DIR auto-located & pinned to: $FOUND_BUILD_DIR"
+        fi
+
+        export WEBUI_URL="${WEBUI_URL:-https://jishnupg-opencode-cli.hf.space}"
+        export OPENAI_API_BASE_URL="http://127.0.0.1:20129/v1"
+        export OPENAI_API_KEY="omniroute"
+        export WEBUI_SECRET_KEY="$WEBUI_SECRET_KEY"
+        export ENABLE_OLLAMA_API="${ENABLE_OLLAMA_API:-false}"
+        export ENABLE_OPENAI_API="true"
+        export ENABLE_WEBSOCKET_SUPPORT="true"
+        export WEBSOCKET_MANAGER="redis"
+        export WEBSOCKET_REDIS_URL="redis://127.0.0.1:6379/1"
+        export WEBUI_WORKERS=1
+        export BYPASS_EMBEDDING_AND_RETRIEVAL="true"
+        export RAG_EMBEDDING_ENGINE=""
+        export RAG_EMBEDDING_MODEL="none"
+        export VECTOR_DB_EMBEDDING_FUNCTION="none"
+        export RAG_RERANKING_MODEL=""
+        export ENABLE_RAG_HYBRID_SEARCH="false"
+        export ENABLE_RAG_LOCAL_WEB_FETCH="false"
+        export RAG_AUTO_UPDATE="false"
+        export RAG_AUTO_UPDATE_INDEX="false"
+        export ENABLE_VERSION_UPDATE_CHECK="false"
+        export TOOL_SERVERS=""
+        export OPENAPI_TOOL_SERVERS=""
+        export PORT=8098
+        export DATA_DIR="/data/open-webui"
+        export DATABASE_URL="sqlite:////data/open-webui/webui.db"
+        export WEBUI_AUTH="true"
+        export ENABLE_SIGNUP="true"
+        mkdir -p /root/.cache /data/cache /data/open-webui /root/.open-webui 2>/dev/null || true
+        export CORS_ALLOW_ORIGIN="https://jishnupg-opencode-cli.hf.space"
+        open-webui serve --port 8098 &
+        OWUI_PID=$!
+        echo "[PROCESS] Open WebUI: PID ${OWUI_PID}"
+        for i in $(seq 1 60); do
+            if curl -fsS "http://127.0.0.1:8098/health" >/dev/null 2>&1 || curl -fsS "http://127.0.0.1:8098/api/config" >/dev/null 2>&1; then
+                echo "[HEALTH] Open WebUI ready after ${i}s"
+                break
+            fi
+            sleep 1
+        done
     fi
 
     export WEBUI_URL="http://127.0.0.1:8098"
