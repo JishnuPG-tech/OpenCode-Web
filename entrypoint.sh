@@ -321,8 +321,14 @@ fi
 # Step 11: Start Open WebUI in Background (Port 8098)
 if command -v open-webui >/dev/null 2>&1; then
     echo "[HEALTH] Open WebUI starting in background on port 8098..."
-    export WEBUI_URL="https://jishnupg-opencode-cli.hf.space"
-    export OPENAI_API_BASE_URL="http://127.0.0.1:20128/v1"
+    mkdir -p /root/.open-webui /data/open-webui /data/cache 2>/dev/null || true
+    if [ -f "/data/open-webui/webui.db" ] && [ -s "/data/open-webui/webui.db" ]; then
+        cp -f /data/open-webui/webui.db /root/.open-webui/webui.db 2>/dev/null || true
+        echo "[PERSISTENCE] Restored Open WebUI database."
+    fi
+
+    export WEBUI_URL="http://127.0.0.1:8098"
+    export OPENAI_API_BASE_URL="http://127.0.0.1:20129/v1"
     export OPENAI_API_KEY="omniroute"
     export WEBUI_SECRET_KEY="${WEBUI_SECRET_KEY:-opencode_webui_jwt_secret_2026}"
     export ENABLE_OLLAMA_API="false"
@@ -330,15 +336,10 @@ if command -v open-webui >/dev/null 2>&1; then
     export TOOL_SERVERS=""
     export OPENAPI_TOOL_SERVERS=""
     export PORT=8098
-    export DATA_DIR="/data/open-webui"
+    export DATA_DIR="/root/.open-webui"
     export CORS_ALLOW_ORIGIN="*"
     export WEBUI_AUTH="true"
     export ENABLE_SIGNUP="true"
-    
-    if [ ! -L "/root/.open-webui" ]; then
-        rm -rf /root/.open-webui 2>/dev/null || true
-        ln -sf /data/open-webui /root/.open-webui
-    fi
     
     open-webui serve --port 8098 > /data/cache/openwebui.log 2>&1 &
     WEBUI_PID=$!
@@ -349,6 +350,10 @@ fi
     while true; do
         sleep 120
         sync_omniroute_db >/dev/null 2>&1 || true
+        if [ -f "/root/.open-webui/webui.db" ]; then
+            mkdir -p /data/open-webui 2>/dev/null || true
+            cp -f /root/.open-webui/webui.db /data/open-webui/webui.db 2>/dev/null || true
+        fi
     done
 ) &
 
