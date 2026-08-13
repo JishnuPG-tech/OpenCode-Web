@@ -24,7 +24,7 @@ from gateway.utils import (
     OMNIROUTE_PORT,
     PUBLIC_HOST,
 )
-from gateway.openwebui import router as openwebui_router, fixup_webui_html
+from gateway.openwebui import router as openwebui_router, fixup_webui_html, handle_openwebui_proxy
 from gateway.omniroute import router as omniroute_router, omniroute_main_route
 from gateway.jellyfin import router as jellyfin_router
 from gateway.tg_stream import router as tg_stream_router
@@ -175,4 +175,4 @@ async def route_catch_all(path: str, request: Request):
 
     # ── 4. Primary Root Application Fallback -> Open WebUI (:8098) ────────────
     logger.info(f"[ROUTER] {req_path} -> Open WebUI ({WEBUI_PORT})")
-    return await proxy_http_request(f"http://127.0.0.1:{WEBUI_PORT}{req_path}", request, default_prefix="", html_fixup=fixup_webui_html)
+    return await handle_openwebui_proxy(f"http://127.0.0.1:{WEBUI_PORT}{req_path}", request, default_prefix="", html_fixup=fixup_webui_html)

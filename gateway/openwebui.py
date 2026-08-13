@@ -4,9 +4,12 @@ Open WebUI Gateway Router
 Proxies '/openwebui/*' and Open WebUI API/WebSocket/static endpoints to Open WebUI on port 8098.
 """
 
+import os
+import logging
 from fastapi import APIRouter, Request, Response, WebSocket
 from gateway.utils import WEBUI_PORT, proxy_http_request, proxy_websocket_stream
 
+logger = logging.getLogger("GatewayOpenWebUI")
 router = APIRouter(tags=["OpenWebUI"])
 
 def fixup_webui_html(html: str) -> str:
@@ -14,19 +17,32 @@ def fixup_webui_html(html: str) -> str:
         return html
     return html
 
+async def handle_openwebui_proxy(target: str, request: Request, default_prefix: str = "", html_fixup=None):
+    res = await proxy_http_request(target, request, default_prefix=default_prefix, html_fixup=html_fixup)
+    if res.status_code == 500:
+        try:
+            log_path = "/data/cache/openwebui.log"
+            if os.path.exists(log_path):
+                with open(log_path, "r", encoding="utf-8", errors="ignore") as f:
+                    lines = f.readlines()
+                    logger.error(f"[OPENWEBUI ERROR 500] {request.url.path}:\n" + "".join(lines[-30:]))
+        except Exception:
+            pass
+    return res
+
 @router.api_route("/_app", methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"])
 @router.api_route("/_app/{path:path}", methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"])
 async def webui_app_assets_proxy(request: Request, path: str = ""):
     sub_path = path.lstrip("/")
     target = f"http://127.0.0.1:{WEBUI_PORT}/_app/{sub_path}" if sub_path else f"http://127.0.0.1:{WEBUI_PORT}/_app"
-    return await proxy_http_request(target, request, default_prefix="")
+    return await handle_openwebui_proxy(target, request, default_prefix="")
 
 @router.api_route("/openwebui", methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"])
 @router.api_route("/openwebui/{path:path}", methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"])
 async def webui_prefix_proxy(request: Request, path: str = ""):
     sub_path = path.lstrip("/")
     target = f"http://127.0.0.1:{WEBUI_PORT}/{sub_path}" if sub_path else f"http://127.0.0.1:{WEBUI_PORT}/"
-    resp = await proxy_http_request(
+    resp = await handle_openwebui_proxy(
         target,
         request,
         default_prefix="/openwebui",

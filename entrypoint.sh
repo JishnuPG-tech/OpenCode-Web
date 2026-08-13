@@ -339,7 +339,7 @@ if command -v open-webui >/dev/null 2>&1; then
     fi
 
     export WEBUI_URL="http://127.0.0.1:8098"
-    export OPENAI_API_BASE_URL="http://127.0.0.1:20129/v1"
+    export OPENAI_API_BASE_URL="http://127.0.0.1:8000/v1"
     export OPENAI_API_KEY="omniroute"
     export WEBUI_SECRET_KEY="${WEBUI_SECRET_KEY:-opencode_webui_jwt_secret_2026}"
     export ENABLE_OLLAMA_API="false"
