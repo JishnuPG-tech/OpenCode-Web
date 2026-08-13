@@ -10,7 +10,7 @@ import json
 import logging
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request, Response, WebSocket
-from fastapi.responses import RedirectResponse
+from fastapi.responses import RedirectResponse, JSONResponse
 
 from gateway.utils import (
     get_http_client,
@@ -123,7 +123,10 @@ import subprocess
 
 @app.get("/debug/omniroute-diagnostics", operation_id="debug_omniroute_diagnostics")
 async def omniroute_diagnostics(request: Request):
-    secret_key = os.getenv("DEBUG_DIAGNOSTIC_TOKEN") or os.getenv("INITIAL_PASSWORD") or "admin"
+    secret_key = os.getenv("DEBUG_DIAGNOSTIC_TOKEN") or os.getenv("INITIAL_PASSWORD")
+    if not secret_key:
+        return JSONResponse({"error": "Diagnostic authentication is not configured"}, status_code=503)
+
     auth_header = request.headers.get("Authorization", "")
     token_bearer = auth_header.replace("Bearer ", "").strip() if auth_header.startswith("Bearer ") else ""
     provided_key = request.headers.get("X-Admin-Key") or token_bearer or request.query_params.get("key")
