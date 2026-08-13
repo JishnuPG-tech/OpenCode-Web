@@ -338,34 +338,8 @@ if command -v open-webui >/dev/null 2>&1; then
         rm -f /data/open-webui/webui.db 2>/dev/null || true
     fi
     if [ -f "/data/open-webui/webui.db" ] && [ -s "/data/open-webui/webui.db" ]; then
-        python3 -c "
-import sqlite3, os
-db = '/data/open-webui/webui.db'
-try:
-    conn = sqlite3.connect(db)
-    cur = conn.cursor()
-    cur.execute(\"SELECT name FROM sqlite_master WHERE type='table' AND name='banner'\")
-    has_banner = cur.fetchone()
-    cur.execute(\"PRAGMA table_info('user')\")
-    user_cols = [row[1] for row in cur.fetchall()]
-    conn.close()
-    if not has_banner or 'settings' not in user_cols or 'info' not in user_cols:
-        os.rename(db, db + '.legacy_bak')
-        if os.path.exists('/root/.open-webui/webui.db'):
-            os.remove('/root/.open-webui/webui.db')
-        print('[RESET] Outdated Open WebUI DB schema reset for fresh migration.')
-except Exception as err:
-    try:
-        os.rename(db, db + '.corrupt_bak')
-        if os.path.exists('/root/.open-webui/webui.db'):
-            os.remove('/root/.open-webui/webui.db')
-    except Exception:
-        pass
-" 2>/dev/null || true
-        if [ -f "/data/open-webui/webui.db" ]; then
-            cp -f /data/open-webui/webui.db /root/.open-webui/webui.db 2>/dev/null || true
-            echo "[PERSISTENCE] Restored Open WebUI database."
-        fi
+        cp -f /data/open-webui/webui.db /root/.open-webui/webui.db 2>/dev/null || true
+        echo "[PERSISTENCE] Restored Open WebUI database snapshot ($(wc -c < /data/open-webui/webui.db | tr -d ' ') bytes)."
     fi
 
     FOUND_BUILD_DIR=$(python3 -c "import open_webui, os; pkg=os.path.dirname(open_webui.__file__); matches=[root for root, dirs, files in os.walk(pkg) if 'index.html' in files]; print(matches[0] if matches else '')" 2>/dev/null || echo "")
@@ -382,13 +356,14 @@ except Exception as err:
     export WEBUI_URL="http://127.0.0.1:8098"
     export OPENAI_API_BASE_URL="http://127.0.0.1:8000/v1"
     export OPENAI_API_KEY="omniroute"
-    export WEBUI_SECRET_KEY="${WEBUI_SECRET_KEY:-opencode_webui_jwt_secret_2026}"
+    export WEBUI_SECRET_KEY="opencode_webui_jwt_secret_2026"
     export ENABLE_OLLAMA_API="false"
     export ENABLE_OPENAI_API="true"
     export TOOL_SERVERS=""
     export OPENAPI_TOOL_SERVERS=""
     export PORT=8098
     export DATA_DIR="/root/.open-webui"
+    export DATABASE_URL="sqlite:////data/open-webui/webui.db"
     export CORS_ALLOW_ORIGIN="*"
     export WEBUI_AUTH="true"
     export ENABLE_SIGNUP="true"
