@@ -37,6 +37,13 @@ async def webui_app_assets_proxy(request: Request, path: str = ""):
     target = f"http://127.0.0.1:{WEBUI_PORT}/_app/{sub_path}" if sub_path else f"http://127.0.0.1:{WEBUI_PORT}/_app"
     return await handle_openwebui_proxy(target, request, default_prefix="")
 
+@router.api_route("/auth", methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"])
+@router.api_route("/auth/{path:path}", methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"])
+async def webui_auth_pages_proxy(request: Request, path: str = ""):
+    sub_path = path.lstrip("/")
+    target = f"http://127.0.0.1:{WEBUI_PORT}/auth/{sub_path}" if sub_path else f"http://127.0.0.1:{WEBUI_PORT}/auth"
+    return await handle_openwebui_proxy(target, request, default_prefix="")
+
 @router.api_route("/openwebui", methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"])
 @router.api_route("/openwebui/{path:path}", methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"])
 async def webui_prefix_proxy(request: Request, path: str = ""):
