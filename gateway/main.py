@@ -91,12 +91,76 @@ async def route_catch_all(path: str, request: Request):
     referer = request.headers.get("referer", "").lower()
     req_path = request.url.path.lower()
 
-    if "/jellyfin" in referer or req_path.startswith("/jellyfin"):
-        return await proxy_http_request(f"http://127.0.0.1:{JELLYFIN_PORT}/{path}", request, default_prefix="/jellyfin", extra_headers={"X-Forwarded-Prefix": "/jellyfin"})
-    elif "/tg_stream" in referer or req_path.startswith("/tg_stream"):
-        return await proxy_http_request(f"http://127.0.0.1:{TG_PORT}/{path}", request, default_prefix="/tg_stream")
-    elif "/omniroute" in referer or req_path.startswith("/omniroute"):
-        return await omniroute_main_route(request, path=path)
+    # ── 1. OmniRoute Explicit Management & API Endpoints ──────────────────────
+    if req_path in ("/omniroute", "/omniroute/"):
+        return RedirectResponse(url="/dashboard", status_code=307)
 
-    # Default all root traffic to Open WebUI!
-    return await proxy_http_request(f"http://127.0.0.1:{WEBUI_PORT}/{path}", request, html_fixup=fixup_webui_html)
+    OMNIROUTE_PREFIXES = (
+        "/dashboard",
+        "/omniroute",
+        "/_next",
+        "/api/providers",
+        "/api/credentials",
+        "/api/oauth",
+        "/api/settings",
+        "/api/monitoring",
+        "/api/combos",
+        "/api/auth",
+        "/api/models",
+        "/api/keys",
+        "/api/stats",
+        "/api/health",
+        "/api/system",
+        "/api/logs",
+        "/api/users",
+        "/api/vector",
+        "/api/chats",
+        "/api/tokens",
+        "/api/cloud-agent-credentials",
+    )
+
+    OMNIROUTE_EXACT = (
+        "/login",
+        "/forgot-password",
+        "/reset-password",
+        "/reset",
+        "/register",
+        "/signup",
+        "/auth",
+        "/home",
+        "/callback",
+    )
+
+    if (
+        any(req_path == p or req_path.startswith(p + "/") for p in OMNIROUTE_PREFIXES)
+        or req_path in OMNIROUTE_EXACT
+    ):
+        logger.info(f"[ROUTER] {req_path} -> OmniRoute ({OMNIROUTE_PORT})")
+        extra = {
+            "Host": PUBLIC_HOST,
+            "X-Forwarded-Host": PUBLIC_HOST,
+            "X-Forwarded-Proto": "https",
+            "X-Forwarded-Port": "443",
+        }
+        return await proxy_http_request(f"http://127.0.0.1:{OMNIROUTE_PORT}{req_path}", request, default_prefix="", extra_headers=extra)
+
+    # ── 2. Jellyfin Media Server Namespace ────────────────────────────────────
+    if req_path == "/jellyfin" or req_path.startswith("/jellyfin/"):
+        logger.info(f"[ROUTER] {req_path} -> Jellyfin ({JELLYFIN_PORT})")
+        sub_p = "/" if req_path == "/jellyfin" else req_path[len("/jellyfin"):]
+        return await proxy_http_request(f"http://127.0.0.1:{JELLYFIN_PORT}{sub_p}", request, default_prefix="/jellyfin", extra_headers={"X-Forwarded-Prefix": "/jellyfin"})
+
+    # ── 3. Telegram Streamer Namespace ────────────────────────────────────────
+    if req_path in ("/tg-stream", "/tg_stream") or req_path.startswith("/tg-stream/") or req_path.startswith("/tg_stream/"):
+        logger.info(f"[ROUTER] {req_path} -> Telegram ({TG_PORT})")
+        if req_path in ("/tg-stream", "/tg_stream"):
+            sub_p = "/"
+        elif req_path.startswith("/tg-stream/"):
+            sub_p = req_path[len("/tg-stream"):]
+        else:
+            sub_p = req_path[len("/tg_stream"):]
+        return await proxy_http_request(f"http://127.0.0.1:{TG_PORT}{sub_p}", request, default_prefix="/tg-stream")
+
+    # ── 4. Primary Root Application Fallback -> Open WebUI (:8098) ────────────
+    logger.info(f"[ROUTER] {req_path} -> Open WebUI ({WEBUI_PORT})")
+    return await proxy_http_request(f"http://127.0.0.1:{WEBUI_PORT}{req_path}", request, default_prefix="", html_fixup=fixup_webui_html)

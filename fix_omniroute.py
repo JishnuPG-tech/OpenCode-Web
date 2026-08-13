@@ -10,7 +10,8 @@ def fix_migrations(root_dir="/omniroute"):
 
     count = 0
     for dirpath, dirnames, filenames in os.walk(root_dir):
-        if os.path.basename(dirpath) == "migrations":
+        dir_name = os.path.basename(dirpath).lower()
+        if dir_name in ("migrations", "drizzle", "prisma", "db", "schema") or "migration" in dir_name:
             version_map = {}
             for fname in sorted(filenames):
                 if fname.endswith((".ts", ".js", ".sql", ".mjs")):

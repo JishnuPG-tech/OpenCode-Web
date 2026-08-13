@@ -63,9 +63,10 @@ COPY entrypoint.sh /entrypoint.sh
 COPY nginx.conf /nginx.conf
 COPY proxy.py /proxy.py
 COPY tg_streamer.py /tg_streamer.py
+COPY fix_omniroute.py /fix_omniroute.py
 COPY gateway /gateway
 COPY index.html /index.html
-RUN chmod +x /entrypoint.sh
+RUN chmod +x /entrypoint.sh /fix_omniroute.py
 
 EXPOSE 4096
 

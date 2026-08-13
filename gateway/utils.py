@@ -96,6 +96,7 @@ def build_upstream_headers(request: Request, extra_headers: Optional[Dict[str, s
 def build_downstream_raw_headers(resp_headers: httpx.Headers, default_prefix: str = "") -> list:
     raw_headers = []
     has_csp = False
+    has_cors = False
     for key, value in resp_headers.multi_items():
         lk = key.lower()
         if lk in _HOP_BY_HOP_HEADERS:
@@ -103,6 +104,8 @@ def build_downstream_raw_headers(resp_headers: httpx.Headers, default_prefix: st
         if lk == "x-frame-options":
             # Strip restrictive frame options to allow Hugging Face Space iframe embedding
             continue
+        if lk == "access-control-allow-origin":
+            has_cors = True
         if lk == "content-security-policy":
             has_csp = True
             # Update frame-ancestors directive to permit https://huggingface.co
@@ -121,6 +124,11 @@ def build_downstream_raw_headers(resp_headers: httpx.Headers, default_prefix: st
 
     if not has_csp:
         raw_headers.append((b"content-security-policy", b"frame-ancestors 'self' https://huggingface.co https://*.hf.space;"))
+
+    if not has_cors:
+        raw_headers.append((b"access-control-allow-origin", b"*"))
+        raw_headers.append((b"access-control-allow-methods", b"GET, POST, PUT, DELETE, PATCH, OPTIONS"))
+        raw_headers.append((b"access-control-allow-headers", b"*"))
 
     return raw_headers
 
@@ -272,6 +280,10 @@ async def proxy_websocket_stream(websocket: WebSocket, target_ws_url: str):
 
     skip_headers = {"host", "sec-websocket-key", "sec-websocket-version", "sec-websocket-extensions"}
     forward_headers = {k: v for k, v in websocket.headers.items() if k.lower() not in skip_headers}
+    forward_headers["Host"] = PUBLIC_HOST
+    forward_headers["X-Forwarded-Host"] = PUBLIC_HOST
+    forward_headers["X-Forwarded-Proto"] = "https"
+    forward_headers["X-Forwarded-Port"] = "443"
 
     try:
         async with aiohttp.ClientSession() as session:
