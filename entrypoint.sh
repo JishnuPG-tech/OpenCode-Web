@@ -403,8 +403,8 @@ if command -v open-webui >/dev/null 2>&1; then
         export WEBUI_WORKERS=1
         export BYPASS_EMBEDDING_AND_RETRIEVAL="true"
         export RAG_EMBEDDING_ENGINE=""
-        export RAG_EMBEDDING_MODEL="none"
-        export VECTOR_DB_EMBEDDING_FUNCTION="none"
+        export RAG_EMBEDDING_MODEL=""
+        export VECTOR_DB_EMBEDDING_FUNCTION=""
         export RAG_RERANKING_MODEL=""
         export ENABLE_RAG_HYBRID_SEARCH="false"
         export ENABLE_RAG_LOCAL_WEB_FETCH="false"
@@ -526,17 +526,48 @@ except Exception as e:
 " 2>/dev/null || true
         echo "[HERMES] Telegram bot integration enabled"
     fi
-    hermes gateway run --port 8642 > /data/cache/hermes.log 2>&1 &
-    HERMES_PID=$!
-    echo "[PROCESS] Hermes Agent: PID ${HERMES_PID}"
-    for i in $(seq 1 30); do
-        if curl -fsS "http://127.0.0.1:8642/health" >/dev/null 2>&1 || \
-           curl -fsS "http://127.0.0.1:8642/v1/models" >/dev/null 2>&1; then
-            echo "[HEALTH] Hermes Agent ready after ${i}s"
-            break
-        fi
-        sleep 1
-    done
+    # Detect the correct hermes CLI command for the installed version
+    echo "[HERMES] Detecting available commands..."
+    hermes --help > /data/cache/hermes_help.log 2>&1 || true
+    cat /data/cache/hermes_help.log | head -20 | sed 's/^/[HERMES-HELP] /' || true
+
+    HERMES_START_CMD=""
+    if hermes gateway --help >/dev/null 2>&1; then
+        HERMES_START_CMD="hermes gateway run --port 8642"
+        echo "[HERMES] Using command: hermes gateway run"
+    elif hermes serve --help >/dev/null 2>&1; then
+        HERMES_START_CMD="hermes serve --port 8642"
+        echo "[HERMES] Using command: hermes serve"
+    elif hermes start --help >/dev/null 2>&1; then
+        HERMES_START_CMD="hermes start --port 8642"
+        echo "[HERMES] Using command: hermes start"
+    elif hermes api --help >/dev/null 2>&1; then
+        HERMES_START_CMD="hermes api --port 8642"
+        echo "[HERMES] Using command: hermes api"
+    else
+        echo "[HERMES] WARNING: No gateway command found. Available commands logged to /data/cache/hermes_help.log"
+    fi
+
+    if [ -n "$HERMES_START_CMD" ]; then
+        # Pipe to BOTH log file and stdout so errors are visible in Space logs
+        $HERMES_START_CMD 2>&1 | tee /data/cache/hermes.log | sed 's/^/[HERMES] /' &
+        HERMES_PID=$!
+        echo "[PROCESS] Hermes Agent: PID ${HERMES_PID}"
+        for i in $(seq 1 30); do
+            if ! kill -0 $HERMES_PID 2>/dev/null; then
+                echo "[HERMES] ERROR: Process died immediately. Last lines:"
+                tail -20 /data/cache/hermes.log 2>/dev/null | sed 's/^/[HERMES-ERR] /' || true
+                HERMES_PID=""
+                break
+            fi
+            if curl -fsS "http://127.0.0.1:8642/health" >/dev/null 2>&1 || \
+               curl -fsS "http://127.0.0.1:8642/v1/models" >/dev/null 2>&1; then
+                echo "[HEALTH] Hermes Agent ready after ${i}s"
+                break
+            fi
+            sleep 1
+        done
+    fi
 fi
 
 # Step 12 & 13: Keep PID 1 Alive and Monitor Child Processes
