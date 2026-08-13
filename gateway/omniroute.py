@@ -128,8 +128,6 @@ async def omniroute_oauth(request: Request, path: str = ""):
 # ── OpenAI API Endpoint Routing (20128) ─────────────────────────────────────
 @router.api_route("/v1", methods=["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"])
 @router.api_route("/v1/{path:path}", methods=["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"])
-@router.api_route("/api/v1", methods=["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"])
-@router.api_route("/api/v1/{path:path}", methods=["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"])
 async def omniroute_v1_api(request: Request, path: str = ""):
     if path in ("openapi.json", "openapi.json/"):
         return JSONResponse({
@@ -162,8 +160,6 @@ async def omniroute_v1_api(request: Request, path: str = ""):
 
 @router.api_route("/v1beta", methods=["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"])
 @router.api_route("/v1beta/{path:path}", methods=["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"])
-@router.api_route("/api/v1beta", methods=["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"])
-@router.api_route("/api/v1beta/{path:path}", methods=["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"])
 async def omniroute_v1beta_api(request: Request, path: str = ""):
     target = f"http://127.0.0.1:{OMNIROUTE_PORT}/v1beta/{path}" if path else f"http://127.0.0.1:{OMNIROUTE_PORT}/v1beta"
     return await handle_omniroute_proxy(target, request, default_prefix="/omniroute")
