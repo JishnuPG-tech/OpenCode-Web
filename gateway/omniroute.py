@@ -1,10 +1,10 @@
 """
 OmniRoute Router for FastAPI Gateway
 ====================================
-Routes OmniRoute endpoints:
-  - /v1/* -> 20129 (OmniRoute API)
-  - /v1beta/* -> 20129 (OmniRoute API v1beta)
-  - /live-ws -> 20132 (OmniRoute WebSocket)
+Routes OmniRoute endpoints to single backend server on 127.0.0.1:20128:
+  - /v1/* -> 20128 (OmniRoute API)
+  - /v1beta/* -> 20128 (OmniRoute API v1beta)
+  - /live-ws -> 20128 (OmniRoute WebSocket)
   - /dashboard/* -> 20128 (OmniRoute Dashboard)
   - /api/providers/* -> 20128 (OmniRoute Providers API)
   - /api/oauth/* -> 20128 (OmniRoute OAuth API)
@@ -20,9 +20,7 @@ from gateway.utils import proxy_http_request, proxy_websocket_stream
 logger = logging.getLogger("GatewayOmniRoute")
 router = APIRouter(tags=["omniroute"])
 
-OMNIROUTE_PORT_DASHBOARD = 20128
-OMNIROUTE_PORT_API       = 20129
-OMNIROUTE_PORT_WS        = 20132
+OMNIROUTE_PORT = 20128
 
 OMNIROUTE_JS_PATCH = """<script>
 (function() {
@@ -69,22 +67,22 @@ def fixup_omniroute_html(html: str) -> str:
 @router.api_route("/dashboard", methods=["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"])
 @router.api_route("/dashboard/{path:path}", methods=["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"])
 async def omniroute_dashboard(request: Request, path: str = ""):
-    target = f"http://127.0.0.1:{OMNIROUTE_PORT_DASHBOARD}/dashboard/{path}" if path else f"http://127.0.0.1:{OMNIROUTE_PORT_DASHBOARD}/dashboard"
+    target = f"http://127.0.0.1:{OMNIROUTE_PORT}/dashboard/{path}" if path else f"http://127.0.0.1:{OMNIROUTE_PORT}/dashboard"
     return await proxy_http_request(target, request, default_prefix="/omniroute", html_fixup=fixup_omniroute_html)
 
 @router.api_route("/api/providers", methods=["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"])
 @router.api_route("/api/providers/{path:path}", methods=["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"])
 async def omniroute_providers(request: Request, path: str = ""):
-    target = f"http://127.0.0.1:{OMNIROUTE_PORT_DASHBOARD}/api/providers/{path}" if path else f"http://127.0.0.1:{OMNIROUTE_PORT_DASHBOARD}/api/providers"
+    target = f"http://127.0.0.1:{OMNIROUTE_PORT}/api/providers/{path}" if path else f"http://127.0.0.1:{OMNIROUTE_PORT}/api/providers"
     return await proxy_http_request(target, request, default_prefix="/omniroute")
 
 @router.api_route("/api/oauth", methods=["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"])
 @router.api_route("/api/oauth/{path:path}", methods=["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"])
 async def omniroute_oauth(request: Request, path: str = ""):
-    target = f"http://127.0.0.1:{OMNIROUTE_PORT_DASHBOARD}/api/oauth/{path}" if path else f"http://127.0.0.1:{OMNIROUTE_PORT_DASHBOARD}/api/oauth"
+    target = f"http://127.0.0.1:{OMNIROUTE_PORT}/api/oauth/{path}" if path else f"http://127.0.0.1:{OMNIROUTE_PORT}/api/oauth"
     return await proxy_http_request(target, request, default_prefix="/omniroute")
 
-# ── OpenAI API Endpoint Routing (20129) ─────────────────────────────────────
+# ── OpenAI API Endpoint Routing (20128) ─────────────────────────────────────
 @router.api_route("/v1", methods=["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"])
 @router.api_route("/v1/{path:path}", methods=["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"])
 async def omniroute_v1_api(request: Request, path: str = ""):
@@ -95,7 +93,7 @@ async def omniroute_v1_api(request: Request, path: str = ""):
             "paths": {}
         })
     if path == "models" and request.method == "GET":
-        target = f"http://127.0.0.1:{OMNIROUTE_PORT_API}/v1/models"
+        target = f"http://127.0.0.1:{OMNIROUTE_PORT}/v1/models"
         try:
             res = await proxy_http_request(target, request, default_prefix="/omniroute")
             if res.status_code == 200:
@@ -114,19 +112,19 @@ async def omniroute_v1_api(request: Request, path: str = ""):
                 {"id": "qwen-2.5-coder-32b", "object": "model", "owned_by": "qwen"}
             ]
         })
-    target = f"http://127.0.0.1:{OMNIROUTE_PORT_API}/v1/{path}" if path else f"http://127.0.0.1:{OMNIROUTE_PORT_API}/v1"
+    target = f"http://127.0.0.1:{OMNIROUTE_PORT}/v1/{path}" if path else f"http://127.0.0.1:{OMNIROUTE_PORT}/v1"
     return await proxy_http_request(target, request, default_prefix="/omniroute")
 
 @router.api_route("/v1beta", methods=["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"])
 @router.api_route("/v1beta/{path:path}", methods=["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"])
 async def omniroute_v1beta_api(request: Request, path: str = ""):
-    target = f"http://127.0.0.1:{OMNIROUTE_PORT_API}/v1beta/{path}" if path else f"http://127.0.0.1:{OMNIROUTE_PORT_API}/v1beta"
+    target = f"http://127.0.0.1:{OMNIROUTE_PORT}/v1beta/{path}" if path else f"http://127.0.0.1:{OMNIROUTE_PORT}/v1beta"
     return await proxy_http_request(target, request, default_prefix="/omniroute")
 
-# ── WebSocket Proxying (20132) ──────────────────────────────────────────────
+# ── WebSocket Proxying (20128) ──────────────────────────────────────────────
 @router.websocket("/live-ws")
 async def omniroute_ws(websocket: WebSocket):
-    target_ws = f"ws://127.0.0.1:{OMNIROUTE_PORT_WS}/live-ws"
+    target_ws = f"ws://127.0.0.1:{OMNIROUTE_PORT}/live-ws"
     await proxy_websocket_stream(websocket, target_ws)
 
 # ── Legacy Subpath Prefixed Routes (/omniroute) ─────────────────────────────
@@ -137,5 +135,5 @@ async def omniroute_main_route(request: Request, path: str = ""):
         if request.method == "GET":
             return RedirectResponse("/dashboard", status_code=302)
         path = ""
-    target = f"http://127.0.0.1:{OMNIROUTE_PORT_DASHBOARD}/{path}"
+    target = f"http://127.0.0.1:{OMNIROUTE_PORT}/{path}"
     return await proxy_http_request(target, request, default_prefix="/omniroute", html_fixup=fixup_omniroute_html)
