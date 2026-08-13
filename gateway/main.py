@@ -219,8 +219,6 @@ async def route_catch_all(path: str, request: Request):
         "/api/auth",
         "/api/models",
         "/api/cloud-agent-credentials",
-        "/v1",
-        "/v1beta",
     )
 
     OMNIROUTE_EXACT = (
@@ -233,9 +231,6 @@ async def route_catch_all(path: str, request: Request):
         "/auth",
         "/home",
         "/callback",
-        "/live-ws",
-        "/health",
-        "/debug",
     )
 
     if (
@@ -254,14 +249,19 @@ async def route_catch_all(path: str, request: Request):
     # ── 2. Jellyfin Media Server Namespace ────────────────────────────────────
     if req_path == "/jellyfin" or req_path.startswith("/jellyfin/"):
         logger.info(f"[ROUTER] {req_path} -> Jellyfin ({JELLYFIN_PORT})")
-        sub_p = req_path[len("/jellyfin"):].lstrip("/")
-        return await proxy_http_request(f"http://127.0.0.1:{JELLYFIN_PORT}/{sub_p}", request, default_prefix="/jellyfin", extra_headers={"X-Forwarded-Prefix": "/jellyfin"})
+        sub_p = "/" if req_path == "/jellyfin" else req_path[len("/jellyfin"):]
+        return await proxy_http_request(f"http://127.0.0.1:{JELLYFIN_PORT}{sub_p}", request, default_prefix="/jellyfin", extra_headers={"X-Forwarded-Prefix": "/jellyfin"})
 
     # ── 3. Telegram Streamer Namespace ────────────────────────────────────────
-    if req_path == "/tg-stream" or req_path.startswith("/tg-stream/") or req_path == "/tg_stream" or req_path.startswith("/tg_stream/"):
+    if req_path in ("/tg-stream", "/tg_stream") or req_path.startswith("/tg-stream/") or req_path.startswith("/tg_stream/"):
         logger.info(f"[ROUTER] {req_path} -> Telegram ({TG_PORT})")
-        sub_p = req_path[len("/tg-stream"):].lstrip("/") if req_path.startswith("/tg-stream") else req_path[len("/tg_stream"):].lstrip("/")
-        return await proxy_http_request(f"http://127.0.0.1:{TG_PORT}/{sub_p}", request, default_prefix="/tg-stream")
+        if req_path in ("/tg-stream", "/tg_stream"):
+            sub_p = "/"
+        elif req_path.startswith("/tg-stream/"):
+            sub_p = req_path[len("/tg-stream"):]
+        else:
+            sub_p = req_path[len("/tg_stream"):]
+        return await proxy_http_request(f"http://127.0.0.1:{TG_PORT}{sub_p}", request, default_prefix="/tg-stream")
 
     # ── 4. Primary Root Application Fallback -> Open WebUI (:8098) ────────────
     logger.info(f"[ROUTER] {req_path} -> Open WebUI ({WEBUI_PORT})")

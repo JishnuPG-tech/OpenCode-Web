@@ -25,7 +25,7 @@ OMNIROUTE_API_PORT = int(os.environ.get("OMNIROUTE_API_PORT", 20129))
 OMNIROUTE_WS_PORT  = int(os.environ.get("OMNIROUTE_WS_PORT", 20132))
 JELLYFIN_PORT      = int(os.environ.get("JELLYFIN_PORT", 8096))
 TG_PORT            = int(os.environ.get("TG_PORT", 8080))
-GATEWAY_PORT       = int(os.environ.get("PORT", 4096))
+GATEWAY_PORT       = int(os.environ.get("PORT", 8000))
 
 PUBLIC_HOST   = os.environ.get("PUBLIC_HOST", "jishnupg-opencode-cli.hf.space")
 PUBLIC_ORIGIN = f"https://{PUBLIC_HOST}"

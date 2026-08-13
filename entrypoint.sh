@@ -7,10 +7,12 @@ echo "============================================"
 
 git config --global --add safe.directory '*' 2>/dev/null || true
 
-# ── Master Secret Initialization (HF Space Secret or Canonical Deterministic Master Key) ─
-_DETERMINISTIC_KEY=$(echo "opencode_storage_encryption_key_2026" | sha256sum | cut -c1-64)
-export STORAGE_ENCRYPTION_KEY="${STORAGE_ENCRYPTION_KEY:-$_DETERMINISTIC_KEY}"
-unset _DETERMINISTIC_KEY
+# ── Master Secret Validation (Must be provided via HF Space Secrets) ─────────
+if [ -z "$STORAGE_ENCRYPTION_KEY" ]; then
+    echo "[FATAL ERROR] STORAGE_ENCRYPTION_KEY is not set in environment or HF Space Secrets!"
+    echo "[FATAL ERROR] Master encryption key must be provided via Hugging Face Space Secrets to decrypt persistent credentials."
+    exit 1
+fi
 
 export ENCRYPTION_SECRET="${STORAGE_ENCRYPTION_KEY}"
 export OMNIROUTE_SECRET_KEY="${STORAGE_ENCRYPTION_KEY}"
@@ -22,12 +24,10 @@ export WEBUI_SECRET_KEY="${WEBUI_SECRET_KEY:-$(echo "owui_${JWT_SECRET}" | sha25
 # Purge any legacy secret env files from storage bucket to maintain strict secret separation
 rm -f /data/.env /data/secrets.env /data/secrets /data/config/.env /data/omniroute/.env /data/omniroute/secrets.env /data/omniroute/secrets /data/omniroute/.secrets /data/omniroute/server.env 2>/dev/null || true
 
-# Debug: display configured secret statuses
-for _VAR in STORAGE_ENCRYPTION_KEY JWT_SECRET API_KEY_SECRET OMNIROUTE_WS_BRIDGE_SECRET WEBUI_SECRET_KEY; do
-    eval _VAL=\$$_VAR
-    echo "[INIT] ${_VAR} is configured (${#_VAL} chars)"
-done
-unset _VAR _VAL
+# Display configured secret status (without logging sensitive raw token values)
+echo "[INIT] STORAGE_ENCRYPTION_KEY is configured"
+echo "[INIT] JWT_SECRET is configured"
+echo "[INIT] API_KEY_SECRET is configured"
 
 # ── Deterministic Paths & Directory Model ────────────────────────────────────
 PERSIST_DIR="/data/omniroute"
@@ -213,28 +213,34 @@ export AUTH_COOKIE_SECURE="true"
 export ALLOW_REMOTE_OAUTH="true"
 export ALLOW_BROWSER_OAUTH="true"
 
-# Admin credentials for OmniRoute (loaded directly from HF Space Secret INITIAL_PASSWORD)
-_PASS="${INITIAL_PASSWORD:-admin}"
-export INITIAL_PASSWORD="${_PASS}"
-export ADMIN_PASSWORD="${_PASS}"
-export OMNIROUTE_INITIAL_PASSWORD="${_PASS}"
-export OMNIROUTE_PASSWORD="${_PASS}"
-export PASSWORD="${_PASS}"
-export RESET_PASSWORD="${_PASS}"
-export OMNIROUTE_RESET_PASSWORD="${_PASS}"
+# Explicit Public OAuth Callback URLs
+export OAUTH_CALLBACK_URL="https://jishnupg-opencode-cli.hf.space/callback"
+export NEXT_PUBLIC_OAUTH_CALLBACK_URL="https://jishnupg-opencode-cli.hf.space/callback"
+export REDIRECT_URI="https://jishnupg-opencode-cli.hf.space/callback"
+export ANTIGRAVITY_OAUTH_REDIRECT_URI="https://jishnupg-opencode-cli.hf.space/callback"
+export ANTIGRAVITY_REDIRECT_URI="https://jishnupg-opencode-cli.hf.space/callback"
 
-if [ -n "$INITIAL_PASSWORD" ]; then
-    echo "[AUTH] INITIAL_PASSWORD present: yes"
-else
-    echo "[AUTH] INITIAL_PASSWORD present: no (using default fallback)"
+# Admin credentials for OmniRoute (loaded directly from HF Space Secret INITIAL_PASSWORD)
+if [ -z "$INITIAL_PASSWORD" ]; then
+    echo "[FATAL ERROR] INITIAL_PASSWORD is not set in Hugging Face Space Secrets!"
+    echo "[FATAL ERROR] INITIAL_PASSWORD is mandatory for OmniRoute authentication."
+    exit 1
 fi
+
+export ADMIN_PASSWORD="$INITIAL_PASSWORD"
+export OMNIROUTE_INITIAL_PASSWORD="$INITIAL_PASSWORD"
+export OMNIROUTE_PASSWORD="$INITIAL_PASSWORD"
+export PASSWORD="$INITIAL_PASSWORD"
+export RESET_PASSWORD="$INITIAL_PASSWORD"
+export OMNIROUTE_RESET_PASSWORD="$INITIAL_PASSWORD"
+
+echo "[INIT] INITIAL_PASSWORD is configured"
 
 if [ -f "$RUNTIME_DB" ] && [ -s "$RUNTIME_DB" ]; then
     echo "[AUTH] Existing admin credential record: present in runtime database"
 else
     echo "[AUTH] Existing admin credential record: absent (fresh baseline initialization)"
 fi
-unset _PASS
 
 # CLI Fingerprint & Provider Compatibility Flags
 export CLI_COMPAT_ANTIGRAVITY=1
@@ -245,7 +251,7 @@ export CLI_COMPAT_CODEX=1
 export CLI_COMPAT_CURSOR=1
 export CLI_COMPAT_QWEN=1
 
-# Optional Provider OAuth Client Credentials (loaded from /data/.env or Space Secrets if provided)
+# Optional Provider OAuth Client Credentials (loaded from Space Secrets if provided)
 export ANTIGRAVITY_OAUTH_CLIENT_ID="${ANTIGRAVITY_OAUTH_CLIENT_ID:-}"
 export ANTIGRAVITY_OAUTH_CLIENT_SECRET="${ANTIGRAVITY_OAUTH_CLIENT_SECRET:-}"
 export GEMINI_CLI_OAUTH_CLIENT_ID="${GEMINI_CLI_OAUTH_CLIENT_ID:-}"
@@ -254,21 +260,19 @@ export GITHUB_OAUTH_CLIENT_ID="${GITHUB_OAUTH_CLIENT_ID:-}"
 export KIMI_CODING_OAUTH_CLIENT_ID="${KIMI_CODING_OAUTH_CLIENT_ID:-}"
 
 # Required secrets — crash early with a clear message if missing
-export JWT_SECRET="${JWT_SECRET:?JWT_SECRET is not set. Add it to /data/.env or Space Secrets.}"
-export API_KEY_SECRET="${API_KEY_SECRET:?API_KEY_SECRET is not set. Add it to /data/.env or Space Secrets.}"
+export JWT_SECRET="${JWT_SECRET:?JWT_SECRET is not set. Add it to Hugging Face Space Secrets.}"
+export API_KEY_SECRET="${API_KEY_SECRET:?API_KEY_SECRET is not set. Add it to Hugging Face Space Secrets.}"
 
 # Optional secrets — auto-generate from JWT_SECRET if not explicitly set
 # OMNIROUTE_WS_BRIDGE_SECRET: used only for the Live WebSocket monitoring bridge (port 20132)
 if [ -z "$OMNIROUTE_WS_BRIDGE_SECRET" ]; then
     OMNIROUTE_WS_BRIDGE_SECRET="ws_bridge_$(echo "$JWT_SECRET" | sha256sum | cut -c1-48 2>/dev/null || echo "$JWT_SECRET" | md5sum | cut -c1-32)"
-    echo "[INIT] OMNIROUTE_WS_BRIDGE_SECRET auto-generated (add to /data/.env to make permanent)"
 fi
 export OMNIROUTE_WS_BRIDGE_SECRET
 
 # WEBUI_SECRET_KEY: Open WebUI JWT signing secret (must be ≥32 chars)
 if [ -z "$WEBUI_SECRET_KEY" ]; then
     WEBUI_SECRET_KEY="owui_$(echo "${JWT_SECRET}openwebui" | sha256sum | cut -c1-56 2>/dev/null || echo "${JWT_SECRET}openwebui" | md5sum | cut -c1-32)"
-    echo "[INIT] WEBUI_SECRET_KEY auto-generated (add to /data/.env to make permanent)"
 fi
 export WEBUI_SECRET_KEY
 
@@ -337,7 +341,7 @@ chmod -R 777 /root/.cache /data/cache 2>/dev/null || true
 # ── Start Open WebUI ──────────────────────────────────────────────────────────
 echo "[INIT] Starting Open WebUI on port 8098 pre-configured with OmniRoute API..."
 if command -v open-webui >/dev/null 2>&1; then
-    export WEBUI_URL="${WEBUI_URL:-https://jishnupg-opencode-cli.hf.space/openwebui}"
+    export WEBUI_URL="${WEBUI_URL:-https://jishnupg-opencode-cli.hf.space}"
     export OPENAI_API_BASE_URL="http://127.0.0.1:20129/v1"
     export OPENAI_API_KEY="omniroute"
     export WEBUI_SECRET_KEY="$WEBUI_SECRET_KEY"
@@ -396,8 +400,38 @@ echo "[DISK] /data usage:"
 df -h /data 2>/dev/null || echo "[WARN] Could not check /data disk space"
 
 echo "============================================"
-echo "=== Launching FastAPI Gateway Proxy on Port 4096 ==="
+echo "=== Launching FastAPI Gateway Proxy on Internal Port 8000 ==="
 echo "============================================"
 
 cd /
-exec python3 -m uvicorn proxy:app --host 0.0.0.0 --port 4096
+python3 -m uvicorn proxy:app --host 127.0.0.1 --port 8000 &
+GATEWAY_PID=$!
+
+echo "[INIT] FastAPI Gateway started in background (PID=${GATEWAY_PID}). Waiting for health..."
+for i in $(seq 1 30); do
+    if curl -fsS "http://127.0.0.1:8000/health/live" >/dev/null 2>&1; then
+        echo "[HEALTH] FastAPI Gateway healthy on internal port 8000 after ${i}s"
+        break
+    fi
+    if ! kill -0 "$GATEWAY_PID" 2>/dev/null; then
+        echo "[ERROR] FastAPI Gateway process (PID=${GATEWAY_PID}) exited prematurely"
+        break
+    fi
+    sleep 1
+done
+
+echo "============================================"
+echo "=== Launching NGINX Edge Proxy on Public Port 4096 ==="
+echo "============================================"
+
+if command -v nginx >/dev/null 2>&1; then
+    nginx -t 2>&1 || echo "[WARN] NGINX configuration test warning"
+    exec nginx -g 'daemon off;'
+elif [ -f "/usr/sbin/nginx" ]; then
+    /usr/sbin/nginx -t 2>&1 || echo "[WARN] NGINX configuration test warning"
+    exec /usr/sbin/nginx -g 'daemon off;'
+else
+    echo "[WARN] NGINX binary not found. Binding FastAPI Gateway directly to public port 4096 as fallback..."
+    kill "$GATEWAY_PID" 2>/dev/null || true
+    exec python3 -m uvicorn proxy:app --host 0.0.0.0 --port 4096
+fi

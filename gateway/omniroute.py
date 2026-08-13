@@ -26,9 +26,10 @@ async def omniroute_v1_api(request: Request, path: str = ""):
     target = f"http://127.0.0.1:{OMNIROUTE_API_PORT}/v1/{path}" if path else f"http://127.0.0.1:{OMNIROUTE_API_PORT}/v1"
     return await proxy_http_request(target, request, default_prefix="")
 
+@router.api_route("/v1beta", methods=["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"])
 @router.api_route("/v1beta/{path:path}", methods=["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"])
 async def omniroute_v1beta_api(request: Request, path: str = ""):
-    target = f"http://127.0.0.1:{OMNIROUTE_API_PORT}/v1beta/{path}"
+    target = f"http://127.0.0.1:{OMNIROUTE_API_PORT}/v1beta/{path}" if path else f"http://127.0.0.1:{OMNIROUTE_API_PORT}/v1beta"
     return await proxy_http_request(target, request, default_prefix="")
 
 # ── 2. OmniRoute Live Monitoring WebSocket (Dedicated WS Port 20132) ──────────

@@ -3,5 +3,14 @@ node_modules/
 dist/
 *.tsbuildinfo
 .env
+.env*
+server.env
 __pycache__/
 *.pyc
+*.sqlite
+*.sqlite-*
+*.log
+.omniroute/
+oauth/
+credentials/
+runtime/
