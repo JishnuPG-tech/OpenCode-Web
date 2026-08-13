@@ -190,6 +190,13 @@ sync_omniroute_db() {
             echo "[PERSISTENCE] Snapshot OK: ${_SIZE} bytes synced to ${PERSIST_DB}"
         fi
     fi
+
+    if [ -f "/root/.open-webui/webui.db" ] && [ -s "/root/.open-webui/webui.db" ]; then
+        mkdir -p /data/open-webui 2>/dev/null || true
+        cp -f /root/.open-webui/webui.db /data/open-webui/webui.db 2>/dev/null || true
+        _WEBUI_SIZE=$(wc -c < "/data/open-webui/webui.db" 2>/dev/null | tr -d ' \t\n\r' || echo "0")
+        echo "[PERSISTENCE] Open WebUI DB snapshot OK: ${_WEBUI_SIZE} bytes synced to /data/open-webui/webui.db"
+    fi
 }
 
 trap sync_omniroute_db EXIT INT TERM
@@ -387,12 +394,12 @@ except Exception as err:
     WEBUI_PID=$!
 fi
 
-# Start Periodic 120s Database Persistence Backup Daemon
+# Start Periodic 15s Database Persistence Backup Daemon
 (
     while true; do
-        sleep 120
+        sleep 15
         sync_omniroute_db >/dev/null 2>&1 || true
-        if [ -f "/root/.open-webui/webui.db" ]; then
+        if [ -f "/root/.open-webui/webui.db" ] && [ -s "/root/.open-webui/webui.db" ]; then
             mkdir -p /data/open-webui 2>/dev/null || true
             cp -f /root/.open-webui/webui.db /data/open-webui/webui.db 2>/dev/null || true
             _WEBUI_DB_SIZE=$(wc -c < "/data/open-webui/webui.db" 2>/dev/null | tr -d ' \t\n\r' || echo "0")
