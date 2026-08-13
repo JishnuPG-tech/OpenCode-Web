@@ -344,6 +344,14 @@ if command -v open-webui >/dev/null 2>&1; then
     WEBUI_PID=$!
 fi
 
+# Start Periodic 120s Database Persistence Backup Daemon
+(
+    while true; do
+        sleep 120
+        sync_omniroute_db >/dev/null 2>&1 || true
+    done
+) &
+
 # Step 12 & 13: Keep PID 1 Alive and Monitor Child Processes
 echo "[BOOT] All services dispatched. Process Supervisor active."
 
@@ -362,7 +370,7 @@ while true; do
 
     if [ -n "$OMNIROUTE_PID" ] && ! kill -0 $OMNIROUTE_PID 2>/dev/null; then
         echo "[CRITICAL] OmniRoute process died! Restarting..."
-        omniroute serve --port 20128 --no-open > /data/omniroute/omniroute.log 2>&1 &
+        (cd /omniroute && node server.js) > /data/omniroute/omniroute.log 2>&1 &
         OMNIROUTE_PID=$!
     fi
 
