@@ -93,9 +93,7 @@ async def route_catch_all(path: str, request: Request):
     req_path = request.url.path.lower()
 
     # ── 0. Open WebUI SvelteKit Assets Priority ────────────────────────────────
-    if req_path.startswith("/_app/"):
-        return await proxy_http_request(f"http://127.0.0.1:{WEBUI_PORT}/openwebui{req_path}", request, default_prefix="")
-    if req_path.startswith("/static/") or req_path in ("/sw.js", "/opensearch.xml"):
+    if req_path.startswith("/_app/") or req_path.startswith("/static/") or req_path in ("/sw.js", "/opensearch.xml"):
         return await proxy_http_request(f"http://127.0.0.1:{WEBUI_PORT}{req_path}", request, default_prefix="")
 
     is_omniroute_referer = "/dashboard" in referer or "/omniroute" in referer or "/providers" in referer

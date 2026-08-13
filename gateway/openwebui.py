@@ -18,7 +18,7 @@ def fixup_webui_html(html: str) -> str:
 @router.api_route("/_app/{path:path}", methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"])
 async def webui_app_assets_proxy(request: Request, path: str = ""):
     sub_path = path.lstrip("/")
-    target = f"http://127.0.0.1:{WEBUI_PORT}/openwebui/_app/{sub_path}" if sub_path else f"http://127.0.0.1:{WEBUI_PORT}/openwebui/_app"
+    target = f"http://127.0.0.1:{WEBUI_PORT}/_app/{sub_path}" if sub_path else f"http://127.0.0.1:{WEBUI_PORT}/_app"
     return await proxy_http_request(target, request, default_prefix="")
 
 @router.api_route("/openwebui", methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"])
