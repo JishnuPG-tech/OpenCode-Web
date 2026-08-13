@@ -282,15 +282,17 @@ echo "[BOOT] Background services starting asynchronously..."
             npm run start -- --port 20128 &
         fi
         OMNIROUTE_PID=$!
-        for i in $(seq 1 90); do
-            if curl -fsS "http://127.0.0.1:20128/api/monitoring/health" >/dev/null 2>&1; then
-                echo "[HEALTH] OmniRoute ready after ${i}s"
-                echo "[PROCESS] OmniRoute: PID ${OMNIROUTE_PID}"
-                sync_omniroute_db
-                break
-            fi
-            sleep 1
-        done
+        (
+            for i in $(seq 1 90); do
+                if curl -fsS "http://127.0.0.1:20128/api/monitoring/health" >/dev/null 2>&1; then
+                    echo "[HEALTH] OmniRoute ready after ${i}s"
+                    echo "[PROCESS] OmniRoute: PID ${OMNIROUTE_PID}"
+                    sync_omniroute_db
+                    break
+                fi
+                sleep 1
+            done
+        ) &
     fi
 
 # Step 9: Start Telegram Range Stream Proxy in Background (Port 8080)
