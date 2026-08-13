@@ -395,6 +395,8 @@ fi
         if [ -f "/root/.open-webui/webui.db" ]; then
             mkdir -p /data/open-webui 2>/dev/null || true
             cp -f /root/.open-webui/webui.db /data/open-webui/webui.db 2>/dev/null || true
+            _WEBUI_DB_SIZE=$(wc -c < "/data/open-webui/webui.db" 2>/dev/null | tr -d ' \t\n\r' || echo "0")
+            echo "[PERSISTENCE] Open WebUI DB snapshot OK: ${_WEBUI_DB_SIZE} bytes synced to /data/open-webui/webui.db"
         fi
     done
 ) &
