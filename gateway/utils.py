@@ -161,31 +161,53 @@ async def proxy_http_request(
             if attempt < 3:
                 await asyncio.sleep(0.3 * attempt)
                 continue
-            if method in ("GET", "HEAD") and request.url.path in ("/", "/index.html", "/healthz", "/health", "/omniroute", "/omniroute/dashboard", "/jellyfin"):
-                service_name = "OmniRoute AI Gateway" if default_prefix == "/omniroute" else ("Jellyfin Media Server" if default_prefix == "/jellyfin" else "Open WebUI")
+            if method in ("GET", "HEAD") and ("html" in request.headers.get("accept", "").lower() or request.url.path in ("/", "/index.html", "/healthz", "/health", "/omniroute", "/dashboard", "/jellyfin") or request.url.path.startswith("/dashboard") or request.url.path.startswith("/omniroute") or request.url.path.startswith("/jellyfin")):
+                service_name = "OmniRoute AI Gateway" if default_prefix == "/omniroute" or "omniroute" in request.url.path or "dashboard" in request.url.path else ("Jellyfin Media Server" if default_prefix == "/jellyfin" or "jellyfin" in request.url.path else "Open WebUI")
+                
+                log_content = ""
+                if service_name == "OmniRoute AI Gateway":
+                    for log_file in ["/data/omniroute/omniroute.log", "/root/.omniroute/omniroute.log"]:
+                        try:
+                            if os.path.exists(log_file):
+                                with open(log_file, "r", encoding="utf-8", errors="ignore") as f:
+                                    lines = f.readlines()
+                                    log_content = "".join(lines[-100:])
+                                if log_content:
+                                    break
+                        except Exception:
+                            pass
+                
+                safe_logs = log_content.replace("\\", "\\\\").replace("`", "\\`").replace("$", "\\$").replace("\n", "\\n") if log_content else ""
+                log_box = f'<pre style="text-align:left; background:#0d1117; padding:12px; border-radius:6px; color:#38bdf8; font-size:0.8rem; overflow-x:auto; max-height:200px; margin-top:1rem; border:1px solid #30363d;">{log_content}</pre>' if log_content else ''
+                log_script = f'<script>console.error("=== OMNIROUTE LOGS ==="); console.error(`{safe_logs}`);</script>' if safe_logs else ''
+
                 html_retry = f"""<!DOCTYPE html>
 <html>
 <head>
     <meta http-equiv="refresh" content="3">
     <title>{service_name} Initializing...</title>
+
     <style>
-        body {{ font-family: system-ui, -apple-system, sans-serif; background: #0d1117; color: #c9d1d9; display: flex; align-items: center; justify-content: center; height: 100vh; margin: 0; }}
-        .card {{ text-align: center; background: #161b22; padding: 2.5rem; border-radius: 12px; border: 1px solid #30363d; max-width: 450px; }}
+        body {{ font-family: system-ui, -apple-system, sans-serif; background: #0d1117; color: #c9d1d9; display: flex; align-items: center; justify-content: center; min-height: 100vh; margin: 0; padding: 20px; box-sizing: border-box; }}
+        .card {{ text-align: center; background: #161b22; padding: 2.5rem; border-radius: 12px; border: 1px solid #30363d; max-width: 700px; width: 100%; }}
         .spinner {{ width: 40px; height: 40px; border: 4px solid #30363d; border-top-color: #58a6ff; border-radius: 50%; animation: spin 1s linear infinite; margin: 0 auto 1.5rem; }}
         @keyframes spin {{ to {{ transform: rotate(360deg); }} }}
         h2 {{ margin: 0 0 0.5rem; color: #f0f6fc; font-size: 1.25rem; }}
         p {{ color: #8b949e; font-size: 0.9rem; margin: 0; }}
     </style>
+    {log_script}
 </head>
 <body>
     <div class="card">
         <div class="spinner"></div>
         <h2>Initializing {service_name}...</h2>
-        <p>The server is starting up. This page will refresh automatically in 3 seconds.</p>
+        <p>The service is completing backend startup. This page will refresh automatically in 3 seconds.</p>
+        {log_box}
     </div>
 </body>
 </html>"""
                 return Response(content=html_retry, status_code=200, headers={"Retry-After": "3", "Refresh": "3"}, media_type="text/html")
+
             return Response(
                 content=f"<h2>502 Service Unavailable</h2><p>Upstream starting: {exc}</p>",
                 status_code=502,
