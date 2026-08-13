@@ -221,15 +221,18 @@ else
 fi
 
 for i in $(seq 1 30); do
-    if curl -fsS "http://127.0.0.1:4096/health/live" >/dev/null 2>&1; then
+    if curl -fsS --max-time 5 "http://127.0.0.1:4096/health/live" >/dev/null 2>&1; then
         echo "[BOOT] Public gateway live: $(get_elapsed)"
+        echo "[PROCESS] PID 1: $$"
+        echo "[PROCESS] Nginx: PID $NGINX_PID"
+        echo "[PROCESS] FastAPI: PID $GATEWAY_PID"
         echo "============================================"
         echo "=== Hugging Face Readiness: PASS (Space RUNNING) ==="
         echo "============================================"
         break
     fi
     if ! kill -0 "$NGINX_PID" 2>/dev/null; then
-        echo "[ERROR] NGINX exited prematurely"
+        echo "[FATAL] Public gateway health check failed: NGINX exited prematurely"
         exit 1
     fi
     sleep 0.1
@@ -290,6 +293,7 @@ echo "[BOOT] Background services starting..."
         for i in $(seq 1 90); do
             if curl -fsS "http://127.0.0.1:20128/api/monitoring/health" >/dev/null 2>&1; then
                 echo "[HEALTH] OmniRoute ready after ${i}s"
+                echo "[PROCESS] OmniRoute: PID ${OMNIROUTE_PID}"
                 sync_omniroute_db
                 break
             fi
@@ -300,6 +304,8 @@ echo "[BOOT] Background services starting..."
     # 3. Start Telegram Direct Stream Proxy
     echo "[INIT] Starting Telegram Direct Stream Proxy on port 8080..."
     python3 /tg_streamer.py &
+    TG_PID=$!
+    echo "[PROCESS] Telegram: PID ${TG_PID}"
 
     # 4. Start Jellyfin Media Server
     echo "[INIT] Starting Jellyfin Media Server on port 8096..."
@@ -310,9 +316,13 @@ echo "[BOOT] Background services starting..."
     if command -v jellyfin >/dev/null 2>&1; then
         jellyfin --datadir /data/jellyfin/data --configdir /data/jellyfin/config \
                  --cachedir /data/jellyfin/cache --logdir /data/jellyfin/log $WEBDIR_OPT &
+        JELLYFIN_PID=$!
+        echo "[PROCESS] Jellyfin: PID ${JELLYFIN_PID}"
     elif [ -f "/usr/bin/jellyfin" ]; then
         /usr/bin/jellyfin --datadir /data/jellyfin/data --configdir /data/jellyfin/config \
                           --cachedir /data/jellyfin/cache --logdir /data/jellyfin/log $WEBDIR_OPT &
+        JELLYFIN_PID=$!
+        echo "[PROCESS] Jellyfin: PID ${JELLYFIN_PID}"
     fi
 
     # 5. Start Open WebUI
@@ -352,6 +362,7 @@ echo "[BOOT] Background services starting..."
         export ENABLE_SIGNUP="true"
         open-webui serve --port 8098 &
         OWUI_PID=$!
+        echo "[PROCESS] Open WebUI: PID ${OWUI_PID}"
         for i in $(seq 1 60); do
             if curl -fsS "http://127.0.0.1:8098/health" >/dev/null 2>&1 || curl -fsS "http://127.0.0.1:8098/api/config" >/dev/null 2>&1; then
                 echo "[HEALTH] Open WebUI ready after ${i}s"
