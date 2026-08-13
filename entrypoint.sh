@@ -391,7 +391,7 @@ if command -v open-webui >/dev/null 2>&1; then
     OWUI_PID=$!
     echo "[INIT] Open WebUI started in background (PID=${OWUI_PID}). Waiting for health..."
     OWUI_HEALTHY=0
-    for i in $(seq 1 30); do
+    for i in $(seq 1 5); do
         if curl -fsS "http://127.0.0.1:8098/health" >/dev/null 2>&1 || curl -fsS "http://127.0.0.1:8098/api/config" >/dev/null 2>&1; then
             echo "[HEALTH] Open WebUI healthy after ${i}s"
             OWUI_HEALTHY=1
@@ -404,7 +404,7 @@ if command -v open-webui >/dev/null 2>&1; then
         sleep 1
     done
     if [ "$OWUI_HEALTHY" -eq 0 ]; then
-        echo "[WARN] Open WebUI startup check completed without health confirmation, proceeding with Gateway startup."
+        echo "[INIT] Open WebUI continuing startup in background. Proceeding to launch Gateway and Nginx..."
     fi
 else
     echo "[WARN] open-webui binary not found, skipping."

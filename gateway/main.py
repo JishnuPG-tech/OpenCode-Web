@@ -97,6 +97,7 @@ async def handle_openwebui_socketio_owui_subpath(websocket: WebSocket, path: str
 
 # ── Health Watchdog System ───────────────────────────────────────────────────
 @app.get("/health/live", operation_id="health_live_check")
+@app.get("/healthz", operation_id="healthz_check")
 async def health_liveness():
     return {"status": "alive"}
 
