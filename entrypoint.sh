@@ -327,15 +327,15 @@ if command -v open-webui >/dev/null 2>&1; then
         echo "[PERSISTENCE] Restored Open WebUI database."
     fi
 
-    WEBUI_PKG_DIR=$(python3 -c "import open_webui, os; print(os.path.dirname(open_webui.__file__))" 2>/dev/null || echo "")
-    if [ -n "$WEBUI_PKG_DIR" ] && [ -d "$WEBUI_PKG_DIR/static" ]; then
+    FOUND_BUILD_DIR=$(python3 -c "import open_webui, os; pkg=os.path.dirname(open_webui.__file__); matches=[root for root, dirs, files in os.walk(pkg) if 'index.html' in files]; print(matches[0] if matches else '')" 2>/dev/null || echo "")
+    if [ -n "$FOUND_BUILD_DIR" ] && [ -d "$FOUND_BUILD_DIR" ]; then
         mkdir -p /root/.open-webui/static 2>/dev/null || true
-        cp -rn "$WEBUI_PKG_DIR/static/"* /root/.open-webui/static/ 2>/dev/null || true
-        export BUILD_DIR="$WEBUI_PKG_DIR/static"
-        export FRONTEND_BUILD_DIR="$WEBUI_PKG_DIR/static"
-        export WEBUI_BUILD_DIR="$WEBUI_PKG_DIR/static"
+        cp -rn "$FOUND_BUILD_DIR/"* /root/.open-webui/static/ 2>/dev/null || true
+        export BUILD_DIR="$FOUND_BUILD_DIR"
+        export FRONTEND_BUILD_DIR="$FOUND_BUILD_DIR"
+        export WEBUI_BUILD_DIR="$FOUND_BUILD_DIR"
         export STATIC_DIR="/root/.open-webui/static"
-        echo "[INIT] Open WebUI BUILD_DIR pinned to: $WEBUI_PKG_DIR/static"
+        echo "[INIT] Open WebUI BUILD_DIR auto-located & pinned to: $FOUND_BUILD_DIR"
     fi
 
     export WEBUI_URL="http://127.0.0.1:8098"
