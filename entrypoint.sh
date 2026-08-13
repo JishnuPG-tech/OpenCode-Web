@@ -418,6 +418,13 @@ if command -v open-webui >/dev/null 2>&1; then
         export WEBUI_AUTH="true"
         export ENABLE_SIGNUP="true"
         mkdir -p /root/.cache /data/cache /data/open-webui /root/.open-webui 2>/dev/null || true
+        if [ -d "/data/open-webui/webui.db" ]; then
+            rm -rf "/data/open-webui/webui.db" 2>/dev/null || true
+        fi
+        if [ ! -f "/data/open-webui/webui.db" ]; then
+            touch "/data/open-webui/webui.db" 2>/dev/null || true
+        fi
+        chmod -R 777 /data/open-webui /root/.open-webui 2>/dev/null || true
         export CORS_ALLOW_ORIGIN="https://jishnupg-opencode-cli.hf.space"
         open-webui serve --port 8098 &
         OWUI_PID=$!
