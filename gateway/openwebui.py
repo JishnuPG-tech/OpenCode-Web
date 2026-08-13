@@ -51,6 +51,10 @@ async def webui_sw(request: Request):
 @router.websocket("/openwebui/ws/{path:path}")
 @router.websocket("/openwebui/ws/socket.io")
 @router.websocket("/openwebui/ws/socket.io/{path:path}")
+@router.websocket("/ws")
+@router.websocket("/ws/{path:path}")
+@router.websocket("/ws/socket.io")
+@router.websocket("/ws/socket.io/{path:path}")
 async def webui_ws_route(websocket: WebSocket, path: str = ""):
     req_path = websocket.scope.get("path", "")
     if "socket.io" in req_path:
