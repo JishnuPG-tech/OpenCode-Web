@@ -45,12 +45,12 @@ app = FastAPI(title="OpenCode Space Gateway", lifespan=lifespan, docs_url=None, 
 
 
 # ── Open WebUI Legacy Namespace Aliases -> Native Root (/) ─────────────────────
-@app.get("/openwebui", operation_id="openwebui_root_alias")
-@app.get("/openwebui/", operation_id="openwebui_slash_alias")
+@app.api_route("/openwebui", methods=["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"], operation_id="openwebui_root_alias")
+@app.api_route("/openwebui/", methods=["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"], operation_id="openwebui_slash_alias")
 async def openwebui_root_alias():
     return RedirectResponse(url="/")
 
-@app.get("/openwebui/{path:path}", operation_id="openwebui_subpath_alias")
+@app.api_route("/openwebui/{path:path}", methods=["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"], operation_id="openwebui_subpath_alias")
 async def openwebui_subpath_alias(path: str):
     return RedirectResponse(url=f"/{path}")
 
@@ -141,7 +141,7 @@ async def omniroute_diagnostics(request: Request):
 
     auth_header = request.headers.get("Authorization", "")
     token_bearer = auth_header.replace("Bearer ", "").strip() if auth_header.startswith("Bearer ") else ""
-    provided_key = request.headers.get("X-Admin-Key") or token_bearer or request.query_params.get("key")
+    provided_key = request.headers.get("X-Admin-Key") or token_bearer
     if provided_key != secret_key:
         return JSONResponse({"error": "Unauthorized: Bearer Token or X-Admin-Key Required"}, status_code=401)
 

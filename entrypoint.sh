@@ -14,10 +14,20 @@ if [ -z "$STORAGE_ENCRYPTION_KEY" ]; then
     exit 1
 fi
 
+if [ -z "$JWT_SECRET" ]; then
+    echo "[FATAL ERROR] JWT_SECRET is not set in environment or HF Space Secrets!"
+    echo "[FATAL ERROR] JWT_SECRET is mandatory for system token authentication."
+    exit 1
+fi
+
+if [ -z "$API_KEY_SECRET" ]; then
+    echo "[FATAL ERROR] API_KEY_SECRET is not set in environment or HF Space Secrets!"
+    echo "[FATAL ERROR] API_KEY_SECRET is mandatory for API key validation."
+    exit 1
+fi
+
 export ENCRYPTION_SECRET="${STORAGE_ENCRYPTION_KEY}"
 export OMNIROUTE_SECRET_KEY="${STORAGE_ENCRYPTION_KEY}"
-export JWT_SECRET="${JWT_SECRET:-$(echo "opencode_jwt_secret_hf_space_key_2026" | sha256sum | cut -c1-48)}"
-export API_KEY_SECRET="${API_KEY_SECRET:-$(echo "opencode_api_key_secret_hf_space_key_2026" | sha256sum | cut -c1-64)}"
 export OMNIROUTE_WS_BRIDGE_SECRET="${OMNIROUTE_WS_BRIDGE_SECRET:-$(echo "ws_bridge_${JWT_SECRET}" | sha256sum | cut -c1-48)}"
 export WEBUI_SECRET_KEY="${WEBUI_SECRET_KEY:-$(echo "owui_${JWT_SECRET}" | sha256sum | cut -c1-56)}"
 
