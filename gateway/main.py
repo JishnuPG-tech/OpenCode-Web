@@ -1,8 +1,8 @@
 """
-OpenCode Space — Production Gateway Main Application (Approach A)
-==================================================================
-OmniRoute is mounted as the primary root application (/), owning /dashboard/*, /api/*, /_next/*, etc.
-Open WebUI is cleanly namespace-isolated under /openwebui/.
+OpenCode Space — Production Gateway Main Application (Option A Master Specification)
+==================================================================================
+Open WebUI is the primary root application (/), owning /, /api/config, /api/v1/chats, /ws/socket.io, /_app/*, etc.
+OmniRoute owns explicit management & LLM API routes (/dashboard/*, /v1/*, /v1beta/*, /_next/*, /api/providers/*, etc.).
 """
 
 import os
@@ -29,6 +29,17 @@ from gateway.jellyfin import router as jellyfin_router
 from gateway.tg_stream import router as tg_stream_router
 
 logger = logging.getLogger("GatewayMain")
+
+
+# ── Open WebUI Legacy Namespace Aliases -> Native Root (/) ─────────────────────
+@app.get("/openwebui", operation_id="openwebui_root_alias")
+@app.get("/openwebui/", operation_id="openwebui_slash_alias")
+async def openwebui_root_alias():
+    return RedirectResponse(url="/")
+
+@app.get("/openwebui/{path:path}", operation_id="openwebui_subpath_alias")
+async def openwebui_subpath_alias(path: str):
+    return RedirectResponse(url=f"/{path}")
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
