@@ -330,14 +330,22 @@ try:
     conn = sqlite3.connect(db)
     cur = conn.cursor()
     cur.execute(\"SELECT name FROM sqlite_master WHERE type='table' AND name='banner'\")
-    if not cur.fetchone():
-        conn.close()
+    has_banner = cur.fetchone()
+    cur.execute(\"PRAGMA table_info('user')\")
+    user_cols = [row[1] for row in cur.fetchall()]
+    conn.close()
+    if not has_banner or 'settings' not in user_cols or 'info' not in user_cols:
         os.rename(db, db + '.legacy_bak')
-        print('[RESET] Outdated Open WebUI DB backed up for clean schema init.')
-    else:
-        conn.close()
-except Exception:
-    pass
+        if os.path.exists('/root/.open-webui/webui.db'):
+            os.remove('/root/.open-webui/webui.db')
+        print('[RESET] Outdated Open WebUI DB schema reset for fresh migration.')
+except Exception as err:
+    try:
+        os.rename(db, db + '.corrupt_bak')
+        if os.path.exists('/root/.open-webui/webui.db'):
+            os.remove('/root/.open-webui/webui.db')
+    except Exception:
+        pass
 " 2>/dev/null || true
         if [ -f "/data/open-webui/webui.db" ]; then
             cp -f /data/open-webui/webui.db /root/.open-webui/webui.db 2>/dev/null || true
