@@ -323,8 +323,26 @@ if command -v open-webui >/dev/null 2>&1; then
     echo "[HEALTH] Open WebUI starting in background on port 8098..."
     mkdir -p /root/.open-webui /data/open-webui /data/cache 2>/dev/null || true
     if [ -f "/data/open-webui/webui.db" ] && [ -s "/data/open-webui/webui.db" ]; then
-        cp -f /data/open-webui/webui.db /root/.open-webui/webui.db 2>/dev/null || true
-        echo "[PERSISTENCE] Restored Open WebUI database."
+        python3 -c "
+import sqlite3, os
+db = '/data/open-webui/webui.db'
+try:
+    conn = sqlite3.connect(db)
+    cur = conn.cursor()
+    cur.execute(\"SELECT name FROM sqlite_master WHERE type='table' AND name='banner'\")
+    if not cur.fetchone():
+        conn.close()
+        os.rename(db, db + '.legacy_bak')
+        print('[RESET] Outdated Open WebUI DB backed up for clean schema init.')
+    else:
+        conn.close()
+except Exception:
+    pass
+" 2>/dev/null || true
+        if [ -f "/data/open-webui/webui.db" ]; then
+            cp -f /data/open-webui/webui.db /root/.open-webui/webui.db 2>/dev/null || true
+            echo "[PERSISTENCE] Restored Open WebUI database."
+        fi
     fi
 
     FOUND_BUILD_DIR=$(python3 -c "import open_webui, os; pkg=os.path.dirname(open_webui.__file__); matches=[root for root, dirs, files in os.walk(pkg) if 'index.html' in files]; print(matches[0] if matches else '')" 2>/dev/null || echo "")
