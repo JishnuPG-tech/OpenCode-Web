@@ -31,16 +31,6 @@ from gateway.tg_stream import router as tg_stream_router
 logger = logging.getLogger("GatewayMain")
 
 
-# ── Open WebUI Legacy Namespace Aliases -> Native Root (/) ─────────────────────
-@app.get("/openwebui", operation_id="openwebui_root_alias")
-@app.get("/openwebui/", operation_id="openwebui_slash_alias")
-async def openwebui_root_alias():
-    return RedirectResponse(url="/")
-
-@app.get("/openwebui/{path:path}", operation_id="openwebui_subpath_alias")
-async def openwebui_subpath_alias(path: str):
-    return RedirectResponse(url=f"/{path}")
-
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     logger.info("Initializing Gateway Connection Pool...")
@@ -52,6 +42,17 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="OpenCode Space Gateway", lifespan=lifespan, docs_url=None, redoc_url=None)
+
+
+# ── Open WebUI Legacy Namespace Aliases -> Native Root (/) ─────────────────────
+@app.get("/openwebui", operation_id="openwebui_root_alias")
+@app.get("/openwebui/", operation_id="openwebui_slash_alias")
+async def openwebui_root_alias():
+    return RedirectResponse(url="/")
+
+@app.get("/openwebui/{path:path}", operation_id="openwebui_subpath_alias")
+async def openwebui_subpath_alias(path: str):
+    return RedirectResponse(url=f"/{path}")
 
 # ── P0 Security Middleware: Hard Block Sensitive Files & Path Traversal ──────
 @app.middleware("http")

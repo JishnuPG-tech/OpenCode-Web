@@ -7,8 +7,8 @@ echo "============================================"
 
 git config --global --add safe.directory '*' 2>/dev/null || true
 
-# ── Master Secret Initialization (HF Space Secret or Deterministic Space-Bound Static Key) ─
-_DETERMINISTIC_KEY=$(echo "${SPACE_ID:-Jishnupg/Opencode-Cli}_static_master_storage_encryption_key_2026" | sha256sum | cut -c1-64)
+# ── Master Secret Initialization (HF Space Secret or Canonical Deterministic Master Key) ─
+_DETERMINISTIC_KEY=$(echo "opencode_storage_encryption_key_2026" | sha256sum | cut -c1-64)
 export STORAGE_ENCRYPTION_KEY="${STORAGE_ENCRYPTION_KEY:-$_DETERMINISTIC_KEY}"
 unset _DETERMINISTIC_KEY
 
