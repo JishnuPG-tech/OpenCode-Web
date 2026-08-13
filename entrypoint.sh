@@ -377,6 +377,29 @@ if command -v open-webui >/dev/null 2>&1; then
         echo "[PERSISTENCE] Restored Open WebUI database snapshot ($(wc -c < /data/open-webui/webui.db | tr -d ' ') bytes)."
     fi
 
+    # Clean up legacy RAG embedding model 'none' from webui.db if present
+    python3 -c "
+import sqlite3, json
+for path in ['/root/.open-webui/webui.db', '/root/.open-webui/data/webui.db', '/data/open-webui/webui.db']:
+    try:
+        conn = sqlite3.connect(path)
+        cursor = conn.cursor()
+        cursor.execute('SELECT id, data FROM config WHERE id = \"rag\"')
+        row = cursor.fetchone()
+        if row:
+            data = json.loads(row[1])
+            if data.get('embedding_model') == 'none':
+                data['embedding_model'] = ''
+            if data.get('embedding_engine') == 'none':
+                data['embedding_engine'] = ''
+            cursor.execute('UPDATE config SET data = ? WHERE id = \"rag\"', (json.dumps(data),))
+            conn.commit()
+            print(f'[FIX] Cleaned RAG config in {path}')
+        conn.close()
+    except Exception:
+        pass
+" 2>/dev/null || true
+
     # 5. Start Open WebUI
     echo "[INIT] Starting Open WebUI on port 8098..."
     if command -v open-webui >/dev/null 2>&1; then
@@ -481,8 +504,11 @@ if command -v hermes >/dev/null 2>&1; then
     export HERMES_MODEL="${HERMES_MODEL:-claude-sonnet-4-6}"
     export HERMES_DATA_DIR="/root/.hermes"
     export HERMES_GATEWAY_PORT=8642
+    export HERMES_PORT=8642
+    export PORT=8642
     export HERMES_GATEWAY_API_KEY="${HERMES_GATEWAY_API_KEY:-${HERMES_API_KEY_SECRET:-hermes_secret_key}}"
     export HERMES_GATEWAY_ENABLED=true
+
     # Pre-create Hermes config.json pointing to OmniRoute so no interactive setup is needed
     cat > /root/.hermes/config.json << HERMES_CFG
 {
@@ -509,13 +535,13 @@ if command -v hermes >/dev/null 2>&1; then
 }
 HERMES_CFG
     echo "[HERMES] Config written: OmniRoute -> http://127.0.0.1:20129/v1, model=${HERMES_MODEL:-claude-sonnet-4-6}"
+
     # Configure Telegram bot integration if token is provided
     if [ -n "$TELEGRAM_BOT_TOKEN" ]; then
         export HERMES_TELEGRAM_TOKEN="$TELEGRAM_BOT_TOKEN"
         export HERMES_TELEGRAM_ENABLED=true
-        # Inject Telegram config into hermes config.json
         python3 -c "
-import json, sys
+import json
 try:
     cfg = json.load(open('/root/.hermes/config.json'))
     cfg['telegram'] = {'enabled': True, 'token': '${TELEGRAM_BOT_TOKEN}'}
@@ -526,23 +552,27 @@ except Exception as e:
 " 2>/dev/null || true
         echo "[HERMES] Telegram bot integration enabled"
     fi
+
     # Detect the correct hermes CLI command for the installed version
     echo "[HERMES] Detecting available commands..."
     hermes --help > /data/cache/hermes_help.log 2>&1 || true
     cat /data/cache/hermes_help.log | head -20 | sed 's/^/[HERMES-HELP] /' || true
 
     HERMES_START_CMD=""
-    if hermes gateway --help >/dev/null 2>&1; then
-        HERMES_START_CMD="hermes gateway run --port 8642"
+    if hermes gateway run --help >/dev/null 2>&1; then
+        HERMES_START_CMD="hermes gateway run"
         echo "[HERMES] Using command: hermes gateway run"
+    elif hermes gateway --help >/dev/null 2>&1; then
+        HERMES_START_CMD="hermes gateway"
+        echo "[HERMES] Using command: hermes gateway"
     elif hermes serve --help >/dev/null 2>&1; then
-        HERMES_START_CMD="hermes serve --port 8642"
+        HERMES_START_CMD="hermes serve"
         echo "[HERMES] Using command: hermes serve"
     elif hermes start --help >/dev/null 2>&1; then
-        HERMES_START_CMD="hermes start --port 8642"
+        HERMES_START_CMD="hermes start"
         echo "[HERMES] Using command: hermes start"
     elif hermes api --help >/dev/null 2>&1; then
-        HERMES_START_CMD="hermes api --port 8642"
+        HERMES_START_CMD="hermes api"
         echo "[HERMES] Using command: hermes api"
     else
         echo "[HERMES] WARNING: No gateway command found. Available commands logged to /data/cache/hermes_help.log"
@@ -592,9 +622,9 @@ while true; do
         OMNIROUTE_PID=$!
     fi
 
-    if [ -n "$HERMES_PID" ] && ! kill -0 $HERMES_PID 2>/dev/null; then
+    if [ -n "$HERMES_PID" ] && [ -n "$HERMES_START_CMD" ] && ! kill -0 $HERMES_PID 2>/dev/null; then
         echo "[CRITICAL] Hermes Agent process died! Restarting..."
-        hermes gateway run --port 8642 > /data/cache/hermes.log 2>&1 &
+        $HERMES_START_CMD 2>&1 | tee /data/cache/hermes.log | sed 's/^/[HERMES] /' &
         HERMES_PID=$!
     fi
 
