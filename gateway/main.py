@@ -266,4 +266,40 @@ async def route_catch_all(path: str, request: Request):
 
     # ── 4. Primary Root Application Fallback -> Open WebUI (:8098) ────────────
     logger.info(f"[ROUTER] {req_path} -> Open WebUI ({WEBUI_PORT})")
-    return await proxy_http_request(f"http://127.0.0.1:{WEBUI_PORT}{req_path}", request, default_prefix="")
+    try:
+        resp = await proxy_http_request(f"http://127.0.0.1:{WEBUI_PORT}{req_path}", request, default_prefix="")
+        if resp.status_code == 502 and req_path in ("/", "/index.html"):
+            raise ConnectionError("Open WebUI not accepting connections yet")
+        return resp
+    except Exception as exc:
+        logger.warning(f"[ROUTER] Open WebUI proxy call fallback ({exc})")
+        if req_path in ("/", "/index.html", "/healthz"):
+            html_content = """<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="refresh" content="3">
+  <title>OpenCode Space Gateway</title>
+  <style>
+    body { font-family: system-ui, sans-serif; background: #0f172a; color: #f8fafc; display: flex; height: 100vh; align-items: center; justify-content: center; margin: 0; }
+    .card { background: #1e293b; padding: 2.5rem; border-radius: 12px; box-shadow: 0 10px 25px rgba(0,0,0,0.5); text-align: center; max-width: 480px; }
+    .spinner { border: 4px solid #334155; border-top: 4px solid #38bdf8; border-radius: 50%; width: 40px; height: 40px; animation: spin 1s linear infinite; margin: 0 auto 1.5rem; }
+    @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+    h1 { font-size: 1.5rem; margin-bottom: 0.5rem; color: #38bdf8; }
+    p { color: #94a3b8; font-size: 0.95rem; line-height: 1.5; }
+    a { color: #38bdf8; text-decoration: none; font-weight: 600; margin: 0 8px; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="spinner"></div>
+    <h1>OpenCode Space Online</h1>
+    <p>The gateway is active. Open WebUI is finalizing background startup and will refresh automatically...</p>
+    <p style="margin-top:1.5rem;">
+      <a href="/dashboard">OmniRoute Dashboard</a> | <a href="/health">Gateway Health</a>
+    </p>
+  </div>
+</body>
+</html>"""
+            return Response(content=html_content, status_code=200, media_type="text/html")
+        return JSONResponse({"status": "starting", "message": "Service initializing"}, status_code=503)
