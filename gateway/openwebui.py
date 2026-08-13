@@ -32,10 +32,18 @@ async def webui_prefix_proxy(request: Request, path: str = ""):
 @router.api_route("/openwebui/sw.js", methods=["GET", "HEAD"])
 async def webui_sw(request: Request):
     sw_code = (
-        "self.addEventListener('install', (e) => { self.skipWaiting(); });\n"
-        "self.addEventListener('activate', (e) => {\n"
-        "  e.waitUntil(caches.keys().then(keys => Promise.all(keys.map(k => caches.delete(k))))).then(() => self.clients.claim());\n"
-        "});"
+        "self.addEventListener('install', function(event) {\n"
+        "    self.skipWaiting();\n"
+        "});\n"
+        "self.addEventListener('activate', function(event) {\n"
+        "    event.waitUntil(\n"
+        "        caches.keys().then(function(keys) {\n"
+        "            return Promise.all(keys.map(function(key) { return caches.delete(key); }));\n"
+        "        }).then(function() {\n"
+        "            return self.clients.claim();\n"
+        "        })\
+    );\n"
+        "});\n"
     )
     return Response(content=sw_code, status_code=200, media_type="application/javascript")
 
