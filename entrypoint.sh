@@ -524,6 +524,10 @@ API_SERVER_KEY=${API_SERVER_KEY}
 OPENAI_API_BASE=http://127.0.0.1:20129/v1
 OPENAI_API_KEY=omniroute
 DEFAULT_MODEL=${HERMES_MODEL:-claude-sonnet-4-6}
+TELEGRAM_ENABLED=${TELEGRAM_BOT_TOKEN:+true}
+TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
+TELEGRAM_ALLOW_ALL_USERS=true
+TELEGRAM_ALLOWED_USERS=${TELEGRAM_ALLOWED_USERS:-*}
 HERMES_ENV
 
     # Pre-create Hermes config.json pointing to OmniRoute so no interactive setup is needed
@@ -563,17 +567,24 @@ HERMES_CFG
     if [ -n "$TELEGRAM_BOT_TOKEN" ]; then
         export HERMES_TELEGRAM_TOKEN="$TELEGRAM_BOT_TOKEN"
         export HERMES_TELEGRAM_ENABLED=true
+        export TELEGRAM_ALLOW_ALL_USERS=true
+        export TELEGRAM_ALLOWED_USERS="${TELEGRAM_ALLOWED_USERS:-*}"
         python3 -c "
 import json
 try:
     cfg = json.load(open('/root/.hermes/config.json'))
-    cfg['telegram'] = {'enabled': True, 'token': '${TELEGRAM_BOT_TOKEN}'}
+    cfg['telegram'] = {
+        'enabled': True,
+        'token': '${TELEGRAM_BOT_TOKEN}',
+        'allow_all_users': True,
+        'allowed_users': ['*']
+    }
     json.dump(cfg, open('/root/.hermes/config.json', 'w'), indent=2)
-    print('[HERMES] Telegram bot injected into config')
+    print('[HERMES] Telegram bot & user authorization injected into config')
 except Exception as e:
     print(f'[HERMES] Telegram config inject warning: {e}')
 " 2>/dev/null || true
-        echo "[HERMES] Telegram bot integration enabled"
+        echo "[HERMES] Telegram bot integration & user authorization enabled"
     fi
 
     # Detect the correct hermes CLI command for the installed version

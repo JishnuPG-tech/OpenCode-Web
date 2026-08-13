@@ -56,6 +56,25 @@ This document serves as the **locked, definitive reference** for the Hermes Agen
 - **Sync Daemon**: Background 15-second rsync daemon in `entrypoint.sh` syncs memories (`MEMORY.md`, `USER.md`), custom skills (`skills/`), and SQLite chat history (`sessions/`) to `/data/hermes/`.
 - **Boot Restoration**: Restores persistent data from `/data/hermes/` into `/root/.hermes/` on startup.
 
+### 5. Telegram Bot Authorization & Messaging Setup
+- **Authorization Requirement**: `hermes-agent` requires user authorization flags (`allow_all_users: true` / `allowed_users: ["*"]`) to process and reply to incoming Telegram messages.
+- **Environment Injections in [`entrypoint.sh`](file:///c:/Users/JISHNU%20PG/Music/InstaFlow/Opencode-Cli/entrypoint.sh)**:
+  ```env
+  TELEGRAM_ENABLED=true
+  TELEGRAM_BOT_TOKEN=<token>
+  TELEGRAM_ALLOW_ALL_USERS=true
+  TELEGRAM_ALLOWED_USERS=*
+  ```
+- **Config Injections**:
+  ```json
+  "telegram": {
+    "enabled": true,
+    "token": "<token>",
+    "allow_all_users": true,
+    "allowed_users": ["*"]
+  }
+  ```
+
 ---
 
 ## 🔒 Mandatory Locking Rules for AI Assistants
