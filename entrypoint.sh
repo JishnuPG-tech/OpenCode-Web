@@ -69,6 +69,38 @@ echo "[BOOT] Background services starting asynchronously..."
 # Step 8: Start OmniRoute AI Gateway in Background (if available)
 if command -v omniroute >/dev/null 2>&1; then
     echo "[HEALTH] OmniRoute starting in background..."
+    export HOME="/root"
+    export XDG_CACHE_HOME="/root/.cache"
+    export HOST="0.0.0.0"
+    export OMNIROUTE_SERVER_HOST="0.0.0.0"
+    export BASE_URL="http://127.0.0.1:20128"
+    export DATA_DIR="/data/omniroute"
+    export DASHBOARD_PORT=20128
+    export PORT=20128
+    export AUTH_COOKIE_SECURE="true"
+    export JWT_SECRET="${OMNIROUTE_JWT_SECRET:-opencode_omniroute_jwt_secret_key_2026_secure_random_token}"
+    export API_KEY_SECRET="${OMNIROUTE_API_KEY_SECRET:-e9f8a7b6c5d4e3f2a1b0c9d8e7f6a5b4c3d2e1f0a9b8c7d6e5f4a3b2c1d0e9f8}"
+    export STORAGE_ENCRYPTION_KEY="${OMNIROUTE_STORAGE_KEY:-1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d3e4f5a6b7c8d9e0f1a2b}"
+    export INITIAL_PASSWORD="${OMNIROUTE_INITIAL_PASSWORD:-admin}"
+    export DISABLE_SQLITE_AUTO_BACKUP="true"
+    export NODE_ENV="production"
+
+    mkdir -p /data/omniroute /root/.omniroute 2>/dev/null || true
+    cat <<EOF > /data/omniroute/.env
+DATA_DIR=/data/omniroute
+PORT=20128
+DASHBOARD_PORT=20128
+JWT_SECRET=${JWT_SECRET}
+API_KEY_SECRET=${API_KEY_SECRET}
+STORAGE_ENCRYPTION_KEY=${STORAGE_ENCRYPTION_KEY}
+INITIAL_PASSWORD=${INITIAL_PASSWORD}
+DISABLE_SQLITE_AUTO_BACKUP=true
+NODE_ENV=production
+AUTH_COOKIE_SECURE=true
+OMNIROUTE_SERVER_HOST=0.0.0.0
+EOF
+    cp -f /data/omniroute/.env /root/.omniroute/.env 2>/dev/null || true
+
     omniroute serve --port 20128 --no-open > /data/omniroute/omniroute.log 2>&1 &
     OMNIROUTE_PID=$!
 fi
@@ -136,6 +168,12 @@ while true; do
         echo "[CRITICAL] Nginx process died! Restarting..."
         nginx -g 'daemon off;' -c /nginx.conf &
         NGINX_PID=$!
+    fi
+
+    if [ -n "$OMNIROUTE_PID" ] && ! kill -0 $OMNIROUTE_PID 2>/dev/null; then
+        echo "[CRITICAL] OmniRoute process died! Restarting..."
+        omniroute serve --port 20128 --no-open > /data/omniroute/omniroute.log 2>&1 &
+        OMNIROUTE_PID=$!
     fi
 
     sleep 5
