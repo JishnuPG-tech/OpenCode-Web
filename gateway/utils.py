@@ -161,7 +161,7 @@ async def proxy_http_request(
             if attempt < 3:
                 await asyncio.sleep(0.3 * attempt)
                 continue
-            if method in ("GET", "HEAD") and ("html" in request.headers.get("accept", "").lower() or request.url.path in ("/", "/omniroute", "/omniroute/dashboard", "/jellyfin")):
+            if method in ("GET", "HEAD") and request.url.path in ("/", "/index.html", "/healthz", "/health", "/omniroute", "/omniroute/dashboard", "/jellyfin"):
                 service_name = "OmniRoute AI Gateway" if default_prefix == "/omniroute" else ("Jellyfin Media Server" if default_prefix == "/jellyfin" else "Open WebUI")
                 html_retry = f"""<!DOCTYPE html>
 <html>
@@ -185,7 +185,7 @@ async def proxy_http_request(
     </div>
 </body>
 </html>"""
-                return Response(content=html_retry, status_code=503, headers={"Retry-After": "3", "Refresh": "3"}, media_type="text/html")
+                return Response(content=html_retry, status_code=200, headers={"Retry-After": "3", "Refresh": "3"}, media_type="text/html")
             return Response(
                 content=f"<h2>502 Service Unavailable</h2><p>Upstream starting: {exc}</p>",
                 status_code=502,

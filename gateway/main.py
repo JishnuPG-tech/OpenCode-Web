@@ -268,7 +268,7 @@ async def route_catch_all(path: str, request: Request):
     logger.info(f"[ROUTER] {req_path} -> Open WebUI ({WEBUI_PORT})")
     try:
         resp = await proxy_http_request(f"http://127.0.0.1:{WEBUI_PORT}{req_path}", request, default_prefix="")
-        if resp.status_code == 502 and req_path in ("/", "/index.html"):
+        if resp.status_code in (502, 503) and req_path in ("/", "/index.html", "/healthz"):
             raise ConnectionError("Open WebUI not accepting connections yet")
         return resp
     except Exception as exc:
