@@ -36,9 +36,14 @@ RUN mkdir -p /etc/apt/keyrings \
  && apt-get update && apt-get install -y --no-install-recommends jellyfin-server jellyfin-web ffmpeg \
  && rm -rf /var/lib/apt/lists/*
 
-# 3. Install Python dependencies (no Torch preinstall — Open WebUI manages its own deps)
+# Install core Python runtime dependencies
 RUN pip3 install --no-cache-dir \
-    aiohttp pyrogram tgcrypto open-webui httpx uvicorn fastapi hermes-agent \
+    aiohttp pyrogram tgcrypto open-webui httpx uvicorn fastapi \
+    --break-system-packages
+
+# Install hermes-agent separately with --no-deps to avoid version backtracking
+# (open-webui already installs all shared deps: openai, httpx, pydantic, etc.)
+RUN pip3 install --no-cache-dir --no-deps hermes-agent \
     --break-system-packages
 
 # 4. Copy prebuilt OmniRoute production runtime from Stage 1
