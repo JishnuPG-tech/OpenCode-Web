@@ -463,7 +463,7 @@ fi
 # Step 12: Start Hermes Agent in Background (Port 8642)
 if command -v hermes >/dev/null 2>&1; then
     echo "[HEALTH] Hermes Agent starting in background on port 8642..."
-    mkdir -p /data/hermes /root/.hermes 2>/dev/null || true
+    mkdir -p /data/hermes /root/.hermes/memories /root/.hermes/skills 2>/dev/null || true
     # Restore persistent Hermes memory from /data volume
     if [ -d "/data/hermes" ] && [ "$(ls -A /data/hermes 2>/dev/null)" ]; then
         cp -rf /data/hermes/. /root/.hermes/ 2>/dev/null || true
@@ -475,12 +475,49 @@ if command -v hermes >/dev/null 2>&1; then
     export HERMES_MODEL="${HERMES_MODEL:-claude-sonnet-4-6}"
     export HERMES_DATA_DIR="/root/.hermes"
     export HERMES_GATEWAY_PORT=8642
-    export HERMES_GATEWAY_API_KEY="${HERMES_API_KEY:-hermes_secret_key}"
+    export HERMES_GATEWAY_API_KEY="${HERMES_GATEWAY_API_KEY:-${HERMES_API_KEY_SECRET:-hermes_secret_key}}"
     export HERMES_GATEWAY_ENABLED=true
+    # Pre-create Hermes config.json pointing to OmniRoute so no interactive setup is needed
+    cat > /root/.hermes/config.json << HERMES_CFG
+{
+  "api_base_url": "http://127.0.0.1:20129/v1",
+  "api_key": "omniroute",
+  "model": "${HERMES_MODEL:-claude-sonnet-4-6}",
+  "data_dir": "/root/.hermes",
+  "gateway": {
+    "enabled": true,
+    "port": 8642,
+    "api_key": "${HERMES_GATEWAY_API_KEY}"
+  },
+  "memory": {
+    "enabled": true,
+    "sqlite_fts5": true,
+    "memory_file": "/root/.hermes/memories/MEMORY.md",
+    "user_file": "/root/.hermes/memories/USER.md"
+  },
+  "tools": {
+    "web_search": true,
+    "web_extract": true,
+    "browser_automation": true
+  }
+}
+HERMES_CFG
+    echo "[HERMES] Config written: OmniRoute -> http://127.0.0.1:20129/v1, model=${HERMES_MODEL:-claude-sonnet-4-6}"
     # Configure Telegram bot integration if token is provided
     if [ -n "$TELEGRAM_BOT_TOKEN" ]; then
         export HERMES_TELEGRAM_TOKEN="$TELEGRAM_BOT_TOKEN"
         export HERMES_TELEGRAM_ENABLED=true
+        # Inject Telegram config into hermes config.json
+        python3 -c "
+import json, sys
+try:
+    cfg = json.load(open('/root/.hermes/config.json'))
+    cfg['telegram'] = {'enabled': True, 'token': '${TELEGRAM_BOT_TOKEN}'}
+    json.dump(cfg, open('/root/.hermes/config.json', 'w'), indent=2)
+    print('[HERMES] Telegram bot injected into config')
+except Exception as e:
+    print(f'[HERMES] Telegram config inject warning: {e}')
+" 2>/dev/null || true
         echo "[HERMES] Telegram bot integration enabled"
     fi
     hermes gateway run --port 8642 > /data/cache/hermes.log 2>&1 &
