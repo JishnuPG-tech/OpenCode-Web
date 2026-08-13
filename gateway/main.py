@@ -13,7 +13,7 @@ import os
 import logging
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request, Response
-from fastapi.responses import JSONResponse, HTMLResponse, FileResponse
+from fastapi.responses import JSONResponse, HTMLResponse, FileResponse, RedirectResponse
 
 from gateway.utils import (
     get_http_client,
@@ -92,16 +92,21 @@ async def route_catch_all(path: str, request: Request):
     referer = request.headers.get("referer", "").lower()
     req_path = request.url.path.lower()
 
-    # ── 1. OmniRoute Explicit Management & API Endpoints ──────────────────────
-    if req_path in ("/omniroute", "/omniroute/"):
-        return RedirectResponse(url="/dashboard", status_code=307)
+    is_omniroute_referer = "/dashboard" in referer or "/omniroute" in referer or "/providers" in referer
 
     OMNIROUTE_PREFIXES = (
         "/dashboard",
         "/omniroute",
         "/_next",
+        "/providers",
         "/api/providers",
+        "/api/provider-",
         "/api/credentials",
+        "/api/connections",
+        "/api/custom-",
+        "/api/synced-",
+        "/api/token-",
+        "/api/sync/",
         "/api/oauth",
         "/api/settings",
         "/api/monitoring",
@@ -117,7 +122,9 @@ async def route_catch_all(path: str, request: Request):
         "/api/vector",
         "/api/chats",
         "/api/tokens",
-        "/api/cloud-agent-credentials",
+        "/api/cloud-",
+        "/api/arena",
+        "/api/pricing",
     )
 
     OMNIROUTE_EXACT = (
@@ -132,18 +139,22 @@ async def route_catch_all(path: str, request: Request):
         "/callback",
     )
 
+    extra = {
+        "Host": PUBLIC_HOST,
+        "X-Forwarded-Host": PUBLIC_HOST,
+        "X-Forwarded-Proto": "https",
+        "X-Forwarded-Port": "443",
+    }
+
+    # If request originates from OmniRoute Dashboard or matches OmniRoute prefixes, route to OmniRoute
     if (
-        any(req_path == p or req_path.startswith(p + "/") for p in OMNIROUTE_PREFIXES)
+        is_omniroute_referer
+        or any(req_path == p or req_path.startswith(p) for p in OMNIROUTE_PREFIXES)
         or req_path in OMNIROUTE_EXACT
     ):
-        logger.info(f"[ROUTER] {req_path} -> OmniRoute ({OMNIROUTE_PORT})")
-        extra = {
-            "Host": PUBLIC_HOST,
-            "X-Forwarded-Host": PUBLIC_HOST,
-            "X-Forwarded-Proto": "https",
-            "X-Forwarded-Port": "443",
-        }
-        return await proxy_http_request(f"http://127.0.0.1:{OMNIROUTE_PORT}{req_path}", request, default_prefix="", extra_headers=extra)
+        if not (req_path.startswith("/jellyfin") or req_path.startswith("/tg-stream") or req_path.startswith("/tg_stream") or req_path == "/health/live"):
+            logger.info(f"[ROUTER] {req_path} (referer={referer}) -> OmniRoute ({OMNIROUTE_PORT})")
+            return await proxy_http_request(f"http://127.0.0.1:{OMNIROUTE_PORT}{req_path}", request, default_prefix="", extra_headers=extra)
 
     # ── 2. Jellyfin Media Server Namespace ────────────────────────────────────
     if req_path == "/jellyfin" or req_path.startswith("/jellyfin/"):
