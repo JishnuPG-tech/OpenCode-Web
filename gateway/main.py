@@ -71,6 +71,9 @@ async def favicon():
 @app.api_route("/manifest.json", methods=["GET", "HEAD"])
 @app.api_route("/manifest.webmanifest", methods=["GET", "HEAD"])
 @app.api_route("/site.webmanifest", methods=["GET", "HEAD"])
+@app.api_route("/omniroute/manifest.json", methods=["GET", "HEAD"])
+@app.api_route("/omniroute/manifest.webmanifest", methods=["GET", "HEAD"])
+@app.api_route("/omniroute/site.webmanifest", methods=["GET", "HEAD"])
 async def webmanifest():
     return JSONResponse(
         content={
@@ -130,6 +133,8 @@ async def route_catch_all(path: str, request: Request):
         "/providers",
         "/api/providers",
         "/api/provider-",
+        "/api/models",
+        "/api/model",
         "/api/credentials",
         "/api/connections",
         "/api/custom-",
