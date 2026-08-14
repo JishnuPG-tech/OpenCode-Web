@@ -16,7 +16,17 @@ import aiohttp
 from fastapi import Request, Response, WebSocket
 from fastapi.responses import StreamingResponse
 
-logger = logging.getLogger("GatewayUtils")
+def get_structured_logger(name: str) -> logging.Logger:
+    log = logging.getLogger(name)
+    if not log.handlers:
+        handler = logging.StreamHandler()
+        formatter = logging.Formatter("%(asctime)s [%(levelname)s] [%(name)s] %(message)s", datefmt="%Y-%m-%d %H:%M:%S")
+        handler.setFormatter(formatter)
+        log.addHandler(handler)
+        log.setLevel(logging.INFO)
+    return log
+
+logger = get_structured_logger("GatewayUtils")
 
 # Port definitions
 WEBUI_PORT         = int(os.environ.get("WEBUI_PORT", 8098))

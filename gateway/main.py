@@ -18,6 +18,7 @@ from fastapi.responses import JSONResponse, HTMLResponse, FileResponse, Redirect
 from gateway.utils import (
     get_http_client,
     proxy_http_request,
+    get_structured_logger,
     WEBUI_PORT,
     JELLYFIN_PORT,
     TG_PORT,
@@ -30,7 +31,7 @@ from gateway.jellyfin import router as jellyfin_router
 from gateway.tg_stream import router as tg_stream_router
 from gateway.hermes import router as hermes_router
 
-logger = logging.getLogger("GatewayMain")
+logger = get_structured_logger("GatewayMain")
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):

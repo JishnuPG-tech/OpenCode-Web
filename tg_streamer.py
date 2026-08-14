@@ -14,8 +14,12 @@ from pyrogram import Client, filters
 from pyrogram.types import Message
 from pyrogram.errors import FloodWait, RPCError
 
-logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("TG_Drive_Streamer")
+if not logger.handlers:
+    handler = logging.StreamHandler()
+    handler.setFormatter(logging.Formatter("%(asctime)s [%(levelname)s] [%(name)s] %(message)s", datefmt="%Y-%m-%d %H:%M:%S"))
+    logger.addHandler(handler)
+    logger.setLevel(logging.INFO)
 
 HOST = "127.0.0.1"
 PORT = 8080

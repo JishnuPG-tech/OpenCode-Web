@@ -10,16 +10,27 @@ get_elapsed() {
     fi
 }
 
-echo "============================================"
-echo "=== OpenCode Space Container Starting ==="
-echo "Time: $(date)"
-echo "============================================"
+log_info() {
+    echo "$(date -u '+%Y-%m-%d %H:%M:%S') [INFO] [$1] $2"
+}
+
+log_warn() {
+    echo "$(date -u '+%Y-%m-%d %H:%M:%S') [WARN] [$1] $2"
+}
+
+log_error() {
+    echo "$(date -u '+%Y-%m-%d %H:%M:%S') [ERROR] [$1] $2"
+}
+
+log_info "SYSTEM" "============================================"
+log_info "SYSTEM" "=== OpenCode Space Container Starting ==="
+log_info "SYSTEM" "============================================"
 
 # Step 1: Configure Git & Environment Secrets Validation
 git config --global --add safe.directory '*' 2>/dev/null || true
 
 # Step 2: Ensure persistent /data directory structure exists
-echo "[INIT] Setting up /data persistent volume directories..."
+log_info "INIT" "Setting up /data persistent volume directories..."
 mkdir -p /data/share/opencode /data/config/opencode /data/cache/opencode /data/state/opencode 2>/dev/null || true
 mkdir -p /data/open-webui /data/omniroute 2>/dev/null || true
 mkdir -p /data/jellyfin/data /data/jellyfin/config /data/jellyfin/cache /data/jellyfin/log /data/jellyfin/media/Movies /data/jellyfin/media/TVShows 2>/dev/null || true

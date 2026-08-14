@@ -16,9 +16,9 @@ import os
 import logging
 from fastapi import APIRouter, Request, Response, WebSocket
 from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse
-from gateway.utils import proxy_http_request, proxy_websocket_stream
+from gateway.utils import proxy_http_request, proxy_websocket_stream, get_structured_logger
 
-logger = logging.getLogger("GatewayOmniRoute")
+logger = get_structured_logger("GatewayOmniRoute")
 router = APIRouter(tags=["omniroute"])
 
 OMNIROUTE_PORT = 20128

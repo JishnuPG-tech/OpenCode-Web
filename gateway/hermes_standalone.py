@@ -7,7 +7,9 @@ import logging
 from fastapi import FastAPI, Request, Response
 from fastapi.responses import JSONResponse, StreamingResponse
 
-logger = logging.getLogger("HermesStandalone")
+from gateway.utils import get_structured_logger
+
+logger = get_structured_logger("HermesStandalone")
 app = FastAPI(title="Hermes Standalone Server")
 
 OMNIROUTE_URL = os.getenv("HERMES_API_BASE_URL", "http://127.0.0.1:20128/api/v1")

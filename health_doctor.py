@@ -14,8 +14,12 @@ import glob
 import sqlite3
 import logging
 
-logging.basicConfig(level=logging.INFO, format="[HEALTH_DOCTOR] %(asctime)s - %(levelname)s - %(message)s")
 logger = logging.getLogger("HealthDoctor")
+if not logger.handlers:
+    handler = logging.StreamHandler()
+    handler.setFormatter(logging.Formatter("%(asctime)s [%(levelname)s] [%(name)s] %(message)s", datefmt="%Y-%m-%d %H:%M:%S"))
+    logger.addHandler(handler)
+    logger.setLevel(logging.INFO)
 
 TARGET_DATABASES = [
     "/root/.omniroute/storage.sqlite",
