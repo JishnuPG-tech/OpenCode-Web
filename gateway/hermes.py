@@ -62,14 +62,58 @@ async def hermes_status(request: Request):
     methods=["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"],
 )
 async def hermes_proxy(path: str, request: Request):
-    upstream = f"http://127.0.0.1:{HERMES_PORT}/{path}"
-    logger.info(f"[HERMES] /{path} -> :{HERMES_PORT}")
-    extra_headers = {"Authorization": f"Bearer {API_SERVER_KEY}"}
-    return await proxy_http_request(
+    clean_path = path.lstrip("/")
+    upstream = f"http://127.0.0.1:{HERMES_PORT}/{clean_path}"
+    logger.info(f"[HERMES] /{clean_path} -> :{HERMES_PORT}")
+
+    user_auth = request.headers.get("authorization") or f"Bearer {API_SERVER_KEY}"
+    if not user_auth.lower().startswith("bearer "):
+        user_auth = f"Bearer {user_auth}"
+
+    primary_headers = {
+        "Authorization": user_auth,
+        "X-API-Key": API_SERVER_KEY,
+        "api-key": API_SERVER_KEY,
+    }
+
+    res = await proxy_http_request(
         upstream,
         request,
         default_prefix="/hermes",
-        extra_headers=extra_headers,
+        extra_headers=primary_headers,
     )
+
+    # Stage 2: If 404 or 401 on /v1/..., try stripping /v1/ prefix
+    if res.status_code in (404, 401) and clean_path.startswith("v1/"):
+        alt_path = clean_path[3:]
+        alt_upstream = f"http://127.0.0.1:{HERMES_PORT}/{alt_path}"
+        logger.info(f"[HERMES FALLBACK] Trying path: {alt_upstream}")
+        res_alt = await proxy_http_request(
+            alt_upstream,
+            request,
+            default_prefix="/hermes",
+            extra_headers=primary_headers,
+        )
+        if res_alt.status_code < 400:
+            return res_alt
+
+    # Stage 3: If 401 persists, fallback to explicit internal API_SERVER_KEY Bearer auth
+    if res.status_code == 401:
+        key_headers = {
+            "Authorization": f"Bearer {API_SERVER_KEY}",
+            "X-API-Key": API_SERVER_KEY,
+            "api-key": API_SERVER_KEY,
+        }
+        logger.info(f"[HERMES FALLBACK] Trying internal API_SERVER_KEY auth on {upstream}")
+        res_key = await proxy_http_request(
+            upstream,
+            request,
+            default_prefix="/hermes",
+            extra_headers=key_headers,
+        )
+        if res_key.status_code < 400:
+            return res_key
+
+    return res
 
 
