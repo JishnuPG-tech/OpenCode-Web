@@ -73,10 +73,31 @@ async def create_run(request: Request):
 
     run_id = f"run-{int(asyncio.get_event_loop().time()*1000)}"
     return {
+        "id": run_id,
         "run_id": run_id,
         "session_id": session_id,
         "status": "completed",
-        "output": f"Hermes Agent received prompt: '{prompt}'. System online and ready."
+        "state": "completed",
+        "output": f"Hermes Agent received prompt: '{prompt}'. System online and ready.",
+        "result": {
+            "content": f"Hermes Agent received prompt: '{prompt}'. System online and ready."
+        }
+    }
+
+@app.api_route("/runs/{run_id}", methods=["GET", "HEAD"])
+@app.api_route("/v1/runs/{run_id}", methods=["GET", "HEAD"])
+@app.api_route("/api/runs/{run_id}", methods=["GET", "HEAD"])
+async def get_run(run_id: str):
+    return {
+        "id": run_id,
+        "run_id": run_id,
+        "session_id": "sess-default",
+        "status": "completed",
+        "state": "completed",
+        "output": "Hermes Agent task completed successfully.",
+        "result": {
+            "content": "Hermes Agent task completed successfully."
+        }
     }
 
 @app.api_route("/runs/{run_id}/events", methods=["GET", "HEAD"])
