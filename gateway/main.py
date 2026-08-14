@@ -124,13 +124,29 @@ async def route_catch_all(path: str, request: Request):
     if req_path.startswith("/_app/") or req_path.startswith("/static/") or req_path in ("/sw.js", "/opensearch.xml"):
         return await proxy_http_request(f"http://127.0.0.1:{WEBUI_PORT}{req_path}", request, default_prefix="")
 
-    is_omniroute_referer = "/dashboard" in referer or "/omniroute" in referer or "/providers" in referer
+    is_omniroute_referer = any(p in referer for p in ("/dashboard", "/omniroute", "/providers", "/home", "/connections", "/settings", "/login", "/setup", "/wizard", "/keys", "/combos", "/logs", "/stats", "/arena", "/pricing"))
 
     OMNIROUTE_PREFIXES = (
         "/dashboard",
         "/omniroute",
+        "/home",
+        "/login",
+        "/setup",
+        "/wizard",
+        "/callback",
         "/_next",
         "/providers",
+        "/connections",
+        "/custom-models",
+        "/synced-models",
+        "/models",
+        "/settings",
+        "/combos",
+        "/keys",
+        "/stats",
+        "/logs",
+        "/arena",
+        "/pricing",
         "/api/providers",
         "/api/provider-",
         "/api/models",
@@ -159,6 +175,22 @@ async def route_catch_all(path: str, request: Request):
 
     OMNIROUTE_EXACT = (
         "/dashboard",
+        "/home",
+        "/login",
+        "/setup",
+        "/wizard",
+        "/providers",
+        "/connections",
+        "/custom-models",
+        "/synced-models",
+        "/models",
+        "/settings",
+        "/combos",
+        "/keys",
+        "/stats",
+        "/logs",
+        "/arena",
+        "/pricing",
     )
 
     extra = {
