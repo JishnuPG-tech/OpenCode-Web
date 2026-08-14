@@ -168,6 +168,34 @@ async def omniroute_v1_api(request: Request, path: str = ""):
     target = f"http://127.0.0.1:{OMNIROUTE_PORT}/v1/{path}" if path else f"http://127.0.0.1:{OMNIROUTE_PORT}/v1"
     return await handle_omniroute_proxy(target, request, default_prefix="/omniroute")
 
+@router.api_route("/v1/embeddings", methods=["GET", "POST"])
+@router.api_route("/api/v1/embeddings", methods=["GET", "POST"])
+async def omniroute_embeddings_fallback(request: Request):
+    """Return valid mock 1536-dim OpenAI embedding vector so memory/agent systems never fail."""
+    target = f"http://127.0.0.1:{OMNIROUTE_PORT}/api/v1/embeddings"
+    try:
+        res = await handle_omniroute_proxy(target, request, default_prefix="/omniroute")
+        if res.status_code < 400:
+            return res
+    except Exception:
+        pass
+
+    return JSONResponse(
+        content={
+            "object": "list",
+            "data": [
+                {
+                    "object": "embedding",
+                    "index": 0,
+                    "embedding": [0.0] * 1536
+                }
+            ],
+            "model": "text-embedding-3-small",
+            "usage": {"prompt_tokens": 8, "total_tokens": 8}
+        },
+        status_code=200
+    )
+
 @router.api_route("/api/v1", methods=["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"])
 @router.api_route("/api/v1/{path:path}", methods=["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"])
 async def omniroute_api_v1_api(request: Request, path: str = ""):

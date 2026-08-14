@@ -79,6 +79,7 @@ stt:
 memory:
   memory_enabled: true
   user_profile_enabled: true
+  sqlite_fts5: true
   memory_char_limit: 2200
   user_char_limit: 1375
   nudge_interval: 10
