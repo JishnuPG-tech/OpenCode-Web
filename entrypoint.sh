@@ -82,17 +82,26 @@ mkdir -p "$PERSIST_DIR" "$BACKUP_DIR" "$RUNTIME_DIR" "$PERSIST_WEBUI_DIR" "$RUNT
 if [ -f "$PERSIST_DB" ] && [ -s "$PERSIST_DB" ]; then
     _INIT_SIZE=$(wc -c < "$PERSIST_DB" 2>/dev/null | tr -d ' \t\n\r' || echo "0")
     echo "[PERSISTENCE] Found OmniRoute snapshot at: ${PERSIST_DB} (${_INIT_SIZE} bytes)"
+    _RESTORED=0
     if command -v sqlite3 >/dev/null 2>&1; then
         _CHK=$(sqlite3 "$PERSIST_DB" "PRAGMA quick_check;" 2>/dev/null || echo "failed")
         if [ "$_CHK" = "ok" ]; then
-            cp -f "$PERSIST_DB" "$RUNTIME_DB"
-            echo "[PERSISTENCE] Restored persistent database into ${RUNTIME_DB} successfully."
-        else
-            echo "[PERSISTENCE] WARNING: Persistent snapshot failed integrity check. Initializing fresh runtime DB."
+            cp -f "$PERSIST_DB"* "$RUNTIME_DIR/" 2>/dev/null || true
+            echo "[PERSISTENCE] Restored persistent database into ${RUNTIME_DIR} successfully."
+            _RESTORED=1
+        elif [ -f "${BACKUP_DIR}/last-known-good.sqlite" ]; then
+            _BCHK=$(sqlite3 "${BACKUP_DIR}/last-known-good.sqlite" "PRAGMA quick_check;" 2>/dev/null || echo "failed")
+            if [ "$_BCHK" = "ok" ]; then
+                cp -f "${BACKUP_DIR}/last-known-good.sqlite" "$RUNTIME_DB" 2>/dev/null || true
+                cp -f "${BACKUP_DIR}/last-known-good.sqlite" "$PERSIST_DB" 2>/dev/null || true
+                echo "[PERSISTENCE] Restored from last-known-good backup into ${RUNTIME_DB} successfully."
+                _RESTORED=1
+            fi
         fi
-    else
-        cp -f "$PERSIST_DB" "$RUNTIME_DB"
-        echo "[PERSISTENCE] Restored persistent database into ${RUNTIME_DB}."
+    fi
+    if [ $_RESTORED -eq 0 ]; then
+        cp -f "$PERSIST_DB"* "$RUNTIME_DIR/" 2>/dev/null || true
+        echo "[PERSISTENCE] Restored persistent database snapshot directly into ${RUNTIME_DB}."
     fi
 fi
 
@@ -176,10 +185,11 @@ sync_omniroute_db() {
     if [ -f "$RUNTIME_DB" ] && [ -s "$RUNTIME_DB" ]; then
         mkdir -p "$PERSIST_DIR" "$BACKUP_DIR" 2>/dev/null || true
         if command -v sqlite3 >/dev/null 2>&1; then
-            sqlite3 "$RUNTIME_DB" "PRAGMA wal_checkpoint(PASSIVE);" 2>/dev/null || true
-            sqlite3 "$RUNTIME_DB" ".backup '$PERSIST_DB'" 2>/dev/null || cp -f "$RUNTIME_DB" "$PERSIST_DB" 2>/dev/null || true
+            sqlite3 "$RUNTIME_DB" "PRAGMA wal_checkpoint(TRUNCATE);" 2>/dev/null || true
+            sqlite3 "$RUNTIME_DB" "PRAGMA wal_checkpoint(FULL);" 2>/dev/null || true
+            sqlite3 "$RUNTIME_DB" ".backup '$PERSIST_DB'" 2>/dev/null || cp -f "$RUNTIME_DB"* "$PERSIST_DIR/" 2>/dev/null || true
         else
-            cp -f "$RUNTIME_DB" "$PERSIST_DB" 2>/dev/null || true
+            cp -f "$RUNTIME_DB"* "$PERSIST_DIR/" 2>/dev/null || true
         fi
         [ -f "${RUNTIME_DB}-wal" ] && cp -f "${RUNTIME_DB}-wal" "${PERSIST_DB}-wal" 2>/dev/null || true
         [ -f "${RUNTIME_DB}-shm" ] && cp -f "${RUNTIME_DB}-shm" "${PERSIST_DB}-shm" 2>/dev/null || true
