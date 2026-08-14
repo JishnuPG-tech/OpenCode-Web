@@ -451,11 +451,16 @@ for path in ['/root/.open-webui/webui.db', '/root/.open-webui/data/webui.db', '/
         export WEBUI_AUTH="true"
         export ENABLE_SIGNUP="true"
         mkdir -p /root/.cache /data/cache /data/open-webui /root/.open-webui 2>/dev/null || true
+        if [ -f "/data/open-webui/webui.db" ]; then
+            if command -v sqlite3 >/dev/null 2>&1; then
+                if ! sqlite3 "/data/open-webui/webui.db" "PRAGMA quick_check;" >/dev/null 2>&1; then
+                    echo "[FIX] Corrupt Open WebUI database detected! Resetting /data/open-webui/webui.db..."
+                    rm -f /data/open-webui/webui.db* /root/.open-webui/webui.db* 2>/dev/null || true
+                fi
+            fi
+        fi
         if [ -d "/data/open-webui/webui.db" ]; then
             rm -rf "/data/open-webui/webui.db" 2>/dev/null || true
-        fi
-        if [ ! -f "/data/open-webui/webui.db" ]; then
-            touch "/data/open-webui/webui.db" 2>/dev/null || true
         fi
         chmod -R 777 /data/open-webui /root/.open-webui 2>/dev/null || true
         export CORS_ALLOW_ORIGIN="https://jishnupg-opencode-cli.hf.space"
