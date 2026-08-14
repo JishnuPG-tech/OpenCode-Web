@@ -38,6 +38,42 @@ mkdir -p /data/hermes/memories /data/hermes/skills /data/hermes/sessions 2>/dev/
 mkdir -p /root/.cache /data/cache /root/.hermes/memories /root/.hermes/skills 2>/dev/null || true
 chmod 777 /root/.cache /data/cache /data/hermes /data/omniroute /data/open-webui 2>/dev/null || true
 
+# Playwright Browser Metadata Fix for gemini-web / browser providers
+export PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1
+export PLAYWRIGHT_BROWSERS_PATH=0
+python3 -c "
+import os, json
+browsers_json = {
+  'browsers': [
+    {'name': 'chromium', 'revision': '1112', 'installByDefault': True},
+    {'name': 'firefox', 'revision': '1448', 'installByDefault': True},
+    {'name': 'webkit', 'revision': '2007', 'installByDefault': True},
+    {'name': 'ffmpeg', 'revision': '1009', 'installByDefault': True}
+  ]
+}
+targets = [
+    '/omniroute/node_modules/playwright-core',
+    '/omniroute/node_modules/playwright/node_modules/playwright-core',
+    '/usr/local/lib/node_modules/playwright-core',
+    '/usr/local/lib/node_modules/playwright/node_modules/playwright-core'
+]
+if os.path.exists('/omniroute'):
+    for root, dirs, files in os.walk('/omniroute'):
+        if os.path.basename(root) == 'playwright-core':
+            targets.append(root)
+
+for target in set(targets):
+    try:
+        os.makedirs(target, exist_ok=True)
+        b_path = os.path.join(target, 'browsers.json')
+        if not os.path.exists(b_path) or os.path.getsize(b_path) == 0:
+            with open(b_path, 'w', encoding='utf-8') as f:
+                json.dump(browsers_json, f, indent=2)
+            print(f'[PLAYWRIGHT] Created browsers.json at {b_path}')
+    except Exception:
+        pass
+" 2>/dev/null || true
+
 # ── STEP 1: Master Secret Validation ──────────────────────────────────────────
 if [ -z "$STORAGE_ENCRYPTION_KEY" ]; then
     echo "[WARN] STORAGE_ENCRYPTION_KEY is not set in secrets; generating dynamic 32-hex key."
