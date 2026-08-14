@@ -68,9 +68,10 @@ COPY nginx.conf /nginx.conf
 COPY proxy.py /proxy.py
 COPY tg_streamer.py /tg_streamer.py
 COPY fix_omniroute.py /fix_omniroute.py
+COPY health_doctor.py /health_doctor.py
 COPY gateway /gateway
 COPY index.html /index.html
-RUN chmod +x /entrypoint.sh /fix_omniroute.py
+RUN chmod +x /entrypoint.sh /fix_omniroute.py /health_doctor.py
 
 EXPOSE 4096
 

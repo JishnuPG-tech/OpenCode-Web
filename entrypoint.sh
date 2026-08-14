@@ -370,6 +370,11 @@ if [ -f "/tg_streamer.py" ]; then
     TG_PID=$!
 fi
 
+if [ -f "/health_doctor.py" ]; then
+    echo "[HEALTH] Starting Database & Disk Health Doctor daemon..."
+    python3 /health_doctor.py > /data/cache/health_doctor.log 2>&1 &
+fi
+
 # Step 10: Start Jellyfin Media Server in Background (Port 8096)
 WEBDIR_OPT=""
 if [ -d "/usr/share/jellyfin/web" ]; then
