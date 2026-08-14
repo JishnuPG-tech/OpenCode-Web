@@ -565,10 +565,13 @@ os.environ["OPENAI_API_KEY"] = "sk-2e556e0437ee2958-7baf2d-b4133935"
 os.environ["HERMES_API_BASE_URL"] = "http://127.0.0.1:20128/api/v1"
 os.environ["HERMES_API_KEY"] = "sk-2e556e0437ee2958-7baf2d-b4133935"
 try:
-    import litellm
-    litellm.api_base = "http://127.0.0.1:20128/api/v1"
-    litellm.api_key = "sk-2e556e0437ee2958-7baf2d-b4133935"
-    litellm.suppress_debug_info = True
+    import open_webui.routers.retrieval as rrouter
+    rrouter.get_ef = lambda engine, model: None
+except Exception:
+    pass
+try:
+    import open_webui.retrieval.utils as rutils
+    rutils.get_model_path = lambda model, auto_update=False: ""
 except Exception:
     pass
 PYCUSTOM

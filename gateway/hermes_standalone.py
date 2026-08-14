@@ -239,6 +239,13 @@ async def chat_completions(request: Request):
     duration_ms = (time.time() - t0) * 1000
     record_hermes_telemetry("chat_completions_fallback", duration_ms, {"model": model, "stream": stream})
 
+    stream_headers = {
+        "Cache-Control": "no-cache",
+        "Connection": "keep-alive",
+        "X-Accel-Buffering": "no",
+        "Content-Type": "text/event-stream"
+    }
+
     if stream:
         async def stream_generator():
             chunk = {
@@ -246,7 +253,7 @@ async def chat_completions(request: Request):
                 "object": "chat.completion.chunk",
                 "created": int(time.time()),
                 "model": model,
-                "choices": [{"index": 0, "delta": {"role": "assistant", "content": reply_text}, "finish_reason": None}]
+                "choices": [{"index": 0, "delta": {"role": "assistant", "content": reply_text}, "logprobs": None, "finish_reason": None}]
             }
             yield f"data: {json.dumps(chunk)}\n\n"
             end_chunk = {
@@ -254,11 +261,11 @@ async def chat_completions(request: Request):
                 "object": "chat.completion.chunk",
                 "created": int(time.time()),
                 "model": model,
-                "choices": [{"index": 0, "delta": {}, "finish_reason": "stop"}]
+                "choices": [{"index": 0, "delta": {}, "logprobs": None, "finish_reason": "stop"}]
             }
             yield f"data: {json.dumps(end_chunk)}\n\n"
             yield "data: [DONE]\n\n"
-        return StreamingResponse(stream_generator(), media_type="text/event-stream")
+        return StreamingResponse(stream_generator(), media_type="text/event-stream", headers=stream_headers)
 
     return JSONResponse(content={
         "id": f"chatcmpl-{int(time.time()*1000)}",
