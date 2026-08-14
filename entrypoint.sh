@@ -40,7 +40,8 @@ chmod 777 /root/.cache /data/cache /data/hermes /data/omniroute /data/open-webui
 
 # Playwright Browser Metadata Fix for gemini-web / browser providers
 export PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1
-export PLAYWRIGHT_BROWSERS_PATH=0
+export PLAYWRIGHT_BROWSERS_PATH=/root/.cache/ms-playwright
+mkdir -p /root/.cache/ms-playwright /omniroute/.cache/ms-playwright 2>/dev/null || true
 python3 -c "
 import os, json
 browsers_json = {
@@ -52,6 +53,8 @@ browsers_json = {
   ]
 }
 targets = [
+    '/root/.cache/ms-playwright',
+    '/omniroute/.cache/ms-playwright',
     '/omniroute/node_modules/playwright-core',
     '/omniroute/node_modules/playwright/node_modules/playwright-core',
     '/usr/local/lib/node_modules/playwright-core',
