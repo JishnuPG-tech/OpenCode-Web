@@ -106,9 +106,51 @@ if [ -f "$PERSIST_WEBUI_DB" ] && [ -s "$PERSIST_WEBUI_DB" ]; then
             echo "[PERSISTENCE] Restored persistent Open WebUI database into ${RUNTIME_WEBUI_DB} successfully."
         fi
     else
-        cp -f "$PERSIST_WEBUI_DB" "$RUNTIME_WEBUI_DB" 2>/dev/null || true
-        echo "[PERSISTENCE] Restored persistent Open WebUI database into ${RUNTIME_WEBUI_DB}."
+            echo "[PERSISTENCE] Restored persistent Open WebUI database into ${RUNTIME_WEBUI_DB}."
     fi
+fi
+
+# Ensure Master API Keys ('omniroute', 'admin123') are seeded in OmniRoute runtime DB
+if [ -f "$RUNTIME_DB" ] && command -v python3 >/dev/null 2>&1; then
+    python3 - "$RUNTIME_DB" <<'PYEOF' 2>&1 || true
+import sqlite3, sys
+db_path = sys.argv[1]
+try:
+    conn = sqlite3.connect(db_path)
+    cur = conn.cursor()
+    cur.execute("SELECT name FROM sqlite_master WHERE type='table';")
+    tables = [r[0] for r in cur.fetchall()]
+    for t in tables:
+        if "key" in t.lower() or "token" in t.lower():
+            cur.execute(f"PRAGMA table_info({t});")
+            cols = [c[1] for c in cur.fetchall()]
+            col_names_lower = [c.lower() for c in cols]
+            if any(k in col_names_lower for k in ("key", "api_key", "token", "value", "id")):
+                key_col = next((c for c in cols if c.lower() in ("key", "api_key", "token", "value", "id")), cols[0])
+                for key_val in ("omniroute", "admin123"):
+                    try:
+                        cur.execute(f"SELECT COUNT(*) FROM {t} WHERE {key_col} = ?", (key_val,))
+                        if cur.fetchone()[0] == 0:
+                            placeholders = ", ".join(["?"] * len(cols))
+                            col_list = ", ".join(cols)
+                            vals = []
+                            for c in cols:
+                                cl = c.lower()
+                                if cl in ("key", "api_key", "token", "value", "id", "name", "label"):
+                                    vals.append(key_val)
+                                elif cl in ("active", "enabled", "status", "is_active"):
+                                    vals.append(1)
+                                else:
+                                    vals.append("system")
+                            cur.execute(f"INSERT OR IGNORE INTO {t} ({col_list}) VALUES ({placeholders})", vals)
+                    except Exception:
+                        pass
+    conn.commit()
+    conn.close()
+    print("[PERSISTENCE] Master API keys ('omniroute', 'admin123') ensured in runtime DB.")
+except Exception as e:
+    pass
+PYEOF
 fi
 
 
