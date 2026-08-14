@@ -66,6 +66,29 @@ async def health_live():
 async def favicon():
     return Response(content=b"", status_code=204)
 
+@app.api_route("/manifest.json", methods=["GET", "HEAD"])
+@app.api_route("/manifest.webmanifest", methods=["GET", "HEAD"])
+@app.api_route("/site.webmanifest", methods=["GET", "HEAD"])
+async def webmanifest():
+    return JSONResponse(
+        content={
+            "name": "OpenCode Space",
+            "short_name": "OpenCode",
+            "start_url": "/",
+            "display": "standalone",
+            "background_color": "#0f172a",
+            "theme_color": "#0f172a",
+            "icons": [
+                {
+                    "src": "/static/favicon.png",
+                    "sizes": "192x192",
+                    "type": "image/png"
+                }
+            ]
+        },
+        status_code=200
+    )
+
 @app.get("/health")
 @app.get("/debug/status")
 async def health_check():
