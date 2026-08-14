@@ -58,12 +58,18 @@ def load_cache():
         except Exception as e:
             pass
 
-def save_cache():
+def _save_cache_sync():
     try:
         with open(CACHE_FILE, "w") as f:
             json.dump(FILE_ID_CACHE, f, indent=2)
     except Exception as e:
         logger.warning(f"[CACHE] Error saving file_ids.json: {e}")
+
+async def save_cache_async():
+    await asyncio.to_thread(_save_cache_sync)
+
+def save_cache():
+    _save_cache_sync()
 
 load_cache()
 
@@ -158,8 +164,7 @@ async def fetch_tmdb_poster(title, target_dir, filename_prefix):
     except Exception as e:
         logger.warning(f"[TMDB] Poster fetch notice for '{title}': {e}")
 
-def create_strm_file(msg_id, file_id, clean_title, is_tv=False, show_name=None, season=None, episode=None):
-    """Writes .strm file into Movies or TV Shows directory structure"""
+def _create_strm_file_sync(msg_id, file_id, clean_title, is_tv=False, show_name=None, season=None, episode=None):
     if is_tv and show_name:
         season_num = season if season else 1
         target_dir = os.path.join(SHOWS_DIR, show_name, f"Season {season_num:02d}")
@@ -174,9 +179,21 @@ def create_strm_file(msg_id, file_id, clean_title, is_tv=False, show_name=None, 
 
     with open(strm_path, "w") as f:
         f.write(stream_url)
-    
+
     logger.info(f"[AUTO-SYNC] 🎉 Created .strm file: {strm_filename} -> {strm_path}")
+    return strm_filename, target_dir
+
+async def create_strm_file_async(msg_id, file_id, clean_title, is_tv=False, show_name=None, season=None, episode=None):
+    strm_filename, target_dir = await asyncio.to_thread(_create_strm_file_sync, msg_id, file_id, clean_title, is_tv, show_name, season, episode)
     asyncio.create_task(fetch_tmdb_poster(show_name if is_tv else clean_title, target_dir, clean_title))
+    return strm_filename
+
+def create_strm_file(msg_id, file_id, clean_title, is_tv=False, show_name=None, season=None, episode=None):
+    strm_filename, target_dir = _create_strm_file_sync(msg_id, file_id, clean_title, is_tv, show_name, season, episode)
+    try:
+        asyncio.create_task(fetch_tmdb_poster(show_name if is_tv else clean_title, target_dir, clean_title))
+    except Exception:
+        pass
     return strm_filename
 
 async def trigger_jellyfin_scan():
@@ -236,9 +253,9 @@ async def telegram_webhook(request):
                 "season": season,
                 "episode": episode
             }
-            save_cache()
+            await save_cache_async()
 
-            strm_name = create_strm_file(msg_id, file_id, title, is_tv, show_name, season, episode)
+            strm_name = await create_strm_file_async(msg_id, file_id, title, is_tv, show_name, season, episode)
             logger.info(f"[WEBHOOK] 🎉 Successfully indexed media from Webhook: {strm_name}")
             await trigger_jellyfin_scan()
 
@@ -357,7 +374,7 @@ async def restore_cached_strm_files():
             episode = data.get("episode")
 
             if file_id and title:
-                create_strm_file(msg_id, file_id, title, is_tv, show_name, season, episode)
+                await create_strm_file_async(msg_id, file_id, title, is_tv, show_name, season, episode)
                 count += 1
     if count > 0:
         logger.info(f"[RESTORE] Restored {count} .strm file(s) from persistent disk cache.")
