@@ -12,23 +12,23 @@ app = FastAPI(title="Hermes Standalone Server")
 OMNIROUTE_URL = os.getenv("HERMES_API_BASE_URL", "http://127.0.0.1:20128/api/v1")
 MASTER_KEY = os.getenv("API_SERVER_KEY", "sk-2e556e0437ee2958-7baf2d-b4133935")
 
-@app.get("/health")
-@app.get("/v1/health")
+@app.api_route("/health", methods=["GET", "HEAD"])
+@app.api_route("/v1/health", methods=["GET", "HEAD"])
 async def health():
     return {"status": "ok", "platform": "hermes-agent", "version": "0.19.0"}
 
-@app.get("/capabilities")
-@app.get("/v1/capabilities")
+@app.api_route("/capabilities", methods=["GET", "HEAD"])
+@app.api_route("/v1/capabilities", methods=["GET", "HEAD"])
 async def capabilities():
     return {"status": "ok", "tools": ["terminal", "web_search", "file_editor"]}
 
-@app.get("/sessions")
-@app.get("/v1/sessions")
+@app.api_route("/sessions", methods=["GET", "HEAD"])
+@app.api_route("/v1/sessions", methods=["GET", "HEAD"])
 async def get_sessions():
     return [{"id": "sess-default", "title": "Main Session", "created_at": "2026-08-14T00:00:00Z"}]
 
-@app.post("/sessions")
-@app.post("/v1/sessions")
+@app.api_route("/sessions", methods=["POST"])
+@app.api_route("/v1/sessions", methods=["POST"])
 async def create_session(request: Request):
     try:
         body = await request.json()
@@ -37,8 +37,8 @@ async def create_session(request: Request):
         title = "New Session"
     return {"id": f"sess-{int(asyncio.get_event_loop().time()*1000)}", "title": title}
 
-@app.post("/runs")
-@app.post("/v1/runs")
+@app.api_route("/runs", methods=["POST"])
+@app.api_route("/v1/runs", methods=["POST"])
 async def create_run(request: Request):
     try:
         body = await request.json()
@@ -56,8 +56,8 @@ async def create_run(request: Request):
         "output": f"Hermes Agent received prompt: '{prompt}'. System online and ready."
     }
 
-@app.get("/runs/{run_id}/events")
-@app.get("/v1/runs/{run_id}/events")
+@app.api_route("/runs/{run_id}/events", methods=["GET", "HEAD"])
+@app.api_route("/v1/runs/{run_id}/events", methods=["GET", "HEAD"])
 async def stream_run_events(run_id: str):
     async def event_generator():
         yield "data: Hermes Agent initialized.\n\n"
@@ -67,18 +67,18 @@ async def stream_run_events(run_id: str):
         yield "data: Execution completed successfully.\n\n"
     return StreamingResponse(event_generator(), media_type="text/event-stream")
 
-@app.post("/runs/{run_id}/tools")
-@app.post("/v1/runs/{run_id}/tools")
+@app.api_route("/runs/{run_id}/tools", methods=["POST"])
+@app.api_route("/v1/runs/{run_id}/tools", methods=["POST"])
 async def execute_tool(run_id: str, request: Request):
     return {"status": "success", "result": "Tool executed successfully."}
 
-@app.get("/jobs/{job_id}")
-@app.get("/v1/jobs/{job_id}")
+@app.api_route("/jobs/{job_id}", methods=["GET", "HEAD"])
+@app.api_route("/v1/jobs/{job_id}", methods=["GET", "HEAD"])
 async def get_job_status(job_id: str):
     return {"job_id": job_id, "status": "completed"}
 
-@app.get("/models")
-@app.get("/v1/models")
+@app.api_route("/models", methods=["GET", "HEAD"])
+@app.api_route("/v1/models", methods=["GET", "HEAD"])
 async def models():
     return {
         "object": "list",
@@ -88,8 +88,8 @@ async def models():
         ]
     }
 
-@app.post("/chat/completions")
-@app.post("/v1/chat/completions")
+@app.api_route("/chat/completions", methods=["POST"])
+@app.api_route("/v1/chat/completions", methods=["POST"])
 async def chat_completions(request: Request):
     try:
         body = await request.json()
