@@ -496,15 +496,6 @@ for path in ['/root/.open-webui/webui.db', '/root/.open-webui/data/webui.db', '/
     # 5. Start Open WebUI
     echo "[INIT] Starting Open WebUI on port 8098..."
     if command -v open-webui >/dev/null 2>&1; then
-        FOUND_BUILD_DIR=$(python3 -c "import open_webui, os; pkg=os.path.dirname(open_webui.__file__); matches=[root for root, dirs, files in os.walk(pkg) if 'index.html' in files]; print(matches[0] if matches else '')" 2>/dev/null || echo "")
-        if [ -n "$FOUND_BUILD_DIR" ] && [ -d "$FOUND_BUILD_DIR" ]; then
-            export BUILD_DIR="$FOUND_BUILD_DIR"
-            export FRONTEND_BUILD_DIR="$FOUND_BUILD_DIR"
-            export WEBUI_BUILD_DIR="$FOUND_BUILD_DIR"
-            export STATIC_DIR="$FOUND_BUILD_DIR"
-            log_info "INIT" "Open WebUI FRONTEND_BUILD_DIR auto-located & pinned to: $FOUND_BUILD_DIR"
-        fi
-
         export WEBUI_URL="${WEBUI_URL:-https://jishnupg-opencode-cli.hf.space}"
         export OPENAI_API_BASE_URL="${OPENAI_API_BASE_URL:-http://127.0.0.1:8000/v1}"
         export OPENAI_API_KEY="${OPENAI_API_KEY:-sk-2e556e0437ee2958-7baf2d-b4133935}"
@@ -597,11 +588,11 @@ if true; then
         if [ -d "$_SITEDIR" ]; then
             cat > "${_SITEDIR}/sitecustomize.py" << 'PYCUSTOM'
 import os
-os.environ["OPENAI_API_BASE"] = "http://127.0.0.1:20128/api/v1"
-os.environ["OPENAI_API_BASE_URL"] = "http://127.0.0.1:20128/api/v1"
-os.environ["OPENAI_BASE_URL"] = "http://127.0.0.1:20128/api/v1"
+os.environ["OPENAI_API_BASE"] = "http://127.0.0.1:8642/v1"
+os.environ["OPENAI_API_BASE_URL"] = "http://127.0.0.1:8642/v1"
+os.environ["OPENAI_BASE_URL"] = "http://127.0.0.1:8642/v1"
 os.environ["OPENAI_API_KEY"] = "sk-2e556e0437ee2958-7baf2d-b4133935"
-os.environ["HERMES_API_BASE_URL"] = "http://127.0.0.1:20128/api/v1"
+os.environ["HERMES_API_BASE_URL"] = "http://127.0.0.1:8642/v1"
 os.environ["HERMES_API_KEY"] = "sk-2e556e0437ee2958-7baf2d-b4133935"
 try:
     import open_webui.routers.retrieval as rrouter
@@ -623,9 +614,9 @@ PYCUSTOM
     fi
 
     HERMES_LLM_KEY="sk-2e556e0437ee2958-7baf2d-b4133935"
-    export HERMES_API_BASE_URL="http://127.0.0.1:20128/api/v1"
+    export HERMES_API_BASE_URL="http://127.0.0.1:8642/v1"
     export HERMES_API_KEY="${HERMES_LLM_KEY}"
-    export OPENAI_API_BASE="http://127.0.0.1:20128/api/v1"
+    export OPENAI_API_BASE="http://127.0.0.1:8642/v1"
     export OPENAI_API_KEY="${HERMES_LLM_KEY}"
     export HERMES_MODEL="${HERMES_MODEL:-custom/auto}"
     export HERMES_DATA_DIR="/root/.hermes"
