@@ -405,24 +405,47 @@ if command -v open-webui >/dev/null 2>&1; then
         echo "[PERSISTENCE] Restored Open WebUI database snapshot ($(wc -c < /data/open-webui/webui.db | tr -d ' ') bytes)."
     fi
 
-    # Configure lightweight OpenAI API RAG embedding engine in webui.db
+    # Configure lightweight OpenAI API RAG embedding engine across all webui.db config rows
     python3 -c "
-import sqlite3, json
+import sqlite3, json, os
 for path in ['/root/.open-webui/webui.db', '/root/.open-webui/data/webui.db', '/data/open-webui/webui.db']:
     try:
+        if not os.path.exists(path):
+            continue
         conn = sqlite3.connect(path)
         cursor = conn.cursor()
-        cursor.execute('SELECT id, data FROM config WHERE id = \"rag\"')
-        row = cursor.fetchone()
-        if row:
-            data = json.loads(row[1])
-            data['embedding_engine'] = 'openai'
-            data['embedding_model'] = 'text-embedding-3-small'
-            data['openai_config'] = {'url': 'http://127.0.0.1:20128/v1', 'key': 'sk-omniroute'}
-            cursor.execute('UPDATE config SET data = ? WHERE id = \"rag\"', (json.dumps(data),))
-            conn.commit()
-            print(f'[LIGHTWEIGHT] Pinned OpenAI API RAG config in {path}')
+        cursor.execute('SELECT id, data FROM config')
+        rows = cursor.fetchall()
+        for row_id, raw_data in rows:
+            try:
+                data = json.loads(raw_data)
+                modified = False
+                def clean_obj(d):
+                    nonlocal modified
+                    if isinstance(d, dict):
+                        for k, v in list(d.items()):
+                            if k in ('embedding_model', 'RAG_EMBEDDING_MODEL') and v in ('none', 'sentence-transformers/none', '', None):
+                                d[k] = 'text-embedding-3-small'
+                                modified = True
+                            elif k in ('embedding_engine', 'RAG_EMBEDDING_ENGINE') and v in ('sentence_transformers', 'sentence-transformers', 'none', '', None):
+                                d[k] = 'openai'
+                                modified = True
+                            elif isinstance(v, (dict, list)):
+                                clean_obj(v)
+                    elif isinstance(d, list):
+                        for item in d:
+                            clean_obj(item)
+                clean_obj(data)
+                if modified or row_id == 'rag':
+                    if isinstance(data, dict):
+                        data['embedding_engine'] = 'openai'
+                        data['embedding_model'] = 'text-embedding-3-small'
+                    cursor.execute('UPDATE config SET data = ? WHERE id = ?', (json.dumps(data), row_id))
+            except Exception:
+                pass
+        conn.commit()
         conn.close()
+        print(f'[LIGHTWEIGHT] Pinned OpenAI API RAG config in {path}')
     except Exception:
         pass
 " 2>/dev/null || true
@@ -460,6 +483,10 @@ for path in ['/root/.open-webui/webui.db', '/root/.open-webui/data/webui.db', '/
         export RAG_RERANKING_MODEL=""
         export ENABLE_RAG_HYBRID_SEARCH="false"
         export ENABLE_RAG_LOCAL_WEB_FETCH="false"
+        export RAG_AUTO_UPDATE="false"
+        export RAG_AUTO_UPDATE_INDEX="false"
+        export HF_HUB_OFFLINE=1
+        export TRANSFORMERS_OFFLINE=1
         export RAG_AUTO_UPDATE="false"
         export RAG_AUTO_UPDATE_INDEX="false"
         export ENABLE_VERSION_UPDATE_CHECK="false"
