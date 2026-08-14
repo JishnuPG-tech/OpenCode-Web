@@ -593,6 +593,12 @@ HERMES_ENV
     "web_search": true,
     "web_extract": true,
     "browser_automation": true
+  },
+  "stt": {
+    "enabled": false
+  },
+  "tts": {
+    "enabled": false
   }
 }
 HERMES_CFG

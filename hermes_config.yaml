@@ -69,7 +69,7 @@ display:
   busy_ack_detail: true
   background_process_notifications: all
 stt:
-  enabled: true
+  enabled: false
   language: en
   local:
     model: base
