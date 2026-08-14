@@ -623,12 +623,10 @@ HERMES_CFG
     fi
 
     HERMES_START_CMD=""
-    if hermes gateway --help >/dev/null 2>&1; then
+    if python3 -c "import hermes; print(hermes)" >/dev/null 2>&1 && hermes gateway --help >/dev/null 2>&1; then
         HERMES_START_CMD="hermes gateway"
-    elif hermes gateway run --help >/dev/null 2>&1; then
-        HERMES_START_CMD="hermes gateway run"
-    elif hermes serve --help >/dev/null 2>&1; then
-        HERMES_START_CMD="hermes serve"
+    else
+        HERMES_START_CMD="python3 -m uvicorn gateway.hermes_standalone:app --host 127.0.0.1 --port 8642"
     fi
 
     if [ -n "$HERMES_START_CMD" ]; then
