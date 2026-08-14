@@ -405,7 +405,7 @@ if command -v open-webui >/dev/null 2>&1; then
         echo "[PERSISTENCE] Restored Open WebUI database snapshot ($(wc -c < /data/open-webui/webui.db | tr -d ' ') bytes)."
     fi
 
-    # Clean up legacy RAG embedding model 'none' or empty from webui.db if present
+    # Configure lightweight OpenAI API RAG embedding engine in webui.db
     python3 -c "
 import sqlite3, json
 for path in ['/root/.open-webui/webui.db', '/root/.open-webui/data/webui.db', '/data/open-webui/webui.db']:
@@ -416,13 +416,12 @@ for path in ['/root/.open-webui/webui.db', '/root/.open-webui/data/webui.db', '/
         row = cursor.fetchone()
         if row:
             data = json.loads(row[1])
-            if data.get('embedding_model') in ('none', '', None):
-                data['embedding_model'] = 'all-MiniLM-L6-v2'
-            if data.get('embedding_engine') in ('none', '', None):
-                data['embedding_engine'] = 'sentence_transformers'
+            data['embedding_engine'] = 'openai'
+            data['embedding_model'] = 'text-embedding-3-small'
+            data['openai_config'] = {'url': 'http://127.0.0.1:20128/v1', 'key': 'sk-omniroute'}
             cursor.execute('UPDATE config SET data = ? WHERE id = \"rag\"', (json.dumps(data),))
             conn.commit()
-            print(f'[FIX] Cleaned RAG config in {path}')
+            print(f'[LIGHTWEIGHT] Pinned OpenAI API RAG config in {path}')
         conn.close()
     except Exception:
         pass
@@ -453,9 +452,11 @@ for path in ['/root/.open-webui/webui.db', '/root/.open-webui/data/webui.db', '/
         export WEBSOCKET_REDIS_URL="redis://127.0.0.1:6379/1"
         export WEBUI_WORKERS=1
         export BYPASS_EMBEDDING_AND_RETRIEVAL="true"
-        export RAG_EMBEDDING_ENGINE="sentence_transformers"
-        export RAG_EMBEDDING_MODEL="sentence-transformers/all-MiniLM-L6-v2"
-        export VECTOR_DB_EMBEDDING_FUNCTION="sentence_transformers"
+        export RAG_EMBEDDING_ENGINE="openai"
+        export RAG_OPENAI_API_BASE_URL="http://127.0.0.1:20128/v1"
+        export RAG_OPENAI_API_KEY="sk-omniroute"
+        export RAG_EMBEDDING_MODEL="text-embedding-3-small"
+        export VECTOR_DB_EMBEDDING_FUNCTION="openai"
         export RAG_RERANKING_MODEL=""
         export ENABLE_RAG_HYBRID_SEARCH="false"
         export ENABLE_RAG_LOCAL_WEB_FETCH="false"
