@@ -90,7 +90,11 @@ def build_upstream_headers(request: Request, extra_headers: Optional[Dict[str, s
     headers["X-Forwarded-Port"]  = "443"
     headers["X-Real-IP"]         = request.client.host if request.client else "127.0.0.1"
     if extra_headers:
-        headers.update(extra_headers)
+        for ek, ev in extra_headers.items():
+            for existing_k in list(headers.keys()):
+                if existing_k.lower() == ek.lower():
+                    del headers[existing_k]
+            headers[ek] = ev
     return headers
 
 def build_downstream_raw_headers(resp_headers: httpx.Headers, default_prefix: str = "") -> list:

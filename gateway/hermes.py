@@ -64,7 +64,7 @@ async def hermes_status(request: Request):
 async def hermes_proxy(path: str, request: Request):
     upstream = f"http://127.0.0.1:{HERMES_PORT}/{path}"
     logger.info(f"[HERMES] /{path} -> :{HERMES_PORT}")
-    extra_headers = {"authorization": f"Bearer {API_SERVER_KEY}"}
+    extra_headers = {"Authorization": f"Bearer {API_SERVER_KEY}"}
     return await proxy_http_request(
         upstream,
         request,
