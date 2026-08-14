@@ -29,22 +29,22 @@ chmod -R 777 /root/.cache /data/cache /data/hermes 2>/dev/null || true
 
 # ── STEP 1: Master Secret Validation ──────────────────────────────────────────
 if [ -z "$STORAGE_ENCRYPTION_KEY" ]; then
-    echo "[WARN] STORAGE_ENCRYPTION_KEY is not set in secrets; using local fallback."
-    export STORAGE_ENCRYPTION_KEY="omniroute_default_storage_key_32bytes"
+    echo "[WARN] STORAGE_ENCRYPTION_KEY is not set in secrets; generating dynamic 32-hex key."
+    export STORAGE_ENCRYPTION_KEY=$(python3 -c "import secrets; print(secrets.token_hex(16))" 2>/dev/null || echo "omniroute_default_storage_key_32bytes")
 fi
 
 if [ -z "$JWT_SECRET" ]; then
-    echo "[WARN] JWT_SECRET is not set in secrets; using local fallback."
-    export JWT_SECRET="omniroute_default_jwt_secret_key_32bytes"
+    echo "[WARN] JWT_SECRET is not set in secrets; generating dynamic 32-hex key."
+    export JWT_SECRET=$(python3 -c "import secrets; print(secrets.token_hex(16))" 2>/dev/null || echo "omniroute_default_jwt_secret_key_32bytes")
 fi
 
 if [ -z "$API_KEY_SECRET" ]; then
-    echo "[WARN] API_KEY_SECRET is not set in secrets; using local fallback."
-    export API_KEY_SECRET="omniroute_default_api_key_secret_32bytes"
+    echo "[WARN] API_KEY_SECRET is not set in secrets; generating dynamic 32-hex key."
+    export API_KEY_SECRET=$(python3 -c "import secrets; print(secrets.token_hex(16))" 2>/dev/null || echo "omniroute_default_api_key_secret_32bytes")
 fi
 
 if [ -z "$INITIAL_PASSWORD" ]; then
-    echo "[WARN] INITIAL_PASSWORD is not set in secrets; using local fallback."
+    echo "[WARN] INITIAL_PASSWORD is not set in secrets; using default admin password."
     export INITIAL_PASSWORD="admin123"
 fi
 
@@ -332,10 +332,10 @@ echo "[BOOT] Background services starting asynchronously..."
     export CLI_COMPAT_CURSOR=1
     export CLI_COMPAT_QWEN=1
     export OMNIROUTE_AUTO_FREE_FALLBACK_TO_FULL_POOL=true
-    export OMNIROUTE_ALLOW_UNAUTHENTICATED=true
-    export REQUIRE_API_KEY=false
-    export OMNIROUTE_REQUIRE_API_KEY=false
-    export OMNIROUTE_AUTH_REQUIRED=false
+    export OMNIROUTE_ALLOW_UNAUTHENTICATED=false
+    export REQUIRE_API_KEY=true
+    export OMNIROUTE_REQUIRE_API_KEY=true
+    export OMNIROUTE_AUTH_REQUIRED=true
 
     if [ -d "/omniroute" ]; then
         cd /omniroute

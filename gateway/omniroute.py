@@ -77,43 +77,28 @@ async def handle_omniroute_proxy(target: str, request: Request, default_prefix: 
     }
     res = await proxy_http_request(target, request, default_prefix=default_prefix, extra_headers=extra_auth, html_fixup=html_fixup)
     if res.status_code in (500, 502, 503) and request.method == "GET" and "html" in request.headers.get("accept", "").lower():
-        log_content = ""
-        for log_file in ["/data/omniroute/omniroute.log", "/root/.omniroute/omniroute.log"]:
-            try:
-                if os.path.exists(log_file):
-                    with open(log_file, "r", encoding="utf-8", errors="ignore") as f:
-                        lines = f.readlines()
-                        log_content = "".join(lines[-120:])
-                    if log_content:
-                        break
-            except Exception:
-                pass
-        
-        if log_content:
-            print(f"[OMNIROUTE SERVER LOGS]\n{log_content}")
-            safe_logs = log_content.replace("\\", "\\\\").replace("`", "\\`").replace("$", "\\$")
-            diagnostic_html = f"""<!DOCTYPE html>
+        diagnostic_html = f"""<!DOCTYPE html>
 <html>
 <head>
-    <title>OmniRoute Server Log Diagnostic</title>
+    <title>OmniRoute Server Status</title>
     <style>
-        body {{ font-family: system-ui, monospace; background: #0f172a; color: #f8fafc; padding: 24px; max-width: 1000px; margin: 0 auto; }}
-        h1 {{ color: #f87171; font-size: 1.4rem; margin-top: 0; }}
-        p {{ color: #94a3b8; font-size: 0.95rem; }}
-        pre {{ background: #1e293b; padding: 16px; border-radius: 8px; overflow-x: auto; color: #38bdf8; border: 1px solid #334155; font-size: 0.85rem; line-height: 1.5; }}
+        body {{ font-family: system-ui, -apple-system, sans-serif; background: #0f172a; color: #f8fafc; display: flex; align-items: center; justify-content: center; min-height: 100vh; margin: 0; padding: 24px; }}
+        .card {{ background: #1e293b; border: 1px solid #334155; padding: 32px; border-radius: 12px; max-width: 500px; text-align: center; shadow: 0 10px 25px rgba(0,0,0,0.5); }}
+        h1 {{ color: #f87171; font-size: 1.4rem; margin: 0 0 12px; }}
+        p {{ color: #94a3b8; font-size: 0.95rem; line-height: 1.5; margin: 0 0 20px; }}
+        a {{ color: #38bdf8; text-decoration: none; font-weight: 600; }}
+        a:hover {{ text-decoration: underline; }}
     </style>
-    <script>
-        console.error("=== OMNIROUTE BACKEND LOGS ===");
-        console.error(`{safe_logs}`);
-    </script>
 </head>
 <body>
-    <h1>⚠️ OmniRoute Server Diagnostic ({res.status_code})</h1>
-    <p>Captured backend process logs for <code>{request.url.path}</code>:</p>
-    <pre>{log_content}</pre>
+    <div class="card">
+        <h1>⚠️ OmniRoute Service Temporarily Unavailable</h1>
+        <p>OmniRoute backend is currently initializing or completing a background task. Status code: {res.status_code}.</p>
+        <p><a href="/dashboard">Reload Dashboard &rarr;</a></p>
+    </div>
 </body>
 </html>"""
-            return HTMLResponse(content=diagnostic_html, status_code=res.status_code)
+        return HTMLResponse(content=diagnostic_html, status_code=res.status_code)
     return res
 
 # ── Dashboard & Admin UI Routes (20128) ──────────────────────────────────────

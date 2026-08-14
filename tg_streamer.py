@@ -194,11 +194,18 @@ async def trigger_jellyfin_scan():
                 continue
             logger.warning(f"Could not trigger Jellyfin library refresh after retries: {e}")
 
+WEBHOOK_SECRET = os.environ.get("TG_WEBHOOK_SECRET")
+
 @routes.post("/")
 @routes.post("/telegram-webhook")
 @routes.post("/webhook")
 async def telegram_webhook(request):
     try:
+        if WEBHOOK_SECRET:
+            token = request.headers.get("X-Telegram-Bot-Api-Secret-Token")
+            if token != WEBHOOK_SECRET:
+                return web.json_response({"ok": False, "error": "Unauthorized"}, status=401)
+
         data = await request.json()
         post = data.get("channel_post") or data.get("message")
         if not post:
