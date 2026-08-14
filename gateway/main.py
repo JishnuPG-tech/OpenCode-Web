@@ -28,7 +28,6 @@ from gateway.openwebui import router as openwebui_router, fixup_webui_html, hand
 from gateway.omniroute import router as omniroute_router, omniroute_main_route
 from gateway.jellyfin import router as jellyfin_router
 from gateway.tg_stream import router as tg_stream_router
-from gateway.hermes import router as hermes_router
 
 logger = logging.getLogger("GatewayMain")
 
@@ -49,7 +48,6 @@ app.include_router(openwebui_router)
 app.include_router(omniroute_router)
 app.include_router(jellyfin_router)
 app.include_router(tg_stream_router)
-app.include_router(hermes_router)
 
 
 # ── Lightweight Platform Readiness Endpoint ──────────────────────────────────
