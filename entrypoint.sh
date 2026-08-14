@@ -530,6 +530,10 @@ PYCUSTOM
     done
     export PYTHONPATH="/root/.hermes:/usr/local/lib/python3.11/dist-packages:${PYTHONPATH}"
 
+    if [ -n "${HERMES_API_KEY}" ] && [ "${HERMES_API_KEY}" != "admin123" ]; then
+        export HF_HERMES_API_KEY="${HERMES_API_KEY}"
+    fi
+
     HERMES_LLM_KEY="${API_KEY_SECRET:-${INITIAL_PASSWORD:-admin123}}"
     export HERMES_API_BASE_URL="http://127.0.0.1:20128/api/v1"
     export HERMES_API_KEY="${HERMES_LLM_KEY}"
@@ -543,7 +547,7 @@ PYCUSTOM
     export API_SERVER_ENABLED=true
     export API_SERVER_PORT=8642
     export API_SERVER_HOST=127.0.0.1
-    export API_SERVER_KEY="${HERMES_GATEWAY_API_KEY:-${HERMES_API_KEY_SECRET:-${API_KEY_SECRET:-${INITIAL_PASSWORD:-admin123}}}}"
+    export API_SERVER_KEY="${HF_HERMES_API_KEY:-${HERMES_GATEWAY_API_KEY:-${HERMES_API_KEY_SECRET:-${API_KEY_SECRET:-${INITIAL_PASSWORD:-sk-2e556e0437ee2958-7baf2d-b4133935}}}}}"
     export HERMES_GATEWAY_API_KEY="${API_SERVER_KEY}"
     export HERMES_GATEWAY_ENABLED=true
 
