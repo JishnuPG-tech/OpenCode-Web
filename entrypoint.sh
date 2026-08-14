@@ -533,7 +533,7 @@ except Exception:
 PYCUSTOM
         fi
     done
-    export PYTHONPATH="/root/.hermes:/usr/local/lib/python3.11/dist-packages:${PYTHONPATH}"
+    export PYTHONPATH="/:/root/.hermes:/usr/local/lib/python3.11/dist-packages:${PYTHONPATH}"
 
     if [ -n "${HERMES_API_KEY}" ] && [ "${HERMES_API_KEY}" != "sk-2e556e0437ee2958-7baf2d-b4133935" ] && [ "${HERMES_API_KEY}" != "admin123" ]; then
         export HF_HERMES_API_KEY="${HERMES_API_KEY}"
