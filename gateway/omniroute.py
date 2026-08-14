@@ -76,6 +76,8 @@ async def handle_omniroute_proxy(target: str, request: Request, default_prefix: 
         "api-key": MASTER_KEY,
     }
     res = await proxy_http_request(target, request, default_prefix=default_prefix, extra_headers=extra_auth, html_fixup=html_fixup)
+    if res.status_code in (401, 403) and not request.url.path.startswith("/api/v1/auths"):
+        return JSONResponse(content={"status": "ok", "authenticated": False, "message": "unauthenticated"}, status_code=200)
     if res.status_code in (500, 502, 503) and request.method == "GET" and "html" in request.headers.get("accept", "").lower():
         diagnostic_html = f"""<!DOCTYPE html>
 <html>

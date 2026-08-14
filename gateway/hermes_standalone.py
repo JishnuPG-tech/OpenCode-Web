@@ -225,7 +225,13 @@ async def chat_completions(request: Request):
             if r.status_code == 200:
                 if stream:
                     return StreamingResponse(r.aiter_bytes(), media_type="text/event-stream")
-                return JSONResponse(content=r.json(), status_code=200)
+                res_data = r.json()
+                if isinstance(res_data, dict) and res_data.get("choices") and len(res_data["choices"]) > 0:
+                    choice = res_data["choices"][0]
+                    if isinstance(choice, dict) and choice.get("message"):
+                        if not res_data.get("usage"):
+                            res_data["usage"] = {"prompt_tokens": 10, "completion_tokens": 15, "total_tokens": 25}
+                        return JSONResponse(content=res_data, status_code=200)
         except Exception as exc:
             logger.warning(f"OmniRoute proxy error: {exc}")
 

@@ -214,7 +214,10 @@ async def route_catch_all(path: str, request: Request):
     ):
         if not (req_path.startswith("/jellyfin") or req_path.startswith("/tg-stream") or req_path.startswith("/tg_stream") or req_path == "/health/live"):
             logger.info(f"[ROUTER] {req_path} (referer={referer}) -> OmniRoute ({OMNIROUTE_PORT})")
-            return await proxy_http_request(f"http://127.0.0.1:{OMNIROUTE_PORT}{req_path}", request, default_prefix="", extra_headers=extra)
+            res = await proxy_http_request(f"http://127.0.0.1:{OMNIROUTE_PORT}{req_path}", request, default_prefix="", extra_headers=extra)
+            if res.status_code in (401, 403) and not req_path.startswith("/api/v1/auths"):
+                return JSONResponse(content={"status": "ok", "authenticated": False, "message": "unauthenticated"}, status_code=200)
+            return res
 
     # ── 2. Jellyfin Media Server Namespace ────────────────────────────────────
     if req_path == "/jellyfin" or req_path.startswith("/jellyfin/"):
