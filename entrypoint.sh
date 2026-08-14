@@ -564,6 +564,15 @@ HERMES_ENV
   }
 }
 HERMES_CFG
+
+    # Restore repository hermes_config.yaml if present
+    if [ -f "/app/hermes_config.yaml" ]; then
+        cp /app/hermes_config.yaml /root/.hermes/config.yaml
+        echo "[HERMES] Restored repository hermes_config.yaml -> /root/.hermes/config.yaml"
+    elif [ -f "./hermes_config.yaml" ]; then
+        cp ./hermes_config.yaml /root/.hermes/config.yaml
+        echo "[HERMES] Restored ./hermes_config.yaml -> /root/.hermes/config.yaml"
+    fi
     echo "[HERMES] Config & .env written: OmniRoute -> http://127.0.0.1:20129/v1, model=${HERMES_MODEL}, API_SERVER_PORT=8642"
 
     # Configure Telegram bot integration if token is provided
