@@ -508,9 +508,9 @@ if command -v hermes >/dev/null 2>&1; then
         echo "[PERSISTENCE] Restored Hermes memory from /data/hermes"
     fi
     HERMES_LLM_KEY="${API_KEY_SECRET:-${INITIAL_PASSWORD:-admin123}}"
-    export HERMES_API_BASE_URL="http://127.0.0.1:20128/v1"
+    export HERMES_API_BASE_URL="http://127.0.0.1:20128/api/v1"
     export HERMES_API_KEY="${HERMES_LLM_KEY}"
-    export OPENAI_API_BASE="http://127.0.0.1:20128/v1"
+    export OPENAI_API_BASE="http://127.0.0.1:20128/api/v1"
     export OPENAI_API_KEY="${HERMES_LLM_KEY}"
     export HERMES_MODEL="${HERMES_MODEL:-antigravity/gemini-2.5-flash}"
     export HERMES_DATA_DIR="/root/.hermes"
@@ -530,10 +530,10 @@ API_SERVER_ENABLED=true
 API_SERVER_PORT=8642
 API_SERVER_HOST=127.0.0.1
 API_SERVER_KEY=${API_SERVER_KEY}
-OPENAI_API_BASE=http://127.0.0.1:20128/v1
-OPENAI_API_BASE_URL=http://127.0.0.1:20128/v1
+OPENAI_API_BASE=http://127.0.0.1:20128/api/v1
+OPENAI_API_BASE_URL=http://127.0.0.1:20128/api/v1
 OPENAI_API_KEY=${HERMES_LLM_KEY}
-HERMES_API_BASE_URL=http://127.0.0.1:20128/v1
+HERMES_API_BASE_URL=http://127.0.0.1:20128/api/v1
 HERMES_API_KEY=${HERMES_LLM_KEY}
 DEFAULT_MODEL=${HERMES_MODEL}
 TELEGRAM_ENABLED=${TELEGRAM_BOT_TOKEN:+true}
@@ -545,7 +545,7 @@ HERMES_ENV
     # Pre-create Hermes config.json pointing to OmniRoute so no interactive setup is needed
     cat > /root/.hermes/config.json << HERMES_CFG
 {
-  "api_base_url": "http://127.0.0.1:20128/v1",
+  "api_base_url": "http://127.0.0.1:20128/api/v1",
   "api_key": "${HERMES_LLM_KEY}",
   "model": "${HERMES_MODEL}",
   "data_dir": "/root/.hermes",
