@@ -199,7 +199,13 @@ async def omniroute_embeddings_fallback(request: Request):
 @router.api_route("/api/v1", methods=["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"])
 @router.api_route("/api/v1/{path:path}", methods=["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"])
 async def omniroute_api_v1_api(request: Request, path: str = ""):
-    target = f"http://127.0.0.1:{OMNIROUTE_PORT}/api/v1/{path}" if path else f"http://127.0.0.1:{OMNIROUTE_PORT}/api/v1"
+    sub = path.lstrip("/")
+    WEBUI_API_PREFIXES = ("auths", "users", "chats", "models", "configs", "tags", "files", "functions", "tools", "folders", "memories", "knowledge", "prompts", "audio", "images")
+    if any(sub == p or sub.startswith(f"{p}/") for p in WEBUI_API_PREFIXES):
+        target_webui = f"http://127.0.0.1:8098/api/v1/{sub}" if sub else "http://127.0.0.1:8098/api/v1"
+        return await proxy_http_request(target_webui, request, default_prefix="")
+
+    target = f"http://127.0.0.1:{OMNIROUTE_PORT}/api/v1/{sub}" if sub else f"http://127.0.0.1:{OMNIROUTE_PORT}/api/v1"
     return await handle_omniroute_proxy(target, request, default_prefix="/omniroute")
 
 @router.api_route("/v1beta", methods=["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"])
