@@ -447,10 +447,15 @@ for path in ['/root/.open-webui/webui.db', '/root/.open-webui/data/webui.db', '/
                         for item in d:
                             clean_obj(item)
                 clean_obj(data)
-                if modified or row_id == 'rag':
+                if modified or row_id in ('rag', 'retrieval', 'vector'):
                     if isinstance(data, dict):
                         data['embedding_engine'] = 'openai'
                         data['embedding_model'] = 'text-embedding-3-small'
+                        data['rag'] = {
+                            'embedding_engine': 'openai',
+                            'embedding_model': 'text-embedding-3-small',
+                            'openai_config': {'url': 'http://127.0.0.1:20128/v1', 'key': 'sk-omniroute'}
+                        }
                     cursor.execute('UPDATE config SET data = ? WHERE id = ?', (json.dumps(data), row_id))
             except Exception:
                 pass
