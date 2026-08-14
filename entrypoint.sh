@@ -515,13 +515,13 @@ import os
 os.environ["OPENAI_API_BASE"] = "http://127.0.0.1:20128/api/v1"
 os.environ["OPENAI_API_BASE_URL"] = "http://127.0.0.1:20128/api/v1"
 os.environ["OPENAI_BASE_URL"] = "http://127.0.0.1:20128/api/v1"
-os.environ["OPENAI_API_KEY"] = "admin123"
+os.environ["OPENAI_API_KEY"] = "sk-2e556e0437ee2958-7baf2d-b4133935"
 os.environ["HERMES_API_BASE_URL"] = "http://127.0.0.1:20128/api/v1"
-os.environ["HERMES_API_KEY"] = "admin123"
+os.environ["HERMES_API_KEY"] = "sk-2e556e0437ee2958-7baf2d-b4133935"
 try:
     import litellm
     litellm.api_base = "http://127.0.0.1:20128/api/v1"
-    litellm.api_key = "admin123"
+    litellm.api_key = "sk-2e556e0437ee2958-7baf2d-b4133935"
     litellm.suppress_debug_info = True
 except Exception:
     pass
@@ -530,11 +530,11 @@ PYCUSTOM
     done
     export PYTHONPATH="/root/.hermes:/usr/local/lib/python3.11/dist-packages:${PYTHONPATH}"
 
-    if [ -n "${HERMES_API_KEY}" ] && [ "${HERMES_API_KEY}" != "admin123" ]; then
+    if [ -n "${HERMES_API_KEY}" ] && [ "${HERMES_API_KEY}" != "sk-2e556e0437ee2958-7baf2d-b4133935" ] && [ "${HERMES_API_KEY}" != "admin123" ]; then
         export HF_HERMES_API_KEY="${HERMES_API_KEY}"
     fi
 
-    HERMES_LLM_KEY="${API_KEY_SECRET:-${INITIAL_PASSWORD:-admin123}}"
+    HERMES_LLM_KEY="sk-2e556e0437ee2958-7baf2d-b4133935"
     export HERMES_API_BASE_URL="http://127.0.0.1:20128/api/v1"
     export HERMES_API_KEY="${HERMES_LLM_KEY}"
     export OPENAI_API_BASE="http://127.0.0.1:20128/api/v1"
