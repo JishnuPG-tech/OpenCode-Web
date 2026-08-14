@@ -463,9 +463,9 @@ if command -v hermes >/dev/null 2>&1; then
         echo "[PERSISTENCE] Restored Hermes memory from /data/hermes"
     fi
     # Configure Hermes to use OmniRoute as its LLM backend & enable API server
-    export HERMES_API_BASE_URL="http://127.0.0.1:20129/v1"
+    export HERMES_API_BASE_URL="http://127.0.0.1:20128/v1"
     export HERMES_API_KEY="omniroute"
-    export OPENAI_API_BASE="http://127.0.0.1:20129/v1"
+    export OPENAI_API_BASE="http://127.0.0.1:20128/v1"
     export OPENAI_API_KEY="omniroute"
     export HERMES_MODEL="${HERMES_MODEL:-default}"
     export HERMES_DATA_DIR="/root/.hermes"
@@ -485,10 +485,10 @@ API_SERVER_ENABLED=true
 API_SERVER_PORT=8642
 API_SERVER_HOST=127.0.0.1
 API_SERVER_KEY=${API_SERVER_KEY}
-OPENAI_API_BASE=http://127.0.0.1:20129/v1
-OPENAI_API_BASE_URL=http://127.0.0.1:20129/v1
+OPENAI_API_BASE=http://127.0.0.1:20128/v1
+OPENAI_API_BASE_URL=http://127.0.0.1:20128/v1
 OPENAI_API_KEY=omniroute
-HERMES_API_BASE_URL=http://127.0.0.1:20129/v1
+HERMES_API_BASE_URL=http://127.0.0.1:20128/v1
 HERMES_API_KEY=omniroute
 DEFAULT_MODEL=${HERMES_MODEL}
 TELEGRAM_ENABLED=${TELEGRAM_BOT_TOKEN:+true}
@@ -500,7 +500,7 @@ HERMES_ENV
     # Pre-create Hermes config.json pointing to OmniRoute so no interactive setup is needed
     cat > /root/.hermes/config.json << HERMES_CFG
 {
-  "api_base_url": "http://127.0.0.1:20129/v1",
+  "api_base_url": "http://127.0.0.1:20128/v1",
   "api_key": "omniroute",
   "model": "${HERMES_MODEL}",
   "data_dir": "/root/.hermes",
@@ -537,7 +537,7 @@ HERMES_CFG
         cp ./hermes_config.yaml /root/.hermes/config.yaml
         echo "[HERMES] Restored ./hermes_config.yaml -> /root/.hermes/config.yaml"
     fi
-    echo "[HERMES] Config & .env written: OmniRoute -> http://127.0.0.1:20129/v1, model=${HERMES_MODEL}, API_SERVER_PORT=8642"
+    echo "[HERMES] Config & .env written: OmniRoute -> http://127.0.0.1:20128/v1, model=${HERMES_MODEL}, API_SERVER_PORT=8642"
 
     # Configure Telegram bot integration if token is provided
     if [ -n "$TELEGRAM_BOT_TOKEN" ]; then

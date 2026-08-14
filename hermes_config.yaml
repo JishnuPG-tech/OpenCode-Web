@@ -1,7 +1,7 @@
 model:
   default: auto
   provider: custom
-  base_url: http://127.0.0.1:20129/v1
+  base_url: http://127.0.0.1:20128/v1
   api_key: omniroute
 database:
   journal_mode: wal
@@ -134,4 +134,4 @@ platform_toolsets:
     - hermes-google_chat
 custom_providers:
   - name: OmniRoute Gateway
-    base_url: http://127.0.0.1:20129/v1
+    base_url: http://127.0.0.1:20128/v1
