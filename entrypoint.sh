@@ -425,7 +425,7 @@ for path in ['/root/.open-webui/webui.db', '/root/.open-webui/data/webui.db', '/
 
         export WEBUI_URL="${WEBUI_URL:-https://jishnupg-opencode-cli.hf.space}"
         export OPENAI_API_BASE_URL="${OPENAI_API_BASE_URL:-http://127.0.0.1:8000/v1}"
-        export OPENAI_API_KEY="omniroute"
+        export OPENAI_API_KEY="${OPENAI_API_KEY:-sk-2e556e0437ee2958-7baf2d-b4133935}"
         export WEBUI_SECRET_KEY="$WEBUI_SECRET_KEY"
         export ENABLE_OLLAMA_API="${ENABLE_OLLAMA_API:-false}"
         export ENABLE_OPENAI_API="true"
@@ -434,9 +434,9 @@ for path in ['/root/.open-webui/webui.db', '/root/.open-webui/data/webui.db', '/
         export WEBSOCKET_REDIS_URL="redis://127.0.0.1:6379/1"
         export WEBUI_WORKERS=1
         export BYPASS_EMBEDDING_AND_RETRIEVAL="true"
-        export RAG_EMBEDDING_ENGINE=""
-        export RAG_EMBEDDING_MODEL=""
-        export VECTOR_DB_EMBEDDING_FUNCTION=""
+        export RAG_EMBEDDING_ENGINE="sentence_transformers"
+        export RAG_EMBEDDING_MODEL="sentence-transformers/all-MiniLM-L6-v2"
+        export VECTOR_DB_EMBEDDING_FUNCTION="sentence_transformers"
         export RAG_RERANKING_MODEL=""
         export ENABLE_RAG_HYBRID_SEARCH="false"
         export ENABLE_RAG_LOCAL_WEB_FETCH="false"
