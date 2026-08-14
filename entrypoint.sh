@@ -416,7 +416,7 @@ if command -v open-webui >/dev/null 2>&1; then
         echo "[PERSISTENCE] Restored Open WebUI database snapshot ($(wc -c < /data/open-webui/webui.db | tr -d ' ') bytes)."
     fi
 
-    # Configure lightweight OpenAI API RAG embedding engine across all webui.db config rows
+    # Configure lightweight RAG embedding engine ('none') across all webui.db config rows
     python3 -c "
 import sqlite3, json, os
 for path in ['/root/.open-webui/webui.db', '/root/.open-webui/data/webui.db', '/data/open-webui/webui.db']:
@@ -425,43 +425,31 @@ for path in ['/root/.open-webui/webui.db', '/root/.open-webui/data/webui.db', '/
             continue
         conn = sqlite3.connect(path)
         cursor = conn.cursor()
-        cursor.execute('SELECT id, data FROM config')
-        rows = cursor.fetchall()
-        for row_id, raw_data in rows:
-            try:
-                data = json.loads(raw_data)
-                modified = False
-                def clean_obj(d):
-                    nonlocal modified
-                    if isinstance(d, dict):
-                        for k, v in list(d.items()):
-                            if k in ('embedding_model', 'RAG_EMBEDDING_MODEL') and v in ('none', 'sentence-transformers/none', '', None):
-                                d[k] = 'text-embedding-3-small'
-                                modified = True
-                            elif k in ('embedding_engine', 'RAG_EMBEDDING_ENGINE') and v in ('sentence_transformers', 'sentence-transformers', 'none', '', None):
-                                d[k] = 'openai'
-                                modified = True
-                            elif isinstance(v, (dict, list)):
-                                clean_obj(v)
-                    elif isinstance(d, list):
-                        for item in d:
-                            clean_obj(item)
-                clean_obj(data)
-                if modified or row_id in ('rag', 'retrieval', 'vector'):
-                    if isinstance(data, dict):
-                        data['embedding_engine'] = 'openai'
-                        data['embedding_model'] = 'text-embedding-3-small'
-                        data['rag'] = {
-                            'embedding_engine': 'openai',
-                            'embedding_model': 'text-embedding-3-small',
-                            'openai_config': {'url': 'http://127.0.0.1:20128/v1', 'key': 'sk-omniroute'}
-                        }
+        cursor.execute(\"SELECT name FROM sqlite_master WHERE type='table';\")
+        tables = [t[0] for t in cursor.fetchall()]
+        if 'config' in tables:
+            cursor.execute(\"SELECT id, data FROM config\")
+            rows = cursor.fetchall()
+            found_rag = False
+            for row_id, raw_data in rows:
+                try:
+                    data = json.loads(raw_data)
+                    if row_id == 'rag':
+                        found_rag = True
+                    data['embedding_engine'] = 'none'
+                    data['embedding_model'] = ''
+                    if 'rag' in data and isinstance(data['rag'], dict):
+                        data['rag']['embedding_engine'] = 'none'
+                        data['rag']['embedding_model'] = ''
                     cursor.execute('UPDATE config SET data = ? WHERE id = ?', (json.dumps(data), row_id))
-            except Exception:
-                pass
+                except Exception:
+                    pass
+            if not found_rag:
+                data = {'embedding_engine': 'none', 'embedding_model': '', 'rag': {'embedding_engine': 'none', 'embedding_model': ''}}
+                cursor.execute(\"INSERT INTO config (id, data) VALUES ('rag', ?)\", (json.dumps(data),))
         conn.commit()
         conn.close()
-        print(f'[LIGHTWEIGHT] Pinned OpenAI API RAG config in {path}')
+        print(f'[LIGHTWEIGHT] Pinned none RAG config in {path}')
     except Exception:
         pass
 " 2>/dev/null || true
@@ -489,11 +477,9 @@ for path in ['/root/.open-webui/webui.db', '/root/.open-webui/data/webui.db', '/
         export WEBSOCKET_REDIS_URL="redis://127.0.0.1:6379/1"
         export WEBUI_WORKERS=1
         export BYPASS_EMBEDDING_AND_RETRIEVAL="true"
-        export RAG_EMBEDDING_ENGINE="openai"
-        export RAG_OPENAI_API_BASE_URL="http://127.0.0.1:20128/v1"
-        export RAG_OPENAI_API_KEY="sk-omniroute"
-        export RAG_EMBEDDING_MODEL="text-embedding-3-small"
-        export VECTOR_DB_EMBEDDING_FUNCTION="openai"
+        export RAG_EMBEDDING_ENGINE="none"
+        export RAG_EMBEDDING_MODEL=""
+        export VECTOR_DB_EMBEDDING_FUNCTION="none"
         export RAG_RERANKING_MODEL=""
         export ENABLE_RAG_HYBRID_SEARCH="false"
         export ENABLE_RAG_LOCAL_WEB_FETCH="false"
