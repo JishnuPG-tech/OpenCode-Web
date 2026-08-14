@@ -1,5 +1,5 @@
 model:
-  default: auto
+  default: antigravity/gemini-2.5-flash
   provider: custom
   base_url: http://127.0.0.1:20128/v1
   api_key: omniroute
