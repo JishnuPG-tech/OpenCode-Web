@@ -83,13 +83,16 @@ _HOP_BY_HOP_HEADERS = {
 }
 
 def build_upstream_headers(request: Request, extra_headers: Optional[Dict[str, str]] = None) -> Dict[str, str]:
-    headers = {k: v for k, v in request.headers.items() if k.lower() not in _HOP_BY_HOP_HEADERS and k.lower() != "host"}
+    headers = {
+        k: v for k, v in request.headers.items()
+        if k.lower() not in _HOP_BY_HOP_HEADERS and k.lower() not in ("host", "user-agent")
+    }
     headers["Host"]              = PUBLIC_HOST
     headers["X-Forwarded-Host"]  = PUBLIC_HOST
     headers["X-Forwarded-Proto"] = "https"
     headers["X-Forwarded-Port"]  = "443"
     headers["X-Real-IP"]         = request.client.host if request.client else "127.0.0.1"
-    headers["User-Agent"]        = "Python-urllib/3.11"
+    headers["User-Agent"]        = request.headers.get("user-agent") or "Python-urllib/3.11"
     if extra_headers:
         for ek, ev in extra_headers.items():
             for existing_k in list(headers.keys()):
