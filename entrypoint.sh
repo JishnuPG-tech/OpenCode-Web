@@ -86,12 +86,14 @@ if [ -f "$PERSIST_DB" ] && [ -s "$PERSIST_DB" ]; then
     if command -v sqlite3 >/dev/null 2>&1; then
         _CHK=$(sqlite3 "$PERSIST_DB" "PRAGMA quick_check;" 2>/dev/null || echo "failed")
         if [ "$_CHK" = "ok" ]; then
-            cp -f "$PERSIST_DB"* "$RUNTIME_DIR/" 2>/dev/null || true
+            rm -f "$RUNTIME_DIR/storage.sqlite"* 2>/dev/null || true
+            cp -f "$PERSIST_DB" "$RUNTIME_DB" 2>/dev/null || true
             echo "[PERSISTENCE] Restored persistent database into ${RUNTIME_DIR} successfully."
             _RESTORED=1
         elif [ -f "${BACKUP_DIR}/last-known-good.sqlite" ]; then
             _BCHK=$(sqlite3 "${BACKUP_DIR}/last-known-good.sqlite" "PRAGMA quick_check;" 2>/dev/null || echo "failed")
             if [ "$_BCHK" = "ok" ]; then
+                rm -f "$RUNTIME_DIR/storage.sqlite"* 2>/dev/null || true
                 cp -f "${BACKUP_DIR}/last-known-good.sqlite" "$RUNTIME_DB" 2>/dev/null || true
                 cp -f "${BACKUP_DIR}/last-known-good.sqlite" "$PERSIST_DB" 2>/dev/null || true
                 echo "[PERSISTENCE] Restored from last-known-good backup into ${RUNTIME_DB} successfully."
@@ -100,7 +102,8 @@ if [ -f "$PERSIST_DB" ] && [ -s "$PERSIST_DB" ]; then
         fi
     fi
     if [ $_RESTORED -eq 0 ]; then
-        cp -f "$PERSIST_DB"* "$RUNTIME_DIR/" 2>/dev/null || true
+        rm -f "$RUNTIME_DIR/storage.sqlite"* 2>/dev/null || true
+        cp -f "$PERSIST_DB" "$RUNTIME_DB" 2>/dev/null || true
         echo "[PERSISTENCE] Restored persistent database snapshot directly into ${RUNTIME_DB}."
     fi
 fi
@@ -111,58 +114,16 @@ if [ -f "$PERSIST_WEBUI_DB" ] && [ -s "$PERSIST_WEBUI_DB" ]; then
     if command -v sqlite3 >/dev/null 2>&1; then
         _WCHK=$(sqlite3 "$PERSIST_WEBUI_DB" "PRAGMA quick_check;" 2>/dev/null || echo "failed")
         if [ "$_WCHK" = "ok" ]; then
+            rm -f "$RUNTIME_WEBUI_DIR/webui.db"* 2>/dev/null || true
             cp -f "$PERSIST_WEBUI_DB" "$RUNTIME_WEBUI_DB" 2>/dev/null || true
             echo "[PERSISTENCE] Restored persistent Open WebUI database into ${RUNTIME_WEBUI_DB} successfully."
         fi
     else
+            rm -f "$RUNTIME_WEBUI_DIR/webui.db"* 2>/dev/null || true
+            cp -f "$PERSIST_WEBUI_DB" "$RUNTIME_WEBUI_DB" 2>/dev/null || true
             echo "[PERSISTENCE] Restored persistent Open WebUI database into ${RUNTIME_WEBUI_DB}."
     fi
 fi
-
-# Ensure Master API Keys ('omniroute', 'admin123', 'sk-2e556e0437ee2958-7baf2d-b4133935') are seeded in OmniRoute runtime DB
-if [ -f "$RUNTIME_DB" ] && command -v python3 >/dev/null 2>&1; then
-    python3 - "$RUNTIME_DB" <<'PYEOF' 2>&1 || true
-import sqlite3, sys
-db_path = sys.argv[1]
-try:
-    conn = sqlite3.connect(db_path)
-    cur = conn.cursor()
-    cur.execute("SELECT name FROM sqlite_master WHERE type='table';")
-    tables = [r[0] for r in cur.fetchall()]
-    for t in tables:
-        if "key" in t.lower() or "token" in t.lower():
-            cur.execute(f"PRAGMA table_info({t});")
-            cols = [c[1] for c in cur.fetchall()]
-            col_names_lower = [c.lower() for c in cols]
-            if any(k in col_names_lower for k in ("key", "api_key", "token", "value", "id")):
-                key_col = next((c for c in cols if c.lower() in ("key", "api_key", "token", "value", "id")), cols[0])
-                for key_val in ("omniroute", "admin123", "sk-2e556e0437ee2958-7baf2d-b4133935"):
-                    try:
-                        cur.execute(f"SELECT COUNT(*) FROM {t} WHERE {key_col} = ?", (key_val,))
-                        if cur.fetchone()[0] == 0:
-                            placeholders = ", ".join(["?"] * len(cols))
-                            col_list = ", ".join(cols)
-                            vals = []
-                            for c in cols:
-                                cl = c.lower()
-                                if cl in ("key", "api_key", "token", "value", "id", "name", "label"):
-                                    vals.append(key_val)
-                                elif cl in ("active", "enabled", "status", "is_active"):
-                                    vals.append(1)
-                                else:
-                                    vals.append("system")
-                            cur.execute(f"INSERT OR IGNORE INTO {t} ({col_list}) VALUES ({placeholders})", vals)
-                    except Exception:
-                        pass
-    conn.commit()
-    conn.close()
-    print("[PERSISTENCE] Master API keys ('omniroute', 'admin123', 'sk-2e556e0437ee2958-7baf2d-b4133935') ensured in runtime DB.")
-except Exception as e:
-    pass
-PYEOF
-fi
-
-
 
 # Restore supplementary state directories
 for _ITEM in oauth credentials runtime gemini_cli config_dir; do
@@ -184,27 +145,34 @@ done
 sync_omniroute_db() {
     if [ -f "$RUNTIME_DB" ] && [ -s "$RUNTIME_DB" ]; then
         mkdir -p "$PERSIST_DIR" "$BACKUP_DIR" 2>/dev/null || true
+        _SYNC_TMP="${PERSIST_DB}.tmp"
+        rm -f "$_SYNC_TMP" 2>/dev/null || true
+
         if command -v sqlite3 >/dev/null 2>&1; then
             sqlite3 "$RUNTIME_DB" "PRAGMA wal_checkpoint(TRUNCATE);" 2>/dev/null || true
-            sqlite3 "$RUNTIME_DB" "PRAGMA wal_checkpoint(FULL);" 2>/dev/null || true
-            sqlite3 "$RUNTIME_DB" ".backup '$PERSIST_DB'" 2>/dev/null || cp -f "$RUNTIME_DB"* "$PERSIST_DIR/" 2>/dev/null || true
+            sqlite3 "$RUNTIME_DB" ".backup '$_SYNC_TMP'" 2>/dev/null || cp -f "$RUNTIME_DB" "$_SYNC_TMP" 2>/dev/null || true
         else
-            cp -f "$RUNTIME_DB"* "$PERSIST_DIR/" 2>/dev/null || true
+            cp -f "$RUNTIME_DB" "$_SYNC_TMP" 2>/dev/null || true
         fi
-        [ -f "${RUNTIME_DB}-wal" ] && cp -f "${RUNTIME_DB}-wal" "${PERSIST_DB}-wal" 2>/dev/null || true
-        [ -f "${RUNTIME_DB}-shm" ] && cp -f "${RUNTIME_DB}-shm" "${PERSIST_DB}-shm" 2>/dev/null || true
 
-        _CHK="ok"
-        if command -v sqlite3 >/dev/null 2>&1; then
-            _CHK=$(sqlite3 "$PERSIST_DB" "PRAGMA quick_check;" 2>/dev/null || echo "failed")
+        _CHK="failed"
+        if [ -f "$_SYNC_TMP" ] && [ -s "$_SYNC_TMP" ]; then
+            if command -v sqlite3 >/dev/null 2>&1; then
+                _CHK=$(sqlite3 "$_SYNC_TMP" "PRAGMA quick_check;" 2>/dev/null || echo "failed")
+            else
+                _CHK="ok"
+            fi
         fi
 
         if [ "$_CHK" = "ok" ]; then
+            mv -f "$_SYNC_TMP" "$PERSIST_DB" 2>/dev/null || true
+            rm -f "${PERSIST_DB}-wal" "${PERSIST_DB}-shm" 2>/dev/null || true
+
             cp -f "$PERSIST_DB" "${BACKUP_DIR}/last-known-good.sqlite" 2>/dev/null || true
             TIMESTAMP=$(date +%Y%m%d-%H%M)
             cp -f "$PERSIST_DB" "${BACKUP_DIR}/storage-${TIMESTAMP}.sqlite" 2>/dev/null || true
             ls -t "${BACKUP_DIR}"/storage-*.sqlite 2>/dev/null | tail -n +6 | xargs rm -f 2>/dev/null || true
-            
+
             for _ITEM in oauth credentials runtime; do
                 if [ -d "${RUNTIME_DIR}/${_ITEM}" ]; then
                     mkdir -p "${PERSIST_DIR}/${_ITEM}" 2>/dev/null || true
@@ -223,30 +191,66 @@ sync_omniroute_db() {
             fi
             _SIZE=$(wc -c < "$PERSIST_DB" 2>/dev/null | tr -d ' \t\n\r' || echo "0")
             echo "[PERSISTENCE] Snapshot OK: ${_SIZE} bytes synced to ${PERSIST_DB}"
+        else
+            rm -f "$_SYNC_TMP" 2>/dev/null || true
+            echo "[PERSISTENCE] WARNING: Database backup quick_check failed; skipping snapshot."
         fi
     fi
 
     # Synchronize Open WebUI database safely if active
-    for _SRC_WDB in "$PERSIST_WEBUI_DB" "$RUNTIME_WEBUI_DB" "/data/open-webui/data/webui.db"; do
+    for _SRC_WDB in "$RUNTIME_WEBUI_DB" "/data/open-webui/data/webui.db" "$PERSIST_WEBUI_DB"; do
         if [ -f "$_SRC_WDB" ] && [ -s "$_SRC_WDB" ]; then
             _R_SRC=$(python3 -c "import os; print(os.path.realpath('$_SRC_WDB'))" 2>/dev/null || echo "$_SRC_WDB")
             _R_DST=$(python3 -c "import os; print(os.path.realpath('$PERSIST_WEBUI_DB'))" 2>/dev/null || echo "$PERSIST_WEBUI_DB")
-            
+
             if [ "$_R_SRC" != "$_R_DST" ]; then
+                _W_TMP="${PERSIST_WEBUI_DB}.tmp"
+                rm -f "$_W_TMP" 2>/dev/null || true
                 if command -v sqlite3 >/dev/null 2>&1; then
-                    sqlite3 "$_SRC_WDB" ".backup '$PERSIST_WEBUI_DB'" 2>/dev/null || cp -f "$_SRC_WDB" "$PERSIST_WEBUI_DB" 2>/dev/null || true
+                    sqlite3 "$_SRC_WDB" "PRAGMA wal_checkpoint(TRUNCATE);" 2>/dev/null || true
+                    sqlite3 "$_SRC_WDB" ".backup '$_W_TMP'" 2>/dev/null || cp -f "$_SRC_WDB" "$_W_TMP" 2>/dev/null || true
                 else
-                    cp -f "$_SRC_WDB" "$PERSIST_WEBUI_DB" 2>/dev/null || true
+                    cp -f "$_SRC_WDB" "$_W_TMP" 2>/dev/null || true
+                fi
+
+                _WCHK="failed"
+                if [ -f "$_W_TMP" ] && [ -s "$_W_TMP" ]; then
+                    if command -v sqlite3 >/dev/null 2>&1; then
+                        _WCHK=$(sqlite3 "$_W_TMP" "PRAGMA quick_check;" 2>/dev/null || echo "failed")
+                    else
+                        _WCHK="ok"
+                    fi
+                fi
+
+                if [ "$_WCHK" = "ok" ]; then
+                    mv -f "$_W_TMP" "$PERSIST_WEBUI_DB" 2>/dev/null || true
+                    rm -f "${PERSIST_WEBUI_DB}-wal" "${PERSIST_WEBUI_DB}-shm" 2>/dev/null || true
+                    _WSIZE=$(wc -c < "$PERSIST_WEBUI_DB" 2>/dev/null | tr -d ' \t\n\r' || echo "0")
+                    echo "[PERSISTENCE] Open WebUI DB snapshot OK: ${_WSIZE} bytes present at ${PERSIST_WEBUI_DB}"
+                else
+                    rm -f "$_W_TMP" 2>/dev/null || true
                 fi
             fi
-            _WSIZE=$(wc -c < "$PERSIST_WEBUI_DB" 2>/dev/null | tr -d ' \t\n\r' || echo "0")
-            echo "[PERSISTENCE] Open WebUI DB snapshot OK: ${_WSIZE} bytes present at ${PERSIST_WEBUI_DB}"
             break
         fi
     done
 }
 
-trap sync_omniroute_db EXIT INT TERM
+shutdown_gracefully() {
+    echo "[SHUTDOWN] Process termination signal received. Flushing persistence state..."
+    if [ -n "$OMNIROUTE_PID" ] && kill -0 $OMNIROUTE_PID 2>/dev/null; then
+        kill -INT $OMNIROUTE_PID 2>/dev/null || true
+    fi
+    if [ -n "$OWUI_PID" ] && kill -0 $OWUI_PID 2>/dev/null; then
+        kill -INT $OWUI_PID 2>/dev/null || true
+    fi
+    sleep 2
+    sync_omniroute_db >/dev/null 2>&1 || true
+    echo "[SHUTDOWN] Persistence sync finished cleanly. Container exiting."
+    exit 0
+}
+
+trap shutdown_gracefully EXIT INT TERM
 
 # ── STEP 3: Start FastAPI Gateway Immediately ────────────────────────────────
 echo "[BOOT] FastAPI starting: $(get_elapsed)"
@@ -492,14 +496,6 @@ fi
     while true; do
         sleep 15
         sync_omniroute_db >/dev/null 2>&1 || true
-        for _DB in "/root/.open-webui/webui.db" "/root/.open-webui/data/webui.db"; do
-            if [ -f "$_DB" ] && [ -s "$_DB" ]; then
-                mkdir -p /data/open-webui 2>/dev/null || true
-                cp -f "$_DB" /data/open-webui/webui.db 2>/dev/null || true
-                _WEBUI_DB_SIZE=$(wc -c < "/data/open-webui/webui.db" 2>/dev/null | tr -d ' \t\n\r' || echo "0")
-                echo "[PERSISTENCE] Open WebUI DB snapshot OK: ${_WEBUI_DB_SIZE} bytes synced from ${_DB} to /data/open-webui/webui.db"
-            fi
-        done
         # Sync Hermes persistent memory, skills, sessions, SQLite DB
         if [ -d "/root/.hermes" ]; then
             mkdir -p /data/hermes/memories /data/hermes/skills /data/hermes/sessions 2>/dev/null || true
