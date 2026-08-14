@@ -79,5 +79,16 @@ class TestHealthDoctor(unittest.TestCase):
         self.assertTrue(check_sqlite_integrity("/path/does/not/exist.sqlite"))
 
 
+class TestHermesGateway(unittest.TestCase):
+    def test_hermes_endpoint(self):
+        from fastapi.testclient import TestClient
+        from gateway.main import app
+        client = TestClient(app)
+        headers = {"Authorization": "Bearer sk-2e556e0437ee2958-7baf2d-b4133935"}
+        r = client.get("/hermes/v1", headers=headers)
+        self.assertEqual(r.status_code, 200)
+        self.assertIn("Hermes AI Agent Gateway", r.text)
+
+
 if __name__ == "__main__":
     unittest.main()
