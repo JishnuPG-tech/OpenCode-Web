@@ -110,7 +110,7 @@ if [ -f "$PERSIST_WEBUI_DB" ] && [ -s "$PERSIST_WEBUI_DB" ]; then
     fi
 fi
 
-# Ensure Master API Keys ('omniroute', 'admin123') are seeded in OmniRoute runtime DB
+# Ensure Master API Keys ('omniroute', 'admin123', 'sk-2e556e0437ee2958-7baf2d-b4133935') are seeded in OmniRoute runtime DB
 if [ -f "$RUNTIME_DB" ] && command -v python3 >/dev/null 2>&1; then
     python3 - "$RUNTIME_DB" <<'PYEOF' 2>&1 || true
 import sqlite3, sys
@@ -127,7 +127,7 @@ try:
             col_names_lower = [c.lower() for c in cols]
             if any(k in col_names_lower for k in ("key", "api_key", "token", "value", "id")):
                 key_col = next((c for c in cols if c.lower() in ("key", "api_key", "token", "value", "id")), cols[0])
-                for key_val in ("omniroute", "admin123"):
+                for key_val in ("omniroute", "admin123", "sk-2e556e0437ee2958-7baf2d-b4133935"):
                     try:
                         cur.execute(f"SELECT COUNT(*) FROM {t} WHERE {key_col} = ?", (key_val,))
                         if cur.fetchone()[0] == 0:
@@ -147,7 +147,7 @@ try:
                         pass
     conn.commit()
     conn.close()
-    print("[PERSISTENCE] Master API keys ('omniroute', 'admin123') ensured in runtime DB.")
+    print("[PERSISTENCE] Master API keys ('omniroute', 'admin123', 'sk-2e556e0437ee2958-7baf2d-b4133935') ensured in runtime DB.")
 except Exception as e:
     pass
 PYEOF

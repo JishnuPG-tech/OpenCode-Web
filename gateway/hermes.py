@@ -23,7 +23,7 @@ API_SERVER_KEY = (
     or os.getenv("HERMES_API_KEY_SECRET")
     or os.getenv("API_KEY_SECRET")
     or os.getenv("INITIAL_PASSWORD")
-    or "admin123"
+    or "sk-2e556e0437ee2958-7baf2d-b4133935"
 )
 
 

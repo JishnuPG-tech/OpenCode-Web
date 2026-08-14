@@ -66,7 +66,7 @@ MASTER_KEY = (
     os.getenv("INITIAL_PASSWORD")
     or os.getenv("API_KEY_SECRET")
     or os.getenv("OMNIROUTE_INITIAL_PASSWORD")
-    or "admin123"
+    or "sk-2e556e0437ee2958-7baf2d-b4133935"
 )
 
 async def handle_omniroute_proxy(target: str, request: Request, default_prefix: str = "/omniroute", html_fixup=None):
