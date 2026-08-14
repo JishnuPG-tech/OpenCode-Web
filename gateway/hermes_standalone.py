@@ -1,5 +1,6 @@
 import os
 import json
+import time
 import httpx
 import asyncio
 import logging
@@ -11,6 +12,28 @@ app = FastAPI(title="Hermes Standalone Server")
 
 OMNIROUTE_URL = os.getenv("HERMES_API_BASE_URL", "http://127.0.0.1:20128/api/v1")
 MASTER_KEY = os.getenv("API_SERVER_KEY", "sk-2e556e0437ee2958-7baf2d-b4133935")
+
+TELEMETRY_LOG = "/data/cache/hermes_telemetry.log"
+_TELEMETRY_STATS = {
+    "runs_count": 0,
+    "tools_invoked_count": 0,
+    "chat_completions_count": 0,
+}
+
+def record_hermes_telemetry(action: str, duration_ms: float, metadata: dict = None):
+    try:
+        os.makedirs("/data/cache", exist_ok=True)
+        entry = {
+            "timestamp": time.time(),
+            "action": action,
+            "duration_ms": round(duration_ms, 2),
+            "stats": dict(_TELEMETRY_STATS),
+            "metadata": metadata or {}
+        }
+        with open(TELEMETRY_LOG, "a", encoding="utf-8") as f:
+            f.write(json.dumps(entry) + "\n")
+    except Exception:
+        pass
 
 @app.api_route("/health", methods=["GET", "HEAD"])
 @app.api_route("/v1/health", methods=["GET", "HEAD"])
@@ -63,6 +86,7 @@ async def create_session(request: Request):
 @app.api_route("/v1/runs", methods=["POST"])
 @app.api_route("/api/runs", methods=["POST"])
 async def create_run(request: Request):
+    t0 = time.time()
     try:
         body = await request.json()
         prompt = body.get("prompt") or ""
@@ -72,6 +96,10 @@ async def create_run(request: Request):
         session_id = "sess-default"
 
     run_id = f"run-{int(asyncio.get_event_loop().time()*1000)}"
+    _TELEMETRY_STATS["runs_count"] += 1
+    duration_ms = (time.time() - t0) * 1000
+    record_hermes_telemetry("create_run", duration_ms, {"run_id": run_id, "session_id": session_id, "prompt_len": len(prompt)})
+
     return {
         "id": run_id,
         "run_id": run_id,
@@ -116,6 +144,10 @@ async def stream_run_events(run_id: str):
 @app.api_route("/v1/runs/{run_id}/tools", methods=["POST"])
 @app.api_route("/api/runs/{run_id}/tools", methods=["POST"])
 async def execute_tool(run_id: str, request: Request):
+    t0 = time.time()
+    _TELEMETRY_STATS["tools_invoked_count"] += 1
+    duration_ms = (time.time() - t0) * 1000
+    record_hermes_telemetry("execute_tool", duration_ms, {"run_id": run_id})
     return {"status": "success", "result": "Tool executed successfully."}
 
 @app.api_route("/jobs", methods=["GET", "HEAD"])
@@ -143,6 +175,7 @@ async def models():
 @app.api_route("/v1/chat/completions", methods=["POST"])
 @app.api_route("/api/chat/completions", methods=["POST"])
 async def chat_completions(request: Request):
+    t0 = time.time()
     try:
         body = await request.json()
     except Exception:
@@ -151,6 +184,8 @@ async def chat_completions(request: Request):
     messages = body.get("messages") or [{"role": "user", "content": "Hello"}]
     model = body.get("model") or "auto"
     stream = body.get("stream", False)
+
+    _TELEMETRY_STATS["chat_completions_count"] += 1
 
     payload = {
         "model": "auto",
@@ -166,6 +201,8 @@ async def chat_completions(request: Request):
     async with httpx.AsyncClient(timeout=30.0) as client:
         try:
             r = await client.post(f"{OMNIROUTE_URL}/chat/completions", json=payload, headers=headers)
+            duration_ms = (time.time() - t0) * 1000
+            record_hermes_telemetry("chat_completions", duration_ms, {"model": model, "status": r.status_code, "stream": stream})
             if r.status_code == 200:
                 if stream:
                     return StreamingResponse(r.aiter_bytes(), media_type="text/event-stream")
@@ -173,6 +210,8 @@ async def chat_completions(request: Request):
         except Exception as exc:
             logger.warning(f"OmniRoute proxy error: {exc}")
 
+    duration_ms = (time.time() - t0) * 1000
+    record_hermes_telemetry("chat_completions_fallback", duration_ms, {"model": model, "stream": stream})
     return JSONResponse(content={
         "id": f"chatcmpl-{int(asyncio.get_event_loop().time()*1000)}",
         "object": "chat.completion",
