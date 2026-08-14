@@ -56,8 +56,6 @@ COPY --from=omniroute-source /usr/local/bin/npm  /usr/local/bin/npm
 COPY --from=omniroute-source /usr/local/bin/npx  /usr/local/bin/npx
 COPY --from=omniroute-source /usr/local/lib/node_modules /usr/local/lib/node_modules
 
-RUN npm install -g omniroute || true
-
 RUN mkdir -p /root/.cache /data/cache /data/omniroute /data/open-webui
 RUN chmod -R 777 /root/.cache /data/cache /omniroute
 

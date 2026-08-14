@@ -36,7 +36,7 @@ mkdir -p /data/open-webui /data/omniroute 2>/dev/null || true
 mkdir -p /data/jellyfin/data /data/jellyfin/config /data/jellyfin/cache /data/jellyfin/log /data/jellyfin/media/Movies /data/jellyfin/media/TVShows 2>/dev/null || true
 mkdir -p /data/hermes/memories /data/hermes/skills /data/hermes/sessions 2>/dev/null || true
 mkdir -p /root/.cache /data/cache /root/.hermes/memories /root/.hermes/skills 2>/dev/null || true
-chmod -R 777 /root/.cache /data/cache /data/hermes 2>/dev/null || true
+chmod 777 /root/.cache /data/cache /data/hermes /data/omniroute /data/open-webui 2>/dev/null || true
 
 # ── STEP 1: Master Secret Validation ──────────────────────────────────────────
 if [ -z "$STORAGE_ENCRYPTION_KEY" ]; then
@@ -471,13 +471,11 @@ for path in ['/root/.open-webui/webui.db', '/root/.open-webui/data/webui.db', '/
     if command -v open-webui >/dev/null 2>&1; then
         FOUND_BUILD_DIR=$(python3 -c "import open_webui, os; pkg=os.path.dirname(open_webui.__file__); matches=[root for root, dirs, files in os.walk(pkg) if 'index.html' in files]; print(matches[0] if matches else '')" 2>/dev/null || echo "")
         if [ -n "$FOUND_BUILD_DIR" ] && [ -d "$FOUND_BUILD_DIR" ]; then
-            mkdir -p /root/.open-webui/static 2>/dev/null || true
-            cp -rn "$FOUND_BUILD_DIR/"* /root/.open-webui/static/ 2>/dev/null || true
             export BUILD_DIR="$FOUND_BUILD_DIR"
             export FRONTEND_BUILD_DIR="$FOUND_BUILD_DIR"
             export WEBUI_BUILD_DIR="$FOUND_BUILD_DIR"
-            export STATIC_DIR="/root/.open-webui/static"
-            echo "[INIT] Open WebUI BUILD_DIR auto-located & pinned to: $FOUND_BUILD_DIR"
+            export STATIC_DIR="$FOUND_BUILD_DIR"
+            log_info "INIT" "Open WebUI FRONTEND_BUILD_DIR auto-located & pinned to: $FOUND_BUILD_DIR"
         fi
 
         export WEBUI_URL="${WEBUI_URL:-https://jishnupg-opencode-cli.hf.space}"
