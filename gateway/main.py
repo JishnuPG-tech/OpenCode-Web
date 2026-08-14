@@ -66,6 +66,11 @@ async def health_live():
 
 # ── Root Landing & Diagnostic Routes ─────────────────────────────────────────
 @app.api_route("/favicon.ico", methods=["GET", "HEAD"])
+@app.api_route("/favicon.png", methods=["GET", "HEAD"])
+@app.api_route("/static/favicon.png", methods=["GET", "HEAD"])
+@app.api_route("/static/favicon.ico", methods=["GET", "HEAD"])
+@app.api_route("/omniroute/static/favicon.png", methods=["GET", "HEAD"])
+@app.api_route("/omniroute/static/favicon.ico", methods=["GET", "HEAD"])
 async def favicon():
     return Response(content=b"", status_code=204)
 
