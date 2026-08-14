@@ -109,47 +109,7 @@ if [ -f "$PERSIST_WEBUI_DB" ] && [ -s "$PERSIST_WEBUI_DB" ]; then
     fi
 fi
 
-# One-time targeted cleanup: remove credential rows that fail to decrypt
-if [ -f "$RUNTIME_DB" ] && command -v python3 >/dev/null 2>&1; then
-    python3 - "$RUNTIME_DB" <<'PYEOF' 2>&1 || true
-import sqlite3, sys
-db_path = sys.argv[1]
-BROKEN_PREFIXES = (
-    "enc:v1:c8b287e6f9ea4dc7a3d5ccd",
-    "enc:v1:003964800c0b7803fa74504",
-    "enc:v1:8d5ca7d6f541555ed9692a7",
-    "enc:v1:d905a9b8be117264d2caaee",
-    "enc:v1:076a2b5e61f84d7dbd9d418",
-    "enc:v1:ae5a4040c5f73dd42429d7c",
-)
-try:
-    conn = sqlite3.connect(db_path)
-    cur = conn.cursor()
-    cur.execute("SELECT name FROM sqlite_master WHERE type='table';")
-    tables = [r[0] for r in cur.fetchall()]
-    deleted_total = 0
-    for table in tables:
-        cur.execute(f"PRAGMA table_info({table});")
-        cols = [c[1] for c in cur.fetchall()]
-        text_cols = [c for c in cols if c.lower() in
-                     ("encrypted_value", "value", "token", "credential",
-                      "access_token", "refresh_token", "data", "secret")]
-        for col in text_cols:
-            for prefix in BROKEN_PREFIXES:
-                try:
-                    cur.execute(f"DELETE FROM {table} WHERE {col} LIKE ?", (prefix + "%",))
-                    if cur.rowcount > 0:
-                        deleted_total += cur.rowcount
-                except sqlite3.OperationalError:
-                    pass
-    conn.commit()
-    conn.close()
-    if deleted_total:
-        print(f"[CLEANUP] Removed {deleted_total} unrecoverable credential row(s) total.")
-except Exception as e:
-    pass
-PYEOF
-fi
+
 
 # Restore supplementary state directories
 for _ITEM in oauth credentials runtime gemini_cli config_dir; do
