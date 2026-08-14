@@ -499,7 +499,7 @@ for path in ['/root/.open-webui/webui.db', '/root/.open-webui/data/webui.db', '/
         export WEBUI_URL="${WEBUI_URL:-https://jishnupg-opencode-cli.hf.space}"
         export OPENAI_API_BASE_URL="${OPENAI_API_BASE_URL:-http://127.0.0.1:8000/v1}"
         export OPENAI_API_KEY="${OPENAI_API_KEY:-sk-2e556e0437ee2958-7baf2d-b4133935}"
-        export WEBUI_SECRET_KEY="$WEBUI_SECRET_KEY"
+        export WEBUI_SECRET_KEY="${WEBUI_SECRET_KEY:-${JWT_SECRET:-openwebui_master_secret_key_fixed_2026}}"
         export ENABLE_OLLAMA_API="${ENABLE_OLLAMA_API:-false}"
         export ENABLE_OPENAI_API="true"
         export ENABLE_WEBSOCKET_SUPPORT="true"

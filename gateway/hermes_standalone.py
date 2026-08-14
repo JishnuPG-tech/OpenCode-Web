@@ -279,7 +279,12 @@ async def chat_completions(request: Request):
                 "content": reply_text
             },
             "finish_reason": "stop"
-        }]
+        }],
+        "usage": {
+            "prompt_tokens": 10,
+            "completion_tokens": 15,
+            "total_tokens": 25
+        }
     }, status_code=200)
 
 @app.api_route("/{path:path}", methods=["GET", "POST", "PUT", "DELETE", "HEAD", "OPTIONS"])

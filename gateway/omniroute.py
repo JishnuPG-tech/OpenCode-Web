@@ -256,7 +256,12 @@ async def omniroute_v1_api(request: Request, path: str = ""):
                         "content": f"OpenCode AI Gateway active. Received: '{user_msg}'. Connection verified."
                     },
                     "finish_reason": "stop"
-                }]
+                }],
+                "usage": {
+                    "prompt_tokens": 10,
+                    "completion_tokens": 15,
+                    "total_tokens": 25
+                }
             }, status_code=200)
 
     target = f"http://127.0.0.1:{OMNIROUTE_PORT}/v1/{path}" if path else f"http://127.0.0.1:{OMNIROUTE_PORT}/v1"
