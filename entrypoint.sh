@@ -502,7 +502,7 @@ fi
 ) &
 
 # Step 12: Start Hermes Agent in Background (Port 8642)
-if command -v hermes >/dev/null 2>&1; then
+if true; then
     echo "[HEALTH] Hermes Agent starting in background on port 8642..."
     mkdir -p /data/hermes/memories /data/hermes/skills /data/hermes/sessions 2>/dev/null || true
     chmod -R 777 /data/hermes 2>/dev/null || true
