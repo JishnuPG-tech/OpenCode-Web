@@ -66,12 +66,8 @@ async def hermes_proxy(path: str, request: Request):
     upstream = f"http://127.0.0.1:{HERMES_PORT}/{clean_path}"
     logger.info(f"[HERMES] /{clean_path} -> :{HERMES_PORT}")
 
-    user_auth = request.headers.get("authorization") or f"Bearer {API_SERVER_KEY}"
-    if not user_auth.lower().startswith("bearer "):
-        user_auth = f"Bearer {user_auth}"
-
     primary_headers = {
-        "Authorization": user_auth,
+        "Authorization": f"Bearer {API_SERVER_KEY}",
         "X-API-Key": API_SERVER_KEY,
         "api-key": API_SERVER_KEY,
     }
