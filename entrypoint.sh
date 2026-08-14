@@ -528,13 +528,15 @@ for path in ['/root/.open-webui/webui.db', '/root/.open-webui/data/webui.db', '/
         open-webui serve --port 8098 &
         OWUI_PID=$!
         echo "[PROCESS] Open WebUI: PID ${OWUI_PID}"
-        for i in $(seq 1 60); do
-            if curl -fsS "http://127.0.0.1:8098/health" >/dev/null 2>&1 || curl -fsS "http://127.0.0.1:8098/api/config" >/dev/null 2>&1; then
-                echo "[HEALTH] Open WebUI ready after ${i}s"
-                break
-            fi
-            sleep 1
-        done
+        (
+            for i in $(seq 1 60); do
+                if curl -fsS "http://127.0.0.1:8098/health" >/dev/null 2>&1 || curl -fsS "http://127.0.0.1:8098/api/config" >/dev/null 2>&1; then
+                    log_info "HEALTH" "Open WebUI ready after ${i}s"
+                    break
+                fi
+                sleep 1
+            done
+        ) &
     fi
 fi
 
