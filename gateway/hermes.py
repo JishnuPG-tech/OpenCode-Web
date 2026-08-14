@@ -50,7 +50,7 @@ async def hermes_proxy(request: Request, path: str = ""):
         extra_headers=primary_headers,
     )
 
-    if res.status_code in (404, 401) and clean_path.startswith("v1/"):
+    if res.status_code in (404, 405, 401) and clean_path.startswith("v1/"):
         alt_path = clean_path[3:]
         alt_upstream = f"http://127.0.0.1:{HERMES_PORT}/{alt_path}"
         logger.info(f"[HERMES FALLBACK] Trying path: {alt_upstream}")
