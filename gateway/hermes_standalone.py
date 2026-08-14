@@ -285,6 +285,8 @@ async def chat_completions(request: Request):
 @app.api_route("/{path:path}", methods=["GET", "POST", "PUT", "DELETE", "HEAD", "OPTIONS"])
 async def catch_all(path: str, request: Request):
     logger.info(f"[CATCH-ALL] Handled path: /{path}")
+    if request.method == "POST":
+        return await chat_completions(request)
     return JSONResponse(content={
         "status": "ok",
         "message": f"Endpoint /{path} handled by Hermes Agent Gateway.",

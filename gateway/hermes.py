@@ -51,6 +51,9 @@ async def hermes_proxy(request: Request, path: str = ""):
             status_code=200
         )
 
+    if request.method == "POST" and clean_path in ("", "v1", "v1/"):
+        clean_path = "v1/chat/completions"
+
     if not clean_path:
         upstream = f"http://127.0.0.1:{HERMES_PORT}/"
     else:
