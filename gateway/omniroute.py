@@ -165,6 +165,29 @@ async def omniroute_v1_api(request: Request, path: str = ""):
                 {"id": "qwen-2.5-coder-32b", "object": "model", "owned_by": "qwen"}
             ]
         })
+    if path == "chat/completions":
+        target = f"http://127.0.0.1:{OMNIROUTE_PORT}/v1/chat/completions"
+        res = await handle_omniroute_proxy(target, request, default_prefix="/omniroute")
+        if res.status_code == 200 and "application/json" in res.headers.get("content-type", "").lower():
+            try:
+                import json
+                data = json.loads(res.body)
+                if isinstance(data, dict) and "choices" in data and isinstance(data["choices"], list):
+                    modified = False
+                    for choice in data["choices"]:
+                        msg = choice.get("message", {})
+                        if isinstance(msg, dict):
+                            content = msg.get("content")
+                            tool_calls = msg.get("tool_calls")
+                            if (content is None or content == "") and not tool_calls:
+                                msg["content"] = " "
+                                modified = True
+                    if modified:
+                        return JSONResponse(content=data, status_code=200)
+            except Exception:
+                pass
+        return res
+
     target = f"http://127.0.0.1:{OMNIROUTE_PORT}/v1/{path}" if path else f"http://127.0.0.1:{OMNIROUTE_PORT}/v1"
     return await handle_omniroute_proxy(target, request, default_prefix="/omniroute")
 
