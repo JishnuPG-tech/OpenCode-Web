@@ -33,13 +33,16 @@ API_SERVER_KEY = (
 @router.api_route("/hermes/{path:path}", methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS", "HEAD"])
 async def hermes_proxy(request: Request, path: str = ""):
     clean_path = path.lstrip("/")
-    if request.method in ("GET", "HEAD") and clean_path in ("", "v1", "v1/", "health", "health/"):
+    while clean_path.startswith("v1/v1/"):
+        clean_path = clean_path[3:]
+
+    if request.method in ("GET", "HEAD") and clean_path in ("", "v1", "v1/", "health", "health/", "v1/health", "v1/health/"):
         from fastapi.responses import JSONResponse
         return JSONResponse(
             content={
-                "status": "online",
+                "status": "ok",
                 "service": "Hermes AI Agent Gateway",
-                "version": "v1",
+                "version": "0.19.0",
                 "endpoints": {
                     "models": "/hermes/v1/models",
                     "chat_completions": "/hermes/v1/chat/completions"
