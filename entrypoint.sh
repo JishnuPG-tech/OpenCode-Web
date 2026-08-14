@@ -485,8 +485,162 @@ fi
                 echo "[PERSISTENCE] Open WebUI DB snapshot OK: ${_WEBUI_DB_SIZE} bytes synced from ${_DB} to /data/open-webui/webui.db"
             fi
         done
+        # Sync Hermes persistent memory, skills, sessions, SQLite DB
+        if [ -d "/root/.hermes" ]; then
+            mkdir -p /data/hermes/memories /data/hermes/skills /data/hermes/sessions 2>/dev/null || true
+            rsync -a --update /root/.hermes/. /data/hermes/ 2>/dev/null || \
+                cp -rf /root/.hermes/. /data/hermes/ 2>/dev/null || true
+            _HERMES_SIZE=$(du -sh /data/hermes 2>/dev/null | cut -f1 || echo "?")
+            echo "[PERSISTENCE] Hermes snapshot OK: ${_HERMES_SIZE} synced to /data/hermes"
+        fi
     done
 ) &
+
+# Step 12: Start Hermes Agent in Background (Port 8642)
+if command -v hermes >/dev/null 2>&1; then
+    echo "[HEALTH] Hermes Agent starting in background on port 8642..."
+    mkdir -p /data/hermes/memories /data/hermes/skills /data/hermes/sessions 2>/dev/null || true
+    chmod -R 777 /data/hermes 2>/dev/null || true
+    if [ -d "/data/hermes" ] && [ "$(ls -A /data/hermes 2>/dev/null)" ]; then
+        rsync -a /data/hermes/. /root/.hermes/ 2>/dev/null || \
+            cp -rf /data/hermes/. /root/.hermes/ 2>/dev/null || true
+        echo "[PERSISTENCE] Restored Hermes memory from /data/hermes"
+    fi
+
+    # Create global Python sitecustomize.py to enforce OmniRoute API base for all LLM calls
+    for _SITEDIR in "/usr/local/lib/python3.11/dist-packages" "/usr/lib/python3.11" "/root/.hermes"; do
+        if [ -d "$_SITEDIR" ]; then
+            cat > "${_SITEDIR}/sitecustomize.py" << 'PYCUSTOM'
+import os
+os.environ["OPENAI_API_BASE"] = "http://127.0.0.1:20128/api/v1"
+os.environ["OPENAI_API_BASE_URL"] = "http://127.0.0.1:20128/api/v1"
+os.environ["OPENAI_BASE_URL"] = "http://127.0.0.1:20128/api/v1"
+os.environ["OPENAI_API_KEY"] = "admin123"
+os.environ["HERMES_API_BASE_URL"] = "http://127.0.0.1:20128/api/v1"
+os.environ["HERMES_API_KEY"] = "admin123"
+try:
+    import litellm
+    litellm.api_base = "http://127.0.0.1:20128/api/v1"
+    litellm.api_key = "admin123"
+    litellm.suppress_debug_info = True
+except Exception:
+    pass
+PYCUSTOM
+        fi
+    done
+    export PYTHONPATH="/root/.hermes:/usr/local/lib/python3.11/dist-packages:${PYTHONPATH}"
+
+    HERMES_LLM_KEY="${API_KEY_SECRET:-${INITIAL_PASSWORD:-admin123}}"
+    export HERMES_API_BASE_URL="http://127.0.0.1:20128/api/v1"
+    export HERMES_API_KEY="${HERMES_LLM_KEY}"
+    export OPENAI_API_BASE="http://127.0.0.1:20128/api/v1"
+    export OPENAI_API_KEY="${HERMES_LLM_KEY}"
+    export HERMES_MODEL="${HERMES_MODEL:-custom/auto}"
+    export HERMES_DATA_DIR="/root/.hermes"
+    export HERMES_GATEWAY_PORT=8642
+    export HERMES_PORT=8642
+    export PORT=8642
+    export API_SERVER_ENABLED=true
+    export API_SERVER_PORT=8642
+    export API_SERVER_HOST=127.0.0.1
+    export API_SERVER_KEY="${HERMES_GATEWAY_API_KEY:-${HERMES_API_KEY_SECRET:-${API_KEY_SECRET:-${INITIAL_PASSWORD:-admin123}}}}"
+    export HERMES_GATEWAY_API_KEY="${API_SERVER_KEY}"
+    export HERMES_GATEWAY_ENABLED=true
+
+    cat > /root/.hermes/.env << HERMES_ENV
+API_SERVER_ENABLED=true
+API_SERVER_PORT=8642
+API_SERVER_HOST=127.0.0.1
+API_SERVER_KEY=${API_SERVER_KEY}
+OPENAI_API_BASE=http://127.0.0.1:20128/api/v1
+OPENAI_API_BASE_URL=http://127.0.0.1:20128/api/v1
+OPENAI_API_KEY=${HERMES_LLM_KEY}
+HERMES_API_BASE_URL=http://127.0.0.1:20128/api/v1
+HERMES_API_KEY=${HERMES_LLM_KEY}
+DEFAULT_MODEL=${HERMES_MODEL}
+TELEGRAM_ENABLED=${TELEGRAM_BOT_TOKEN:+true}
+TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
+TELEGRAM_ALLOW_ALL_USERS=true
+TELEGRAM_ALLOWED_USERS=${TELEGRAM_ALLOWED_USERS:-*}
+HERMES_ENV
+
+    cat > /root/.hermes/config.json << HERMES_CFG
+{
+  "api_base_url": "http://127.0.0.1:20128/api/v1",
+  "api_key": "${HERMES_LLM_KEY}",
+  "model": "${HERMES_MODEL}",
+  "data_dir": "/root/.hermes",
+  "api_server": {
+    "enabled": true,
+    "port": 8642,
+    "host": "127.0.0.1",
+    "key": "${API_SERVER_KEY}"
+  },
+  "gateway": {
+    "enabled": true,
+    "port": 8642,
+    "api_key": "${API_SERVER_KEY}"
+  },
+  "memory": {
+    "enabled": true,
+    "sqlite_fts5": true,
+    "memory_file": "/root/.hermes/memories/MEMORY.md",
+    "user_file": "/root/.hermes/memories/USER.md"
+  },
+  "tools": {
+    "web_search": true,
+    "web_extract": true,
+    "browser_automation": true
+  },
+  "stt": {
+    "enabled": false
+  },
+  "tts": {
+    "enabled": false
+  }
+}
+HERMES_CFG
+
+    mkdir -p /data/hermes 2>/dev/null || true
+    cp -f /root/.hermes/.env /data/hermes/.env 2>/dev/null || true
+    cp -f /root/.hermes/config.json /data/hermes/config.json 2>/dev/null || true
+
+    if [ -n "$TELEGRAM_BOT_TOKEN" ]; then
+        export HERMES_TELEGRAM_TOKEN="$TELEGRAM_BOT_TOKEN"
+        export HERMES_TELEGRAM_ENABLED=true
+        export TELEGRAM_ALLOW_ALL_USERS=true
+        export TELEGRAM_ALLOWED_USERS="${TELEGRAM_ALLOWED_USERS:-*}"
+        echo "[HERMES] Telegram bot integration enabled"
+    fi
+
+    HERMES_START_CMD=""
+    if hermes gateway --help >/dev/null 2>&1; then
+        HERMES_START_CMD="hermes gateway"
+    elif hermes gateway run --help >/dev/null 2>&1; then
+        HERMES_START_CMD="hermes gateway run"
+    elif hermes serve --help >/dev/null 2>&1; then
+        HERMES_START_CMD="hermes serve"
+    fi
+
+    if [ -n "$HERMES_START_CMD" ]; then
+        $HERMES_START_CMD 2>&1 | tee /data/cache/hermes.log | sed 's/^/[HERMES] /' &
+        HERMES_PID=$!
+        echo "[PROCESS] Hermes Agent: PID ${HERMES_PID}"
+        for i in $(seq 1 30); do
+            if ! kill -0 $HERMES_PID 2>/dev/null; then
+                echo "[HERMES] ERROR: Process died immediately."
+                HERMES_PID=""
+                break
+            fi
+            if curl -fsS "http://127.0.0.1:8642/health" >/dev/null 2>&1 || \
+               curl -fsS "http://127.0.0.1:8642/v1/models" >/dev/null 2>&1; then
+                echo "[HEALTH] Hermes Agent ready after ${i}s"
+                break
+            fi
+            sleep 1
+        done
+    fi
+fi
 
 # Step 12: Keep PID 1 Alive and Monitor Child Processes
 echo "[BOOT] All services dispatched. Process Supervisor active."
@@ -508,6 +662,12 @@ while true; do
         echo "[CRITICAL] OmniRoute process died! Restarting..."
         (cd /omniroute && node server.js) > /data/omniroute/omniroute.log 2>&1 &
         OMNIROUTE_PID=$!
+    fi
+
+    if [ -n "$HERMES_PID" ] && [ -n "$HERMES_START_CMD" ] && ! kill -0 $HERMES_PID 2>/dev/null; then
+        echo "[CRITICAL] Hermes Agent process died! Restarting..."
+        $HERMES_START_CMD 2>&1 | tee /data/cache/hermes.log | sed 's/^/[HERMES] /' &
+        HERMES_PID=$!
     fi
 
     sleep 5

@@ -41,6 +41,10 @@ RUN pip3 install --no-cache-dir \
     aiohttp pyrogram tgcrypto open-webui httpx uvicorn fastapi \
     --break-system-packages
 
+# Install hermes-agent separately with --no-deps to avoid version backtracking
+RUN pip3 install --no-cache-dir --no-deps hermes-agent \
+    --break-system-packages
+
 # 4. Copy prebuilt OmniRoute production runtime from Stage 1
 #    /app inside the upstream image contains the complete standalone production server:
 #    .next/, server.js (or package.json start script), node_modules/, and Node binary
