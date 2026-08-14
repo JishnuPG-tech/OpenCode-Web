@@ -512,7 +512,7 @@ if command -v hermes >/dev/null 2>&1; then
     export HERMES_API_KEY="${HERMES_LLM_KEY}"
     export OPENAI_API_BASE="http://127.0.0.1:20128/api/v1"
     export OPENAI_API_KEY="${HERMES_LLM_KEY}"
-    export HERMES_MODEL="${HERMES_MODEL:-antigravity/gemini-2.5-flash}"
+    export HERMES_MODEL="${HERMES_MODEL:-custom/auto}"
     export HERMES_DATA_DIR="/root/.hermes"
     export HERMES_GATEWAY_PORT=8642
     export HERMES_PORT=8642

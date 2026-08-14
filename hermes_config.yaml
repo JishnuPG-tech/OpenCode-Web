@@ -1,5 +1,5 @@
 model:
-  default: antigravity/gemini-2.5-flash
+  default: custom/auto
   provider: custom
   base_url: http://127.0.0.1:20128/api/v1
   api_key: admin123
