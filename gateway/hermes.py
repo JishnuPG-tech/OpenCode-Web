@@ -91,4 +91,19 @@ async def hermes_proxy(request: Request, path: str = ""):
         if hasattr(res_retry, "body") and b"HTTP 401" not in res_retry.body:
             return res_retry
 
+    if res.status_code == 404 and request.method == "GET" and clean_path in ("", "v1", "v1/", "health", "health/"):
+        from fastapi.responses import JSONResponse
+        return JSONResponse(
+            content={
+                "status": "online",
+                "service": "Hermes AI Agent Gateway",
+                "version": "v1",
+                "endpoints": {
+                    "models": "/hermes/v1/models",
+                    "chat_completions": "/hermes/v1/chat/completions"
+                }
+            },
+            status_code=200
+        )
+
     return res
