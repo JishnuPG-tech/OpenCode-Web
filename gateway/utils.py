@@ -89,6 +89,7 @@ def build_upstream_headers(request: Request, extra_headers: Optional[Dict[str, s
     headers["X-Forwarded-Proto"] = "https"
     headers["X-Forwarded-Port"]  = "443"
     headers["X-Real-IP"]         = request.client.host if request.client else "127.0.0.1"
+    headers["User-Agent"]        = "Python-urllib/3.11"
     if extra_headers:
         for ek, ev in extra_headers.items():
             for existing_k in list(headers.keys()):
