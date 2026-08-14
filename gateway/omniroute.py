@@ -62,10 +62,20 @@ def fixup_omniroute_html(html: str) -> str:
         html = html.replace("<head>", f"<head>{OMNIROUTE_JS_PATCH}", 1)
     elif "<head " in html:
         html = re.sub(r"(<head[^>]*>)", r"\1" + OMNIROUTE_JS_PATCH, html, count=1)
-    return html
+MASTER_KEY = (
+    os.getenv("INITIAL_PASSWORD")
+    or os.getenv("API_KEY_SECRET")
+    or os.getenv("OMNIROUTE_INITIAL_PASSWORD")
+    or "admin123"
+)
 
 async def handle_omniroute_proxy(target: str, request: Request, default_prefix: str = "/omniroute", html_fixup=None):
-    res = await proxy_http_request(target, request, default_prefix=default_prefix, html_fixup=html_fixup)
+    extra_auth = {
+        "Authorization": f"Bearer {MASTER_KEY}",
+        "X-API-Key": MASTER_KEY,
+        "api-key": MASTER_KEY,
+    }
+    res = await proxy_http_request(target, request, default_prefix=default_prefix, extra_headers=extra_auth, html_fixup=html_fixup)
     if res.status_code in (500, 502, 503) and request.method == "GET" and "html" in request.headers.get("accept", "").lower():
         log_content = ""
         for log_file in ["/data/omniroute/omniroute.log", "/root/.omniroute/omniroute.log"]:
