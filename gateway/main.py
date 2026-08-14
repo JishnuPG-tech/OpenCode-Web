@@ -112,6 +112,7 @@ async def route_catch_all(path: str, request: Request):
         "/api/token-",
         "/api/sync/",
         "/api/oauth",
+        "/api/settings",
         "/api/monitoring",
         "/api/combos",
         "/api/keys",
