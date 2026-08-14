@@ -575,14 +575,21 @@ HERMES_ENV
 HERMES_CFG
 
     # Restore repository hermes_config.yaml if present
-    if [ -f "/app/hermes_config.yaml" ]; then
-        cp /app/hermes_config.yaml /root/.hermes/config.yaml
-        echo "[HERMES] Restored repository hermes_config.yaml -> /root/.hermes/config.yaml"
-    elif [ -f "./hermes_config.yaml" ]; then
-        cp ./hermes_config.yaml /root/.hermes/config.yaml
-        echo "[HERMES] Restored ./hermes_config.yaml -> /root/.hermes/config.yaml"
-    fi
-    echo "[HERMES] Config & .env written: OmniRoute -> http://127.0.0.1:20128/v1, model=${HERMES_MODEL}, API_SERVER_PORT=8642"
+    for _CFG in "/hermes_config.yaml" "/app/hermes_config.yaml" "./hermes_config.yaml" "$(pwd)/hermes_config.yaml"; do
+        if [ -f "$_CFG" ]; then
+            cp -f "$_CFG" /root/.hermes/config.yaml
+            echo "[HERMES] Restored repository ${_CFG} -> /root/.hermes/config.yaml"
+            break
+        fi
+    done
+
+    # Sync valid configs to persistent volume so stale configs are never restored
+    mkdir -p /data/hermes 2>/dev/null || true
+    cp -f /root/.hermes/config.yaml /data/hermes/config.yaml 2>/dev/null || true
+    cp -f /root/.hermes/.env /data/hermes/.env 2>/dev/null || true
+    cp -f /root/.hermes/config.json /data/hermes/config.json 2>/dev/null || true
+
+    echo "[HERMES] Config & .env written: OmniRoute -> http://127.0.0.1:20128/api/v1, model=${HERMES_MODEL}, API_SERVER_PORT=8642"
 
     # Configure Telegram bot integration if token is provided
     if [ -n "$TELEGRAM_BOT_TOKEN" ]; then
