@@ -507,11 +507,11 @@ if command -v hermes >/dev/null 2>&1; then
             cp -rf /data/hermes/. /root/.hermes/ 2>/dev/null || true
         echo "[PERSISTENCE] Restored Hermes memory from /data/hermes"
     fi
-    # Configure Hermes to use OmniRoute as its LLM backend & enable API server
+    HERMES_LLM_KEY="${API_KEY_SECRET:-${INITIAL_PASSWORD:-admin123}}"
     export HERMES_API_BASE_URL="http://127.0.0.1:20128/v1"
-    export HERMES_API_KEY="omniroute"
+    export HERMES_API_KEY="${HERMES_LLM_KEY}"
     export OPENAI_API_BASE="http://127.0.0.1:20128/v1"
-    export OPENAI_API_KEY="omniroute"
+    export OPENAI_API_KEY="${HERMES_LLM_KEY}"
     export HERMES_MODEL="${HERMES_MODEL:-antigravity/gemini-2.5-flash}"
     export HERMES_DATA_DIR="/root/.hermes"
     export HERMES_GATEWAY_PORT=8642
@@ -520,7 +520,7 @@ if command -v hermes >/dev/null 2>&1; then
     export API_SERVER_ENABLED=true
     export API_SERVER_PORT=8642
     export API_SERVER_HOST=127.0.0.1
-    export API_SERVER_KEY="${HERMES_GATEWAY_API_KEY:-${HERMES_API_KEY_SECRET:-${API_KEY_SECRET:-${INITIAL_PASSWORD:-hermes_secret_key}}}}"
+    export API_SERVER_KEY="${HERMES_GATEWAY_API_KEY:-${HERMES_API_KEY_SECRET:-${API_KEY_SECRET:-${INITIAL_PASSWORD:-admin123}}}}"
     export HERMES_GATEWAY_API_KEY="${API_SERVER_KEY}"
     export HERMES_GATEWAY_ENABLED=true
 
@@ -532,9 +532,9 @@ API_SERVER_HOST=127.0.0.1
 API_SERVER_KEY=${API_SERVER_KEY}
 OPENAI_API_BASE=http://127.0.0.1:20128/v1
 OPENAI_API_BASE_URL=http://127.0.0.1:20128/v1
-OPENAI_API_KEY=omniroute
+OPENAI_API_KEY=${HERMES_LLM_KEY}
 HERMES_API_BASE_URL=http://127.0.0.1:20128/v1
-HERMES_API_KEY=omniroute
+HERMES_API_KEY=${HERMES_LLM_KEY}
 DEFAULT_MODEL=${HERMES_MODEL}
 TELEGRAM_ENABLED=${TELEGRAM_BOT_TOKEN:+true}
 TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
@@ -546,7 +546,7 @@ HERMES_ENV
     cat > /root/.hermes/config.json << HERMES_CFG
 {
   "api_base_url": "http://127.0.0.1:20128/v1",
-  "api_key": "omniroute",
+  "api_key": "${HERMES_LLM_KEY}",
   "model": "${HERMES_MODEL}",
   "data_dir": "/root/.hermes",
   "api_server": {
