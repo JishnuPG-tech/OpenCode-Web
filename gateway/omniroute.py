@@ -177,8 +177,10 @@ async def omniroute_oauth(request: Request, path: str = ""):
 # ── OpenAI API Endpoint Routing (20128) ─────────────────────────────────────
 @router.api_route("/v1", methods=["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"])
 @router.api_route("/v1/{path:path}", methods=["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"])
-@router.api_route("/api/v1", methods=["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"])
-@router.api_route("/api/v1/{path:path}", methods=["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"])
+@router.api_route("/api/v1/chat/completions", methods=["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"])
+@router.api_route("/api/v1/models", methods=["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"])
+@router.api_route("/api/v1/embeddings", methods=["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"])
+@router.api_route("/api/v1/completions", methods=["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"])
 async def omniroute_v1_api(request: Request, path: str = ""):
     if path in ("openapi.json", "openapi.json/"):
         return JSONResponse({
