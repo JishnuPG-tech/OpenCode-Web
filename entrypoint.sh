@@ -507,6 +507,29 @@ if command -v hermes >/dev/null 2>&1; then
             cp -rf /data/hermes/. /root/.hermes/ 2>/dev/null || true
         echo "[PERSISTENCE] Restored Hermes memory from /data/hermes"
     fi
+    # Create global Python sitecustomize.py to enforce OmniRoute API base for all LLM calls
+    for _SITEDIR in "/usr/local/lib/python3.11/dist-packages" "/usr/lib/python3.11" "/root/.hermes"; do
+        if [ -d "$_SITEDIR" ]; then
+            cat > "${_SITEDIR}/sitecustomize.py" << 'PYCUSTOM'
+import os
+os.environ["OPENAI_API_BASE"] = "http://127.0.0.1:20128/api/v1"
+os.environ["OPENAI_API_BASE_URL"] = "http://127.0.0.1:20128/api/v1"
+os.environ["OPENAI_BASE_URL"] = "http://127.0.0.1:20128/api/v1"
+os.environ["OPENAI_API_KEY"] = "admin123"
+os.environ["HERMES_API_BASE_URL"] = "http://127.0.0.1:20128/api/v1"
+os.environ["HERMES_API_KEY"] = "admin123"
+try:
+    import litellm
+    litellm.api_base = "http://127.0.0.1:20128/api/v1"
+    litellm.api_key = "admin123"
+    litellm.suppress_debug_info = True
+except Exception:
+    pass
+PYCUSTOM
+        fi
+    done
+    export PYTHONPATH="/root/.hermes:/usr/local/lib/python3.11/dist-packages:${PYTHONPATH}"
+
     HERMES_LLM_KEY="${API_KEY_SECRET:-${INITIAL_PASSWORD:-admin123}}"
     export HERMES_API_BASE_URL="http://127.0.0.1:20128/api/v1"
     export HERMES_API_KEY="${HERMES_LLM_KEY}"

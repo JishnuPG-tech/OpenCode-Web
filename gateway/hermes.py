@@ -110,6 +110,20 @@ async def hermes_proxy(path: str, request: Request):
         if res_key.status_code < 400:
             return res_key
 
+    # Stage 4: If 200 returned but body has 401 error string, retry once after short delay
+    if res.status_code == 200 and hasattr(res, "body") and b"HTTP 401" in res.body:
+        import asyncio
+        logger.info(f"[HERMES RETRY] Retrying upstream call on 401 body content: {upstream}")
+        await asyncio.sleep(0.3)
+        res_retry = await proxy_http_request(
+            upstream,
+            request,
+            default_prefix="/hermes",
+            extra_headers=primary_headers,
+        )
+        if hasattr(res_retry, "body") and b"HTTP 401" not in res_retry.body:
+            return res_retry
+
     return res
 
 
