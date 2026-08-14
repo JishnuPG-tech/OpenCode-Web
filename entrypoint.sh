@@ -405,7 +405,7 @@ if command -v open-webui >/dev/null 2>&1; then
         echo "[PERSISTENCE] Restored Open WebUI database snapshot ($(wc -c < /data/open-webui/webui.db | tr -d ' ') bytes)."
     fi
 
-    # Clean up legacy RAG embedding model 'none' from webui.db if present
+    # Clean up legacy RAG embedding model 'none' or empty from webui.db if present
     python3 -c "
 import sqlite3, json
 for path in ['/root/.open-webui/webui.db', '/root/.open-webui/data/webui.db', '/data/open-webui/webui.db']:
@@ -416,10 +416,10 @@ for path in ['/root/.open-webui/webui.db', '/root/.open-webui/data/webui.db', '/
         row = cursor.fetchone()
         if row:
             data = json.loads(row[1])
-            if data.get('embedding_model') == 'none':
-                data['embedding_model'] = ''
-            if data.get('embedding_engine') == 'none':
-                data['embedding_engine'] = ''
+            if data.get('embedding_model') in ('none', '', None):
+                data['embedding_model'] = 'all-MiniLM-L6-v2'
+            if data.get('embedding_engine') in ('none', '', None):
+                data['embedding_engine'] = 'sentence_transformers'
             cursor.execute('UPDATE config SET data = ? WHERE id = \"rag\"', (json.dumps(data),))
             conn.commit()
             print(f'[FIX] Cleaned RAG config in {path}')
