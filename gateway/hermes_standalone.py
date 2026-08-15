@@ -206,7 +206,8 @@ async def chat_completions(request: Request):
 
     _TELEMETRY_STATS["chat_completions_count"] += 1
 
-    target_model = model if (model and model not in ("hermes-agent", "custom/auto")) else "auto"
+    is_auto = not model or model in ("auto", "hermes-agent", "custom/auto") or str(model).startswith("auto/") or str(model).startswith("omniroute/")
+    target_model = "auto" if is_auto else model
     payload = {
         "model": target_model,
         "messages": messages,
@@ -224,7 +225,7 @@ async def chat_completions(request: Request):
     target_endpoint = f"{base_url}/chat/completions"
 
     async with httpx.AsyncClient(timeout=35.0) as client:
-        models_to_try = [target_model] if target_model not in ("auto", "hermes-agent", "custom/auto") else []
+        models_to_try = [] if is_auto else [target_model]
         try:
             m_res = await client.get(f"{base_url}/models", headers=headers, timeout=5.0)
             if m_res.status_code == 200:
