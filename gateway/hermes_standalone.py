@@ -224,6 +224,20 @@ async def chat_completions(request: Request):
     target_endpoint = f"{base_url}/chat/completions"
 
     async with httpx.AsyncClient(timeout=30.0) as client:
+        if target_model == "auto":
+            try:
+                m_res = await client.get(f"{base_url}/models", headers=headers, timeout=5.0)
+                if m_res.status_code == 200:
+                    m_data = m_res.json()
+                    m_list = m_data.get("data") if isinstance(m_data, dict) else []
+                    synced_models = [m["id"] for m in m_list if isinstance(m, dict) and m.get("id") and m["id"] not in ("hermes-agent", "auto")]
+                    if synced_models:
+                        target_model = synced_models[0]
+                        payload["model"] = target_model
+                        logger.info(f"[HERMES MODEL RESOLVE] Resolved 'auto' -> '{target_model}'")
+            except Exception as me:
+                logger.warning(f"[HERMES MODEL RESOLVE] Error resolving auto model: {me}")
+
         try:
             r = await client.post(target_endpoint, json=payload, headers=headers)
             duration_ms = (time.time() - t0) * 1000
