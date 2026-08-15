@@ -382,10 +382,10 @@ echo "[BOOT] Background services starting asynchronously..."
     export CLI_COMPAT_CURSOR=1
     export CLI_COMPAT_QWEN=1
     export OMNIROUTE_AUTO_FREE_FALLBACK_TO_FULL_POOL=true
-    export OMNIROUTE_ALLOW_UNAUTHENTICATED=false
-    export REQUIRE_API_KEY=true
-    export OMNIROUTE_REQUIRE_API_KEY=true
-    export OMNIROUTE_AUTH_REQUIRED=true
+    export OMNIROUTE_ALLOW_UNAUTHENTICATED=true
+    export REQUIRE_API_KEY=false
+    export OMNIROUTE_REQUIRE_API_KEY=false
+    export OMNIROUTE_AUTH_REQUIRED=false
 
     if [ -d "/omniroute" ]; then
         cd /omniroute
