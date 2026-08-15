@@ -234,6 +234,7 @@ async def chat_completions(request: Request):
                     m["id"] for m in m_list 
                     if isinstance(m, dict) and m.get("id") 
                     and not str(m["id"]).startswith("omniroute/") 
+                    and not str(m["id"]).startswith("auto/")
                     and m["id"] not in ("hermes-agent", "auto")
                 ]
                 for sm in synced_models:
@@ -257,7 +258,9 @@ async def chat_completions(request: Request):
                     res_data = r.json()
                     if isinstance(res_data, dict) and res_data.get("choices") and len(res_data["choices"]) > 0:
                         choice = res_data["choices"][0]
-                        if isinstance(choice, dict) and (choice.get("message") or choice.get("delta")):
+                        msg_obj = choice.get("message") or choice.get("delta") or {}
+                        content_str = str(msg_obj.get("content") or "")
+                        if "OmniRoute AI Gateway active" not in content_str:
                             if not res_data.get("usage"):
                                 res_data["usage"] = {"prompt_tokens": 10, "completion_tokens": 15, "total_tokens": 25}
                             return JSONResponse(content=res_data, status_code=200)

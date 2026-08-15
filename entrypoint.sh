@@ -619,9 +619,9 @@ PYCUSTOM
     fi
 
     HERMES_LLM_KEY="${OMNIROUTE_API_KEY:-sk-6646a5f2024f6318-d27ff7-f3e152c8}"
-    export HERMES_API_BASE_URL="http://127.0.0.1:20128/v1"
+    export HERMES_API_BASE_URL="http://127.0.0.1:8000/v1"
     export HERMES_API_KEY="${HERMES_LLM_KEY}"
-    export OPENAI_API_BASE="http://127.0.0.1:20128/v1"
+    export OPENAI_API_BASE="http://127.0.0.1:8000/v1"
     export OPENAI_API_KEY="${HERMES_LLM_KEY}"
     export HERMES_MODEL="${HERMES_MODEL:-auto}"
     export HERMES_DATA_DIR="/root/.hermes"
@@ -640,10 +640,10 @@ API_SERVER_ENABLED=true
 API_SERVER_PORT=8642
 API_SERVER_HOST=127.0.0.1
 API_SERVER_KEY=${API_SERVER_KEY}
-OPENAI_API_BASE=http://127.0.0.1:20128/v1
-OPENAI_API_BASE_URL=http://127.0.0.1:20128/v1
+OPENAI_API_BASE=http://127.0.0.1:8000/v1
+OPENAI_API_BASE_URL=http://127.0.0.1:8000/v1
 OPENAI_API_KEY=${HERMES_LLM_KEY}
-HERMES_API_BASE_URL=http://127.0.0.1:20128/v1
+HERMES_API_BASE_URL=http://127.0.0.1:8000/v1
 HERMES_API_KEY=${HERMES_LLM_KEY}
 DEFAULT_MODEL=${HERMES_MODEL}
 TELEGRAM_ENABLED=${TELEGRAM_BOT_TOKEN:+true}
@@ -654,7 +654,7 @@ HERMES_ENV
 
     cat > /root/.hermes/config.json << HERMES_CFG
 {
-  "api_base_url": "http://127.0.0.1:20128/v1",
+  "api_base_url": "http://127.0.0.1:8000/v1",
   "api_key": "${HERMES_LLM_KEY}",
   "model": "${HERMES_MODEL}",
   "data_dir": "/root/.hermes",
