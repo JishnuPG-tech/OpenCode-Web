@@ -13,7 +13,7 @@ logger = get_structured_logger("HermesStandalone")
 app = FastAPI(title="Hermes Standalone Server")
 
 OMNIROUTE_URL = os.getenv("HERMES_API_BASE_URL", "http://127.0.0.1:20128/v1")
-MASTER_KEY = os.getenv("API_SERVER_KEY", "sk-2e556e0437ee2958-7baf2d-b4133935")
+MASTER_KEY = os.getenv("OMNIROUTE_API_KEY") or os.getenv("API_SERVER_KEY") or "sk-6646a5f2024f6318-d27ff7-f3e152c8"
 
 TELEMETRY_LOG = "/data/cache/hermes_telemetry.log"
 _TELEMETRY_STATS = {

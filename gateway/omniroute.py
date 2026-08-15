@@ -63,10 +63,11 @@ def fixup_omniroute_html(html: str) -> str:
     elif "<head " in html:
         html = re.sub(r"(<head[^>]*>)", r"\1" + OMNIROUTE_JS_PATCH, html, count=1)
 MASTER_KEY = (
-    os.getenv("INITIAL_PASSWORD")
+    os.getenv("OMNIROUTE_API_KEY")
+    or os.getenv("INITIAL_PASSWORD")
     or os.getenv("API_KEY_SECRET")
     or os.getenv("OMNIROUTE_INITIAL_PASSWORD")
-    or "sk-2e556e0437ee2958-7baf2d-b4133935"
+    or "sk-6646a5f2024f6318-d27ff7-f3e152c8"
 )
 
 async def handle_omniroute_proxy(target: str, request: Request, default_prefix: str = "/omniroute", html_fixup=None):

@@ -591,9 +591,9 @@ import os
 os.environ["OPENAI_API_BASE"] = "http://127.0.0.1:20128/v1"
 os.environ["OPENAI_API_BASE_URL"] = "http://127.0.0.1:20128/v1"
 os.environ["OPENAI_BASE_URL"] = "http://127.0.0.1:20128/v1"
-os.environ["OPENAI_API_KEY"] = "sk-2e556e0437ee2958-7baf2d-b4133935"
+os.environ["OPENAI_API_KEY"] = os.getenv("OMNIROUTE_API_KEY", "sk-6646a5f2024f6318-d27ff7-f3e152c8")
 os.environ["HERMES_API_BASE_URL"] = "http://127.0.0.1:20128/v1"
-os.environ["HERMES_API_KEY"] = "sk-2e556e0437ee2958-7baf2d-b4133935"
+os.environ["HERMES_API_KEY"] = os.getenv("OMNIROUTE_API_KEY", "sk-6646a5f2024f6318-d27ff7-f3e152c8")
 try:
     import open_webui.routers.retrieval as rrouter
     rrouter.get_ef = lambda engine, model: None
@@ -609,11 +609,11 @@ PYCUSTOM
     done
     export PYTHONPATH="/:/root/.hermes:/usr/local/lib/python3.11/dist-packages:${PYTHONPATH}"
 
-    if [ -n "${HERMES_API_KEY}" ] && [ "${HERMES_API_KEY}" != "sk-2e556e0437ee2958-7baf2d-b4133935" ] && [ "${HERMES_API_KEY}" != "admin123" ]; then
+    if [ -n "${HERMES_API_KEY}" ] && [ "${HERMES_API_KEY}" != "sk-6646a5f2024f6318-d27ff7-f3e152c8" ] && [ "${HERMES_API_KEY}" != "admin123" ]; then
         export HF_HERMES_API_KEY="${HERMES_API_KEY}"
     fi
 
-    HERMES_LLM_KEY="sk-2e556e0437ee2958-7baf2d-b4133935"
+    HERMES_LLM_KEY="${OMNIROUTE_API_KEY:-sk-6646a5f2024f6318-d27ff7-f3e152c8}"
     export HERMES_API_BASE_URL="http://127.0.0.1:20128/v1"
     export HERMES_API_KEY="${HERMES_LLM_KEY}"
     export OPENAI_API_BASE="http://127.0.0.1:20128/v1"
@@ -626,7 +626,7 @@ PYCUSTOM
     export API_SERVER_ENABLED=true
     export API_SERVER_PORT=8642
     export API_SERVER_HOST=127.0.0.1
-    export API_SERVER_KEY="${HF_HERMES_API_KEY:-${HERMES_GATEWAY_API_KEY:-${HERMES_API_KEY_SECRET:-${API_KEY_SECRET:-${INITIAL_PASSWORD:-sk-2e556e0437ee2958-7baf2d-b4133935}}}}}"
+    export API_SERVER_KEY="${HF_HERMES_API_KEY:-${HERMES_GATEWAY_API_KEY:-${HERMES_API_KEY_SECRET:-${API_KEY_SECRET:-${INITIAL_PASSWORD:-sk-6646a5f2024f6318-d27ff7-f3e152c8}}}}}"
     export HERMES_GATEWAY_API_KEY="${API_SERVER_KEY}"
     export HERMES_GATEWAY_ENABLED=true
 

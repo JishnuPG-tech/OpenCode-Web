@@ -19,13 +19,14 @@ router = APIRouter(tags=["Hermes"])
 
 HERMES_PORT = 8642
 API_SERVER_KEY = (
-    os.getenv("HERMES_API_KEY")
+    os.getenv("OMNIROUTE_API_KEY")
+    or os.getenv("HERMES_API_KEY")
     or os.getenv("HF_HERMES_API_KEY")
     or os.getenv("HERMES_GATEWAY_API_KEY")
     or os.getenv("HERMES_API_KEY_SECRET")
     or os.getenv("API_KEY_SECRET")
     or os.getenv("INITIAL_PASSWORD")
-    or "sk-2e556e0437ee2958-7baf2d-b4133935"
+    or "sk-6646a5f2024f6318-d27ff7-f3e152c8"
 )
 
 
