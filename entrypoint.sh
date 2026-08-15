@@ -450,12 +450,13 @@ if command -v open-webui >/dev/null 2>&1; then
     fi
     if [ -f "/data/open-webui/webui.db" ] && [ -s "/data/open-webui/webui.db" ]; then
         mkdir -p /root/.open-webui/data 2>/dev/null || true
+        rm -f /root/.open-webui/*.db-wal /root/.open-webui/*.db-shm /data/open-webui/*.db-wal /data/open-webui/*.db-shm 2>/dev/null || true
         cp -f /data/open-webui/webui.db /root/.open-webui/webui.db 2>/dev/null || true
         cp -f /data/open-webui/webui.db /root/.open-webui/data/webui.db 2>/dev/null || true
         echo "[PERSISTENCE] Restored Open WebUI database snapshot ($(wc -c < /data/open-webui/webui.db | tr -d ' ') bytes)."
     fi
 
-    # Configure lightweight RAG embedding engine ('none') across all webui.db config rows
+    # Configure lightweight RAG embedding engine ('none') across all webui.db config rows & reset journal mode
     python3 -c "
 import sqlite3, json, os
 for path in ['/root/.open-webui/webui.db', '/root/.open-webui/data/webui.db', '/data/open-webui/webui.db']:
@@ -464,6 +465,10 @@ for path in ['/root/.open-webui/webui.db', '/root/.open-webui/data/webui.db', '/
             continue
         conn = sqlite3.connect(path)
         cursor = conn.cursor()
+        try:
+            cursor.execute('PRAGMA journal_mode=DELETE;')
+        except Exception:
+            pass
         cursor.execute(\"SELECT name FROM sqlite_master WHERE type='table';\")
         tables = [t[0] for t in cursor.fetchall()]
         if 'config' in tables:
