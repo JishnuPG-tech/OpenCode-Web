@@ -255,7 +255,7 @@ async def omniroute_v1_api(request: Request, path: str = ""):
                     "index": 0,
                     "message": {
                         "role": "assistant",
-                        "content": f"OpenCode AI Gateway active. Received: '{user_msg}'. Connection verified."
+                        "content": "OmniRoute AI Gateway active! 🤖\n\nTo generate AI responses, connect an AI provider key (e.g. Gemini, Groq, OpenAI, DeepSeek) at https://jishnupg-opencode-cli.hf.space/dashboard/providers"
                     },
                     "finish_reason": "stop"
                 }],

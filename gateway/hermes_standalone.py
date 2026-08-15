@@ -247,7 +247,13 @@ async def chat_completions(request: Request):
             user_query = msg.get("content", "")
             break
 
-    reply_text = f"Hermes Agent online. Received: '{user_query or 'Hello'}'. Connection verified and operational."
+    reply_text = (
+        f"Hermes Agent connected cleanly! 🤖\n\n"
+        f"OmniRoute is acting as my LLM brain engine. To start generating intelligent AI answers, please connect an AI model provider key:\n\n"
+        f"1. Open OmniRoute Dashboard: https://jishnupg-opencode-cli.hf.space/dashboard/providers\n"
+        f"2. Add your free or paid API key for any provider (e.g. Gemini, Groq, OpenAI, DeepSeek, OpenRouter).\n"
+        f"3. Alternatively, set `GEMINI_API_KEY`, `GROQ_API_KEY`, or `OPENAI_API_KEY` in your Hugging Face Space secrets."
+    )
     duration_ms = (time.time() - t0) * 1000
     record_hermes_telemetry("chat_completions_fallback", duration_ms, {"model": model, "stream": stream})
 
