@@ -214,10 +214,56 @@ async def omniroute_v1_api(request: Request, path: str = ""):
         })
     if path == "chat/completions" or path.endswith("chat/completions"):
         target = f"http://127.0.0.1:{OMNIROUTE_PORT}/v1/chat/completions"
+        extra_auth = {"Authorization": f"Bearer {MASTER_KEY}"}
+        
+        req_body = None
+        try:
+            raw_body = await request.body()
+            if raw_body:
+                req_body = json.loads(raw_body.decode('utf-8'))
+        except Exception:
+            pass
+
+        if isinstance(req_body, dict):
+            req_model = str(req_body.get("model") or "auto")
+            is_auto_req = req_model in ("auto", "hermes-agent", "custom/auto") or req_model.startswith("auto/") or req_model.startswith("omniroute/")
+            if is_auto_req:
+                real_models = []
+                try:
+                    m_res = await get_http_client().get(f"http://127.0.0.1:{OMNIROUTE_PORT}/v1/models", headers=extra_auth, timeout=3.0)
+                    if m_res.status_code == 200:
+                        m_list = m_res.json().get("data", [])
+                        real_models = [
+                            m["id"] for m in m_list 
+                            if isinstance(m, dict) and m.get("id") 
+                            and not str(m["id"]).startswith("omniroute/") 
+                            and not str(m["id"]).startswith("auto/") 
+                            and m["id"] not in ("auto", "hermes-agent")
+                        ]
+                except Exception:
+                    pass
+
+                if real_models:
+                    for try_model in real_models[:10]:
+                        req_body["model"] = try_model
+                        new_body_bytes = json.dumps(req_body).encode('utf-8')
+                        res = await proxy_http_request(target, request, default_prefix="/omniroute", extra_headers=extra_auth, body_override=new_body_bytes)
+                        if res.status_code == 200:
+                            if "application/json" in res.headers.get("content-type", "").lower():
+                                try:
+                                    resp_data = json.loads(res.body)
+                                    if isinstance(resp_data, dict) and resp_data.get("choices"):
+                                        c_str = str(resp_data["choices"][0].get("message", {}).get("content") or "")
+                                        if "OmniRoute AI Gateway active" not in c_str:
+                                            return res
+                                except Exception:
+                                    return res
+                            else:
+                                return res
+
         res = await handle_omniroute_proxy(target, request, default_prefix="/omniroute")
         if res.status_code == 200 and "application/json" in res.headers.get("content-type", "").lower():
             try:
-                import json
                 data = json.loads(res.body)
                 if isinstance(data, dict) and "choices" in data and isinstance(data["choices"], list):
                     modified = False

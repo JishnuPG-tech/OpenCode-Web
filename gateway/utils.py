@@ -157,10 +157,11 @@ async def proxy_http_request(
     default_prefix: str = "",
     extra_headers: Optional[Dict[str, str]] = None,
     html_fixup: Optional[Callable[[str], str]] = None,
+    body_override: Optional[bytes] = None,
 ) -> Response:
     client = get_http_client()
     headers = build_upstream_headers(request, extra_headers)
-    body    = await request.body()
+    body    = body_override if body_override is not None else await request.body()
     method  = request.method
     params  = dict(request.query_params)
 
