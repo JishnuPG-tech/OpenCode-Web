@@ -498,6 +498,22 @@ for path in ['/root/.open-webui/webui.db', '/root/.open-webui/data/webui.db', '/
         pass
 " 2>/dev/null || true
 
+    # Patch Open WebUI internal db.py to use journal_mode=DELETE to prevent SQLite WAL disk I/O errors
+    python3 -c "
+import glob
+for path in glob.glob('/usr/local/lib/python*/dist-packages/open_webui/internal/db.py'):
+    try:
+        with open(path, 'r', encoding='utf-8') as f:
+            code = f.read()
+        if 'PRAGMA journal_mode=WAL' in code:
+            code = code.replace('PRAGMA journal_mode=WAL', 'PRAGMA journal_mode=DELETE')
+            with open(path, 'w', encoding='utf-8') as f:
+                f.write(code)
+            print('[FIX] Patched Open WebUI journal_mode=DELETE in db.py')
+    except Exception as e:
+        print('[FIX] Could not patch db.py:', e)
+" 2>/dev/null || true
+
     # 5. Start Open WebUI
     echo "[INIT] Starting Open WebUI on port 8098..."
     if command -v open-webui >/dev/null 2>&1; then
