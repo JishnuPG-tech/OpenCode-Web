@@ -230,7 +230,7 @@ async def chat_completions(request: Request):
                 if m_res.status_code == 200:
                     m_data = m_res.json()
                     m_list = m_data.get("data") if isinstance(m_data, dict) else []
-                    synced_models = [m["id"] for m in m_list if isinstance(m, dict) and m.get("id") and m["id"] not in ("hermes-agent", "auto")]
+                    synced_models = [m["id"] for m in m_list if isinstance(m, dict) and m.get("id") and not str(m["id"]).startswith("omniroute/") and m["id"] not in ("hermes-agent", "auto")]
                     if synced_models:
                         target_model = synced_models[0]
                         payload["model"] = target_model

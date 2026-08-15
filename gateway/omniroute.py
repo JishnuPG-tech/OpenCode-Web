@@ -194,7 +194,8 @@ async def omniroute_v1_api(request: Request, path: str = ""):
     if path == "models" and request.method == "GET":
         target = f"http://127.0.0.1:{OMNIROUTE_PORT}/v1/models"
         try:
-            res = await proxy_http_request(target, request, default_prefix="/omniroute")
+            extra_auth = {"Authorization": f"Bearer {MASTER_KEY}"}
+            res = await proxy_http_request(target, request, default_prefix="/omniroute", extra_headers=extra_auth)
             if res.status_code == 200:
                 return res
         except Exception:
