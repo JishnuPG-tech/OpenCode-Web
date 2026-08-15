@@ -238,6 +238,29 @@ async def chat_completions(request: Request):
                         if not res_data.get("usage"):
                             res_data["usage"] = {"prompt_tokens": 10, "completion_tokens": 15, "total_tokens": 25}
                         return JSONResponse(content=res_data, status_code=200)
+
+            # Fallback: Query synced provider models if 'auto' returned empty choices
+            try:
+                models_res = await client.get(f"{base_url}/models", headers=headers)
+                if models_res.status_code == 200:
+                    models_data = models_res.json()
+                    data_list = models_data.get("data") if isinstance(models_data, dict) else []
+                    valid_models = [m["id"] for m in data_list if isinstance(m, dict) and m.get("id") and m["id"] not in ("hermes-agent", "auto")]
+                    for fallback_model in valid_models[:5]:
+                        payload["model"] = fallback_model
+                        r2 = await client.post(target_endpoint, json=payload, headers=headers)
+                        if r2.status_code == 200:
+                            if stream:
+                                return StreamingResponse(r2.aiter_bytes(), media_type="text/event-stream")
+                            res_data2 = r2.json()
+                            if isinstance(res_data2, dict) and res_data2.get("choices") and len(res_data2["choices"]) > 0:
+                                choice = res_data2["choices"][0]
+                                if isinstance(choice, dict) and choice.get("message"):
+                                    if not res_data2.get("usage"):
+                                        res_data2["usage"] = {"prompt_tokens": 10, "completion_tokens": 15, "total_tokens": 25}
+                                    return JSONResponse(content=res_data2, status_code=200)
+            except Exception as fexc:
+                logger.warning(f"Fallback model proxy error: {fexc}")
         except Exception as exc:
             logger.warning(f"OmniRoute proxy error: {exc}")
 
