@@ -236,37 +236,7 @@ async def omniroute_v1_api(request: Request, path: str = ""):
             return res
 
         if res.status_code >= 400:
-            import time
-            try:
-                body = await request.json()
-            except Exception:
-                body = {}
-            messages = body.get("messages") or []
-            user_msg = "Hello"
-            for m in reversed(messages):
-                if isinstance(m, dict) and m.get("role") == "user":
-                    user_msg = m.get("content", "Hello")
-                    break
-            model_name = body.get("model") or "auto"
-            return JSONResponse(content={
-                "id": f"chatcmpl-fallback-{int(time.time()*1000)}",
-                "object": "chat.completion",
-                "created": int(time.time()),
-                "model": model_name,
-                "choices": [{
-                    "index": 0,
-                    "message": {
-                        "role": "assistant",
-                        "content": "OmniRoute AI Gateway active! 🤖\n\nTo generate AI responses, connect an AI provider key (e.g. Gemini, Groq, OpenAI, DeepSeek) at https://jishnupg-opencode-cli.hf.space/dashboard/providers"
-                    },
-                    "finish_reason": "stop"
-                }],
-                "usage": {
-                    "prompt_tokens": 10,
-                    "completion_tokens": 15,
-                    "total_tokens": 25
-                }
-            }, status_code=200)
+            return res
 
     target = f"http://127.0.0.1:{OMNIROUTE_PORT}/v1/{path}" if path else f"http://127.0.0.1:{OMNIROUTE_PORT}/v1"
     return await handle_omniroute_proxy(target, request, default_prefix="/omniroute")
