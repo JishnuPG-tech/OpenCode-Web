@@ -588,11 +588,11 @@ if true; then
         if [ -d "$_SITEDIR" ]; then
             cat > "${_SITEDIR}/sitecustomize.py" << 'PYCUSTOM'
 import os
-os.environ["OPENAI_API_BASE"] = "http://127.0.0.1:8642/v1"
-os.environ["OPENAI_API_BASE_URL"] = "http://127.0.0.1:8642/v1"
-os.environ["OPENAI_BASE_URL"] = "http://127.0.0.1:8642/v1"
+os.environ["OPENAI_API_BASE"] = "http://127.0.0.1:20128/v1"
+os.environ["OPENAI_API_BASE_URL"] = "http://127.0.0.1:20128/v1"
+os.environ["OPENAI_BASE_URL"] = "http://127.0.0.1:20128/v1"
 os.environ["OPENAI_API_KEY"] = "sk-2e556e0437ee2958-7baf2d-b4133935"
-os.environ["HERMES_API_BASE_URL"] = "http://127.0.0.1:8642/v1"
+os.environ["HERMES_API_BASE_URL"] = "http://127.0.0.1:20128/v1"
 os.environ["HERMES_API_KEY"] = "sk-2e556e0437ee2958-7baf2d-b4133935"
 try:
     import open_webui.routers.retrieval as rrouter
@@ -614,9 +614,9 @@ PYCUSTOM
     fi
 
     HERMES_LLM_KEY="sk-2e556e0437ee2958-7baf2d-b4133935"
-    export HERMES_API_BASE_URL="http://127.0.0.1:8642/v1"
+    export HERMES_API_BASE_URL="http://127.0.0.1:20128/v1"
     export HERMES_API_KEY="${HERMES_LLM_KEY}"
-    export OPENAI_API_BASE="http://127.0.0.1:8642/v1"
+    export OPENAI_API_BASE="http://127.0.0.1:20128/v1"
     export OPENAI_API_KEY="${HERMES_LLM_KEY}"
     export HERMES_MODEL="${HERMES_MODEL:-custom/auto}"
     export HERMES_DATA_DIR="/root/.hermes"
@@ -635,10 +635,10 @@ API_SERVER_ENABLED=true
 API_SERVER_PORT=8642
 API_SERVER_HOST=127.0.0.1
 API_SERVER_KEY=${API_SERVER_KEY}
-OPENAI_API_BASE=http://127.0.0.1:8642/v1
-OPENAI_API_BASE_URL=http://127.0.0.1:8642/v1
+OPENAI_API_BASE=http://127.0.0.1:20128/v1
+OPENAI_API_BASE_URL=http://127.0.0.1:20128/v1
 OPENAI_API_KEY=${HERMES_LLM_KEY}
-HERMES_API_BASE_URL=http://127.0.0.1:8642/v1
+HERMES_API_BASE_URL=http://127.0.0.1:20128/v1
 HERMES_API_KEY=${HERMES_LLM_KEY}
 DEFAULT_MODEL=${HERMES_MODEL}
 TELEGRAM_ENABLED=${TELEGRAM_BOT_TOKEN:+true}
@@ -649,7 +649,7 @@ HERMES_ENV
 
     cat > /root/.hermes/config.json << HERMES_CFG
 {
-  "api_base_url": "http://127.0.0.1:8642/v1",
+  "api_base_url": "http://127.0.0.1:20128/v1",
   "api_key": "${HERMES_LLM_KEY}",
   "model": "${HERMES_MODEL}",
   "data_dir": "/root/.hermes",

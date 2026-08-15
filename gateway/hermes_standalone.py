@@ -12,7 +12,7 @@ from gateway.utils import get_structured_logger
 logger = get_structured_logger("HermesStandalone")
 app = FastAPI(title="Hermes Standalone Server")
 
-OMNIROUTE_URL = os.getenv("HERMES_API_BASE_URL", "http://127.0.0.1:20128/api/v1")
+OMNIROUTE_URL = os.getenv("HERMES_API_BASE_URL", "http://127.0.0.1:20128/v1")
 MASTER_KEY = os.getenv("API_SERVER_KEY", "sk-2e556e0437ee2958-7baf2d-b4133935")
 
 TELEMETRY_LOG = "/data/cache/hermes_telemetry.log"
@@ -206,8 +206,9 @@ async def chat_completions(request: Request):
 
     _TELEMETRY_STATS["chat_completions_count"] += 1
 
+    target_model = model if (model and model not in ("hermes-agent", "custom/auto")) else "auto"
     payload = {
-        "model": "auto",
+        "model": target_model,
         "messages": messages,
         "stream": stream
     }
@@ -217,9 +218,14 @@ async def chat_completions(request: Request):
         "Authorization": f"Bearer {MASTER_KEY}"
     }
 
+    base_url = OMNIROUTE_URL.rstrip('/')
+    if not (base_url.endswith('/v1') or base_url.endswith('/api/v1')):
+        base_url = f"{base_url}/v1"
+    target_endpoint = f"{base_url}/chat/completions"
+
     async with httpx.AsyncClient(timeout=30.0) as client:
         try:
-            r = await client.post(f"{OMNIROUTE_URL}/chat/completions", json=payload, headers=headers)
+            r = await client.post(target_endpoint, json=payload, headers=headers)
             duration_ms = (time.time() - t0) * 1000
             record_hermes_telemetry("chat_completions", duration_ms, {"model": model, "status": r.status_code, "stream": stream})
             if r.status_code == 200:
