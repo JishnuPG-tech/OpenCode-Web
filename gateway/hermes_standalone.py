@@ -223,60 +223,46 @@ async def chat_completions(request: Request):
         base_url = f"{base_url}/v1"
     target_endpoint = f"{base_url}/chat/completions"
 
-    async with httpx.AsyncClient(timeout=30.0) as client:
-        if target_model == "auto":
-            try:
-                m_res = await client.get(f"{base_url}/models", headers=headers, timeout=5.0)
-                if m_res.status_code == 200:
-                    m_data = m_res.json()
-                    m_list = m_data.get("data") if isinstance(m_data, dict) else []
-                    synced_models = [m["id"] for m in m_list if isinstance(m, dict) and m.get("id") and not str(m["id"]).startswith("omniroute/") and m["id"] not in ("hermes-agent", "auto")]
-                    if synced_models:
-                        target_model = synced_models[0]
-                        payload["model"] = target_model
-                        logger.info(f"[HERMES MODEL RESOLVE] Resolved 'auto' -> '{target_model}'")
-            except Exception as me:
-                logger.warning(f"[HERMES MODEL RESOLVE] Error resolving auto model: {me}")
-
+    async with httpx.AsyncClient(timeout=35.0) as client:
+        models_to_try = [target_model] if target_model not in ("auto", "hermes-agent", "custom/auto") else []
         try:
-            r = await client.post(target_endpoint, json=payload, headers=headers)
-            duration_ms = (time.time() - t0) * 1000
-            record_hermes_telemetry("chat_completions", duration_ms, {"model": model, "status": r.status_code, "stream": stream})
-            if r.status_code == 200:
-                if stream:
-                    return StreamingResponse(r.aiter_bytes(), media_type="text/event-stream")
-                res_data = r.json()
-                if isinstance(res_data, dict) and res_data.get("choices") and len(res_data["choices"]) > 0:
-                    choice = res_data["choices"][0]
-                    if isinstance(choice, dict) and choice.get("message"):
-                        if not res_data.get("usage"):
-                            res_data["usage"] = {"prompt_tokens": 10, "completion_tokens": 15, "total_tokens": 25}
-                        return JSONResponse(content=res_data, status_code=200)
+            m_res = await client.get(f"{base_url}/models", headers=headers, timeout=5.0)
+            if m_res.status_code == 200:
+                m_data = m_res.json()
+                m_list = m_data.get("data") if isinstance(m_data, dict) else []
+                synced_models = [
+                    m["id"] for m in m_list 
+                    if isinstance(m, dict) and m.get("id") 
+                    and not str(m["id"]).startswith("omniroute/") 
+                    and m["id"] not in ("hermes-agent", "auto")
+                ]
+                for sm in synced_models:
+                    if sm not in models_to_try:
+                        models_to_try.append(sm)
+        except Exception as me:
+            logger.warning(f"[HERMES MODEL FETCH] Error: {me}")
 
-            # Fallback: Query synced provider models if 'auto' returned empty choices
+        if not models_to_try:
+            models_to_try = ["auto"]
+
+        for trial_model in models_to_try[:10]:
+            payload["model"] = trial_model
             try:
-                models_res = await client.get(f"{base_url}/models", headers=headers)
-                if models_res.status_code == 200:
-                    models_data = models_res.json()
-                    data_list = models_data.get("data") if isinstance(models_data, dict) else []
-                    valid_models = [m["id"] for m in data_list if isinstance(m, dict) and m.get("id") and m["id"] not in ("hermes-agent", "auto")]
-                    for fallback_model in valid_models[:5]:
-                        payload["model"] = fallback_model
-                        r2 = await client.post(target_endpoint, json=payload, headers=headers)
-                        if r2.status_code == 200:
-                            if stream:
-                                return StreamingResponse(r2.aiter_bytes(), media_type="text/event-stream")
-                            res_data2 = r2.json()
-                            if isinstance(res_data2, dict) and res_data2.get("choices") and len(res_data2["choices"]) > 0:
-                                choice = res_data2["choices"][0]
-                                if isinstance(choice, dict) and choice.get("message"):
-                                    if not res_data2.get("usage"):
-                                        res_data2["usage"] = {"prompt_tokens": 10, "completion_tokens": 15, "total_tokens": 25}
-                                    return JSONResponse(content=res_data2, status_code=200)
-            except Exception as fexc:
-                logger.warning(f"Fallback model proxy error: {fexc}")
-        except Exception as exc:
-            logger.warning(f"OmniRoute proxy error: {exc}")
+                r = await client.post(target_endpoint, json=payload, headers=headers)
+                duration_ms = (time.time() - t0) * 1000
+                record_hermes_telemetry("chat_completions", duration_ms, {"model": trial_model, "status": r.status_code, "stream": stream})
+                if r.status_code == 200:
+                    if stream:
+                        return StreamingResponse(r.aiter_bytes(), media_type="text/event-stream")
+                    res_data = r.json()
+                    if isinstance(res_data, dict) and res_data.get("choices") and len(res_data["choices"]) > 0:
+                        choice = res_data["choices"][0]
+                        if isinstance(choice, dict) and (choice.get("message") or choice.get("delta")):
+                            if not res_data.get("usage"):
+                                res_data["usage"] = {"prompt_tokens": 10, "completion_tokens": 15, "total_tokens": 25}
+                            return JSONResponse(content=res_data, status_code=200)
+            except Exception as pe:
+                logger.warning(f"[HERMES TRIAL] Trial for model '{trial_model}' failed: {pe}")
 
     user_query = ""
     for msg in reversed(messages):
