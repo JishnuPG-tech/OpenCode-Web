@@ -354,8 +354,6 @@ echo "[BOOT] Background services starting asynchronously..."
 
     echo "[INIT] Starting OmniRoute AI Gateway..."
     export PORT=20128
-    export API_PORT=20129
-    export LIVE_WS_PORT=20132
     export HOSTNAME="127.0.0.1"
     export DATA_DIR="/root/.omniroute"
     export REDIS_URL="redis://127.0.0.1:6379"
@@ -394,10 +392,13 @@ echo "[BOOT] Background services starting asynchronously..."
         elif [ -f "fix_omniroute.py" ]; then
             python3 fix_omniroute.py ./ 2>&1 || true
         fi
+        mkdir -p /data/omniroute 2>/dev/null || true
         if [ -f "server.js" ]; then
-            node server.js &
+            echo "[INIT] OmniRoute entry: node server.js (PORT=20128)"
+            node server.js > /data/omniroute/omniroute.log 2>&1 &
         else
-            npm run start -- --port 20128 &
+            echo "[INIT] OmniRoute entry: npm run start (PORT=20128)"
+            npm run start > /data/omniroute/omniroute.log 2>&1 &
         fi
         OMNIROUTE_PID=$!
         (
